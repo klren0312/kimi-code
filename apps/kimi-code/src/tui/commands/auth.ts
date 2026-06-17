@@ -8,7 +8,12 @@ import {
   type ManagedKimiConfigShape,
   type OpenPlatformDefinition,
 } from '@moonshot-ai/kimi-code-oauth';
-import { log } from '@moonshot-ai/kimi-code-sdk';
+import {
+  isLlmCommunicationLogEnabled,
+  log,
+  triggerAuthComplete,
+  triggerDeviceCodeAuth,
+} from '@moonshot-ai/kimi-code-sdk';
 
 import type { ChoiceOption } from '../components/dialogs/choice-picker';
 import { DEFAULT_OAUTH_PROVIDER_NAME, PRODUCT_NAME } from '../constant/kimi-tui';
@@ -57,10 +62,22 @@ async function handleKimiCodeOAuthLogin(host: SlashCommandHost): Promise<void> {
       signal: controller.signal,
       onDeviceCode: (data) => {
         spinner = host.showLoginAuthorizationPrompt(data);
+        if (isLlmCommunicationLogEnabled()) {
+          triggerDeviceCodeAuth({
+            userCode: data.userCode,
+            verificationUri: data.verificationUri,
+            verificationUriComplete: data.verificationUriComplete,
+            expiresIn: data.expiresIn,
+            interval: data.interval,
+          });
+        }
       },
     });
     spinner?.stop({ ok: true, label: 'Logged in.' });
     spinner = undefined;
+    if (isLlmCommunicationLogEnabled()) {
+      triggerAuthComplete(true, 'Login successful.');
+    }
     try {
       await host.authFlow.refreshConfigAfterLogin();
     } catch (refreshError) {
@@ -83,6 +100,9 @@ async function handleKimiCodeOAuthLogin(host: SlashCommandHost): Promise<void> {
     });
     spinner = undefined;
     if (cancelled) return;
+    if (isLlmCommunicationLogEnabled()) {
+      triggerAuthComplete(false, 'Login cancelled or failed.');
+    }
     log.warn('login failed', {
       providerName: DEFAULT_OAUTH_PROVIDER_NAME,
       alreadyLoggedIn,

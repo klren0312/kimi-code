@@ -4,6 +4,13 @@ import { join } from 'pathe';
 import { ErrorCodes, KimiError, makeErrorPayload } from '#/errors';
 import { log } from '#/logging/logger';
 import type { Logger } from '#/logging/types';
+import {
+  enableLlmCommunicationLog,
+  isLlmCommunicationLogEnabled,
+  logLlmRequest,
+  logLlmResponse,
+  startLlmLogServer,
+} from '#/logging/llm-communication';
 import type { AgentAPI, AgentEvent, KimiConfig, SDKAgentRPC, UsageStatus } from '#/rpc';
 import {
   generate,
@@ -141,6 +148,11 @@ export class Agent {
     this.toolServices = options.toolServices;
     this.pluginSessionStarts = options.pluginSessionStarts ?? [];
     this.rawGenerate = options.generate ?? generate;
+
+    if (process.env['KIMI_CODE_LOG_LLM'] === '1') {
+      enableLlmCommunicationLog();
+      startLlmLogServer();
+    }
     this.modelProvider = options.modelProvider;
     this.subagentHost = options.subagentHost;
     this.mcp = options.mcp;
@@ -191,9 +203,41 @@ export class Agent {
 
   get generate(): typeof generate {
     return async (provider, systemPrompt, tools, history, callbacks, options) => {
+      const logComm = isLlmCommunicationLogEnabled();
+      if (logComm) {
+        logLlmRequest({
+          provider: provider.name,
+          model: provider.modelName,
+          systemPrompt,
+          tools,
+          history,
+        });
+      }
+
+      const startMs = Date.now();
+      const doGenerate = async (opts: typeof options) => {
+        this.logLlmRequest(provider, systemPrompt, tools, history, opts);
+        const result = await this.rawGenerate(provider, systemPrompt, tools, history, callbacks, opts);
+        if (logComm) {
+          logLlmResponse({
+            content: result.message.content
+              .filter((p) => p.type === 'text')
+              .map((p) => p.text)
+              .join(''),
+            toolCalls: result.message.toolCalls.map((tc) => ({
+              name: tc.name,
+              arguments: tc.arguments ?? '',
+            })),
+            usage: result.usage,
+            finishReason: result.finishReason,
+            durationMs: Date.now() - startMs,
+          });
+        }
+        return result;
+      };
+
       if (options?.auth !== undefined) {
-        this.logLlmRequest(provider, systemPrompt, tools, history, options);
-        return this.rawGenerate(provider, systemPrompt, tools, history, callbacks, options);
+        return doGenerate(options);
       }
       const modelAlias = this.config.modelAlias;
       const withAuth =
@@ -201,13 +245,10 @@ export class Agent {
           ? undefined
           : this.modelProvider?.resolveAuth?.(modelAlias, { log: this.log });
       if (withAuth === undefined) {
-        this.logLlmRequest(provider, systemPrompt, tools, history, options);
-        return this.rawGenerate(provider, systemPrompt, tools, history, callbacks, options);
+        return doGenerate(options);
       }
       return withAuth((auth) => {
-        const requestOptions = { ...options, auth };
-        this.logLlmRequest(provider, systemPrompt, tools, history, requestOptions);
-        return this.rawGenerate(provider, systemPrompt, tools, history, callbacks, requestOptions);
+        return doGenerate({ ...options, auth });
       });
     };
   }

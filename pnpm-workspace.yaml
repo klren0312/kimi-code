@@ -4,6 +4,12 @@ packages:
   - apps/vis/server
   - apps/vis/web
   - docs
+allowBuilds:
+  esbuild: true
+  koffi: true
+  protobufjs: true
+  simple-git-hooks: true
+  ssh2: true
 
 overrides:
   "ssh2@1.17.0>cpu-features": "-"

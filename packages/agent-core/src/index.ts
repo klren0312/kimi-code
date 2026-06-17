@@ -17,6 +17,20 @@ export {
 export { resolveLoggingConfig } from './logging/resolve-config';
 export type { ResolveLoggingInput } from './logging/resolve-config';
 export { installGlobalProxyDispatcher } from './utils/proxy';
+
+// LLM communication logging
+export {
+  isLlmCommunicationLogEnabled,
+  enableLlmCommunicationLog,
+  triggerDeviceCodeAuth,
+  triggerAuthComplete,
+  triggerApprovalRequest,
+  triggerApprovalResult,
+  setApprovalResponseCallback,
+  startLlmLogServer,
+  stopLlmLogServer,
+} from './logging/llm-communication';
+export type { DeviceCodeInfo } from './logging/llm-communication';
 export type {
   LogContext,
   LogEntry,

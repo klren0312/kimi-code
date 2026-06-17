@@ -86,3 +86,17 @@ export type {
 
 export * from '#/events';
 export type * from '#/types';
+
+// LLM communication logging for web viewer
+export {
+  isLlmCommunicationLogEnabled,
+  enableLlmCommunicationLog,
+  triggerDeviceCodeAuth,
+  triggerAuthComplete,
+  triggerApprovalRequest,
+  triggerApprovalResult,
+  setApprovalResponseCallback,
+  startLlmLogServer,
+  stopLlmLogServer,
+} from '@moonshot-ai/agent-core';
+export type { DeviceCodeInfo } from '@moonshot-ai/agent-core';

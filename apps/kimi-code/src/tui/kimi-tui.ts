@@ -19,6 +19,12 @@ import type {
   PromptPart,
   Session,
 } from '@moonshot-ai/kimi-code-sdk';
+import {
+  isLlmCommunicationLogEnabled,
+  triggerApprovalRequest,
+  triggerApprovalResult,
+  setApprovalResponseCallback,
+} from '@moonshot-ai/kimi-code-sdk';
 import type { MigrationPlan } from '@moonshot-ai/migration-legacy';
 import { resolve } from 'pathe';
 
@@ -249,6 +255,9 @@ export class KimiTUI {
       }
     | undefined;
 
+  // Map of pending approval request IDs to their resolve callbacks
+  private pendingApprovals = new Map<string, (response: ApprovalPanelResponse) => void>();
+
   public onExit?: (exitCode?: number) => Promise<void>;
 
   track(event: string, properties?: Parameters<KimiHarness['track']>[1]): void {
@@ -294,6 +303,24 @@ export class KimiTUI {
         },
       }),
     );
+
+    // Register web viewer approval callback (always register, check enabled at runtime)
+    setApprovalResponseCallback((requestId, approved, scope) => {
+      const pending = this.pendingApprovals.get(requestId);
+      if (pending) {
+        this.pendingApprovals.delete(requestId);
+        if (approved) {
+          pending({
+            response: scope === 'session' ? 'approved_for_session' : 'approved',
+            selected_label: scope === 'session' ? 'Approve for session' : 'Approve',
+          });
+        } else {
+          pending({ response: 'rejected' });
+        }
+        // Hide the panel since we got a response
+        this.hideApprovalPanel();
+      }
+    });
     this.streamingUI = new StreamingUIController(this);
     this.authFlow = new AuthFlowController(this);
     this.btwPanelController = new BtwPanelController(this);
@@ -2008,11 +2035,30 @@ export class KimiTUI {
       title: 'Kimi Code approval required',
       body: payload.tool_name,
     });
+
+    // Broadcast approval request to web viewer
+    if (isLlmCommunicationLogEnabled()) {
+      const toolInput = payload.description || payload.action || payload.tool_name;
+      triggerApprovalRequest(payload.tool_name, toolInput, payload.id);
+    }
+
+    // Store callback for web viewer approval
+    const handleResponse = (response: ApprovalPanelResponse) => {
+      this.pendingApprovals.delete(payload.id);
+      // Broadcast approval result to web viewer
+      if (isLlmCommunicationLogEnabled()) {
+        const approved = response.response === 'approved' || response.response === 'approved_for_session';
+        triggerApprovalResult(payload.id, approved, response.response === 'approved_for_session' ? 'session' : undefined);
+      }
+      this.approvalController.respond(adaptPanelResponse(response));
+    };
+
+    // Store callback for web viewer approval (always store, check enabled at runtime)
+    this.pendingApprovals.set(payload.id, handleResponse);
+
     const panel = new ApprovalPanelComponent(
       { data: payload },
-      (response: ApprovalPanelResponse) => {
-        this.approvalController.respond(adaptPanelResponse(response));
-      },
+      handleResponse,
       () => {
         this.toggleToolOutputExpansion();
       },
