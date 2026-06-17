@@ -13,4 +13,7 @@ export default defineConfig({
     alwaysBundle: ['picomatch'],
     neverBundle: ['@moonshot-ai/kosong', '@moonshot-ai/kaos'],
   },
+  copy: [
+    { from: 'src/logging/llm-viewer.html', to: 'logging/llm-viewer.html' },
+  ],
 });

@@ -68,6 +68,82 @@ Take a look at this project and explain its main directories.
 - **Lifecycle hooks.** Run local commands at key points to gate risky tool calls, audit decisions, trigger desktop notifications, or connect to your own automation.
 - **Editor & IDE integration (ACP).** Drive a Kimi Code CLI session straight from Zed, JetBrains, or any [Agent Client Protocol](https://agentclientprotocol.com/) client with `kimi acp`.
 
+## LLM Communication Log (Debug Feature)
+
+Kimi Code CLI supports real-time logging of AI communication with a built-in web viewer. This is useful for debugging and monitoring LLM requests/responses.
+
+### Usage
+
+Set the environment variable `KIMI_CODE_LOG_LLM=1` when starting:
+
+```sh
+KIMI_CODE_LOG_LLM=1 kimi
+```
+
+The terminal will display the web viewer URL:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  📊 LLM Communication Log                               │
+│  http://127.0.0.1:9877                                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+Open the URL in a browser to view real-time logs.
+
+### Features
+
+- **Real-time logs** — Live display of LLM requests and responses via SSE (Server-Sent Events)
+- **Request details** — System Prompt, available tools, conversation history
+- **Response details** — Model output, tool calls, token usage, duration
+- **OAuth login integration** — Device authorization code and verification link displayed in web viewer
+- **Tool approval** — Approve/reject tool execution directly from the web page (MCP, Bash, file edits, etc.)
+- **Log file** — Simultaneous writing to `~/.kimi-code/logs/llm-communication.log`
+
+### Web Viewer Features
+
+| Feature | Description |
+|---------|-------------|
+| Auto-scroll | New logs automatically scroll to bottom |
+| Clear | Clear all displayed logs |
+| Expand/Collapse | Click log entry to view details |
+| Approve | Approve tool execution (single use) |
+| Approve for session | Approve same operation for entire session |
+| Reject | Reject tool execution |
+
+### Log File Format
+
+The log file uses a delimiter format for easy reading and parsing:
+
+```
+================================================================================
+[2026-06-16T14:30:00.000Z] LLM REQUEST
+Provider: kimi
+Model: kimi-k2
+================================================================================
+
+--- System Prompt ---
+You are a helpful assistant...
+
+--- Tools (5) ---
+[{"name":"read","description":"Read file"}, ...]
+
+--- Messages (3) ---
+[{"role":"user","content":"Hello"}, ...]
+
+--------------------------------------------------------------------------------
+--- Response [2026-06-16T14:30:05.000Z] (5000ms) ---
+Finish reason: completed
+Tokens: input=1500 output=200 total=1700
+
+--- Content ---
+Hi! How can I help you?
+
+--- Tool Calls (1) ---
+  read(path/to/file)
+```
+
+
 ## Use it in your editor (ACP)
 
 Kimi Code CLI speaks the [Agent Client Protocol](https://agentclientprotocol.com/), so ACP-compatible editors and IDEs (Zed, JetBrains, …) can drive a session over stdio. Log in once, then point your editor at the `kimi acp` subcommand — no extra login needed.

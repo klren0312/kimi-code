@@ -23,7 +23,8 @@
     "tools"
   ],
   "files": [
-    "dist"
+    "dist",
+    "src/logging/llm-viewer.html"
   ],
   "type": "module",
   "imports": {

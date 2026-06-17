@@ -72,6 +72,82 @@ kimi
 - **编辑器 / IDE 集成（ACP）** 用 `kimi acp` 让 Zed、JetBrains 等任意 [Agent Client Protocol](https://agentclientprotocol.com/) 客户端直接驱动会话。
 
 
+## LLM 通信日志（调试功能）
+
+Kimi Code CLI 支持实时记录 AI 通信日志，并通过内置的网页查看器展示。这对于调试、监控 LLM 请求/响应非常有用。
+
+### 启用方式
+
+在启动时设置环境变量 `KIMI_CODE_LOG_LLM=1`：
+
+```sh
+KIMI_CODE_LOG_LLM=1 kimi
+```
+
+启动后终端会显示网页查看器地址：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  📊 LLM Communication Log                               │
+│  http://127.0.0.1:9877                                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+在浏览器中打开该地址即可查看实时日志。
+
+### 功能特性
+
+- **实时日志** — 通过 SSE (Server-Sent Events) 实时显示 LLM 请求和响应
+- **请求详情** — 显示 System Prompt、可用工具、对话历史
+- **响应详情** — 显示模型回复内容、工具调用、Token 用量、耗时
+- **OAuth 登录集成** — 在网页上显示设备授权码和验证链接
+- **工具授权** — 在网页上直接批准/拒绝工具执行（MCP、Bash、文件编辑等）
+- **日志文件** — 同时写入 `~/.kimi-code/logs/llm-communication.log`
+
+### 网页查看器功能
+
+| 功能 | 说明 |
+|------|------|
+| Auto-scroll | 新日志自动滚动到底部 |
+| Clear | 清空当前显示的日志 |
+| 展开/折叠 | 点击日志条目查看详情 |
+| Approve | 批准工具执行（单次） |
+| Approve for session | 批准整个会话中的同类操作 |
+| Reject | 拒绝工具执行 |
+
+### 日志文件格式
+
+日志文件采用分隔符格式，便于阅读和解析：
+
+```
+================================================================================
+[2026-06-16T14:30:00.000Z] LLM REQUEST
+Provider: kimi
+Model: kimi-k2
+================================================================================
+
+--- System Prompt ---
+You are a helpful assistant...
+
+--- Tools (5) ---
+[{"name":"read","description":"Read file"}, ...]
+
+--- Messages (3) ---
+[{"role":"user","content":"Hello"}, ...]
+
+--------------------------------------------------------------------------------
+--- Response [2026-06-16T14:30:05.000Z] (5000ms) ---
+Finish reason: completed
+Tokens: input=1500 output=200 total=1700
+
+--- Content ---
+Hi! How can I help you?
+
+--- Tool Calls (1) ---
+  read(path/to/file)
+```
+
+
 ## 在编辑器里使用（ACP）
 
 Kimi Code CLI 支持 [Agent Client Protocol](https://agentclientprotocol.com/)，ACP 兼容的编辑器 / IDE（Zed、JetBrains……）可以通过 stdio 直接驱动会话。登录一次后，把编辑器指向 `kimi acp` 子命令即可，无需重复登录。

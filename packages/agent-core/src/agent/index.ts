@@ -209,7 +209,6 @@ export class Agent {
 
       const startMs = Date.now();
       const doGenerate = async (opts: typeof options) => {
-        this.logLlmRequest(provider, systemPrompt, tools, history, opts);
         const result = await this.rawGenerate(provider, systemPrompt, tools, history, callbacks, opts);
         if (logComm) {
           logLlmResponse({
@@ -233,20 +232,6 @@ export class Agent {
         return doGenerate(options);
       }
       const modelAlias = this.config.modelAlias;
-      const run = (requestOptions: Parameters<typeof generate>[5]) => {
-        this.llmRequestLogger.logRequest({
-          provider,
-          modelAlias,
-          systemPrompt,
-          tools,
-          messages: history,
-          fields: requestLogFields,
-        });
-        return this.rawGenerate(provider, systemPrompt, tools, history, callbacks, requestOptions);
-      };
-      if (generateOptions?.auth !== undefined) {
-        return run(generateOptions);
-      }
       const withAuth =
         modelAlias === undefined
           ? undefined
