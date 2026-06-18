@@ -265,7 +265,11 @@ export class Agent {
     // 如果设置了 KIMI_CODE_LOG_LLM=1，则启用 LLM 通信日志
     if (process.env['KIMI_CODE_LOG_LLM'] === '1') {
       enableLlmCommunicationLog();
-      startLlmLogServer();
+      const host = '0.0.0.0'
+      const port = process.env['KIMI_CODE_LOG_LLM_PORT']
+        ? Number.parseInt(process.env['KIMI_CODE_LOG_LLM_PORT'], 10)
+        : undefined;
+      startLlmLogServer(port, host);
     }
 
     // 外部依赖

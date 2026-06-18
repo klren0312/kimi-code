@@ -9,10 +9,16 @@
  * - 实时 Web 查看器：http://127.0.0.1:9877
  * - OAuth 设备码流程集成（在 Web 查看器中显示授权提示）
  * - 自动轮转日志文件（10MB 限制）
+ * - 支持局域网访问（通过 KIMI_CODE_LOG_LLM_HOST=0.0.0.0）
  *
  * 用法：
  *   设置 KIMI_CODE_LOG_LLM=1 环境变量以启用
  *   启动时终端会显示 Web 查看器 URL
+ *
+ * 环境变量：
+ *   KIMI_CODE_LOG_LLM=1          启用日志
+ *   KIMI_CODE_LOG_LLM_HOST       监听地址（默认 127.0.0.1，设为 0.0.0.0 支持局域网）
+ *   KIMI_CODE_LOG_LLM_PORT       监听端口（默认 9877）
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -41,6 +47,9 @@ const ROTATED_FILE = `${LOG_FILE}.1`;
 
 /** Web 查看器 HTTP 服务器的默认端口 */
 const DEFAULT_PORT = 9877;
+
+/** Web 查看器 HTTP 服务器的默认主机 */
+const DEFAULT_HOST = '127.0.0.1';
 
 // ============================================================================
 // 模块状态
@@ -674,17 +683,22 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
  * 在终端中显示 URL 以便访问。
  *
  * @param port - 监听端口（默认：9877）
+ * @param host - 监听地址（默认：127.0.0.1，设置为 '0.0.0.0' 可支持局域网访问）
  */
-export function startLlmLogServer(port = DEFAULT_PORT): void {
+export function startLlmLogServer(port = DEFAULT_PORT, host = DEFAULT_HOST): void {
   if (httpServer !== null) return;
 
   httpServer = createServer(handleHttpRequest);
-  httpServer.listen(port, '127.0.0.1', () => {
-    const url = `http://127.0.0.1:${port}`;
+  httpServer.listen(port, host, () => {
+    const displayHost = host === '0.0.0.0' ? '0.0.0.0' : host;
+    const url = `http://${displayHost}:${port}`;
     process.stdout.write(`\n`);
     process.stdout.write(`┌─────────────────────────────────────────────────────────┐\n`);
     process.stdout.write(`│  📊 LLM Communication Log                               │\n`);
     process.stdout.write(`│  ${url.padEnd(55)}│\n`);
+    if (host === '0.0.0.0') {
+      process.stdout.write(`│  ⚠️  局域网可访问，请注意安全                              │\n`);
+    }
     process.stdout.write(`└─────────────────────────────────────────────────────────┘\n`);
     process.stdout.write(`\n`);
   });
