@@ -1,20 +1,19 @@
 /**
- * ReadGroupComponent renders 2+ Read tool calls from the same step as one group.
+ * ReadGroupComponent 将同一步骤中的 2 个以上 Read 工具调用渲染为一组。
  *
- * It follows the same structure as `AgentGroupComponent`, with a smaller
- * surface:
- * - one summary header and a tree body listing each file path and status;
- * - permanently grouped, while the body remains visible;
- * - 200ms throttling, matching AgentGroup;
- * - state stays in each `ToolCallComponent`; the group only reads snapshots.
+ * 结构与 `AgentGroupComponent` 相同，但表现面更小：
+ * - 一个摘要头部和一个树形主体，列出每个文件路径及状态；
+ * - 始终保持分组，主体内容持续可见；
+ * - 200ms 节流，与 AgentGroup 一致；
+ * - 状态保存在各自的 `ToolCallComponent` 中；组仅读取快照。
  *
- * Header forms:
+ * 头部格式：
  *   pending > 0: Reading {N} files
  *   all done:    Read {N} files · {L} lines
  *   some failed: append · {F} failed
  *   all failed:  Read {N} files · failed
  *
- * Body lines follow AgentGroup's branch style:
+ * 主体行沿用 AgentGroup 的分支风格：
  *   src/main.ts · 51 lines
  *   src/cli.ts · reading
  *   src/missing.ts · failed
@@ -57,9 +56,8 @@ export class ReadGroupComponent extends Container {
   }
 
   /**
-   * Borrows a standalone `ToolCallComponent` into the group as a hidden state
-   * container. Snapshot changes trigger throttled refreshes. Re-attaching the
-   * same toolCallId is a no-op.
+   * 将独立的 `ToolCallComponent` 作为隐藏状态容器借入组内。
+   * 快照变化会触发节流刷新。重复附加相同的 toolCallId 不会产生效果。
    */
   attach(toolCallId: string, tc: ToolCallComponent): void {
     if (this.entries.some((e) => e.toolCallId === toolCallId)) return;
@@ -71,8 +69,8 @@ export class ReadGroupComponent extends Container {
   }
 
   /**
-   * The pending -> done/failed transition is the important visible change, so
-   * it refreshes immediately. Other changes are throttled.
+   * pending -> done/failed 的转变是最重要的可见变更，因此立即刷新。
+   * 其他变更则进行节流处理。
    */
   private scheduleRender(): void {
     if (this.detectPhaseTransition()) {
@@ -139,7 +137,7 @@ export class ReadGroupComponent extends Container {
       return `${bullet}${label}`;
     }
 
-    // All reads have finished, either successfully or with failures.
+    // 所有 Read 操作已完成，无论成功还是失败。
     if (failed === total) {
       const bullet = currentTheme.fg('error', '✗ ');
       const label = currentTheme.boldFg('error', `Read ${String(total)} files`);
@@ -180,7 +178,7 @@ export class ReadGroupComponent extends Container {
     this._invalidating = false;
   }
 
-  /** Releases throttle timers so destroyed components cannot refresh later. */
+  /** 释放节流定时器，防止已销毁的组件稍后触发刷新。 */
   dispose(): void {
     if (this.throttleTimer !== null) {
       clearTimeout(this.throttleTimer);

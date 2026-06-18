@@ -20,7 +20,7 @@ function maskInputLine(raw: string): string {
   const prefix = '> ';
   if (!raw.startsWith(prefix)) return raw;
 
-  // Strip trailing padding spaces so they stay as spaces.
+  // 去除尾部填充空格，使其保持为空格。
   let end = raw.length;
   while (end > prefix.length && raw[end - 1] === ' ') {
     end--;
@@ -28,12 +28,12 @@ function maskInputLine(raw: string): string {
   const padding = raw.slice(end);
   const content = raw.slice(prefix.length, end);
 
-  // Protect ANSI escape sequences (reverse-video cursor, IME marker, etc.)
-  // while masking every other visible character.
+  // 保护 ANSI 转义序列（反色光标、IME 标记等），
+  // 同时遮蔽其他所有可见字符。
   const parts = content.split(/(\u001B(?:\[[0-9;]*m|_pi:c\u0007))/);
   const maskedContent = parts
     .map((part, index) => {
-      if (index % 2 === 1) return part; // ANSI sequence
+      if (index % 2 === 1) return part; // ANSI 序列
       return part.replaceAll(/./g, '•');
     })
     .join('');

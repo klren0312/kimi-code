@@ -1,5 +1,5 @@
 /**
- * Custom editor extending pi-tui Editor with app-level keybindings.
+ * 扩展 pi-tui Editor 的自定义编辑器，添加应用级快捷键绑定。
  */
 
 import {
@@ -17,20 +17,20 @@ import { createEditorTheme } from '#/tui/theme/pi-tui-theme';
 
 import { WrappingSelectList } from './wrapping-select-list';
 
-// oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
+// oxlint-disable-next-line no-control-regex -- 需要 ESC (\x1b) 来匹配 ANSI SGR 转义序列
 const ANSI_SGR = /\u001B\[[0-9;]*m/g;
 
 const PASTE_MARKER_RE = /\[paste #(\d+)(?: (?:\+\d+ lines|\d+ chars))?\]/g;
 const BRACKET_PASTE_START = '\u001B[200~';
 const BRACKET_PASTE_END = '\u001B[201~';
 
-// Kitty keyboard protocol CSI-u sequence: ESC [ keycode ; modifier[:eventType] u.
-// We intentionally match only the simple two-field form — enough to rewrite
-// `ctrl+<LETTER>` with caps_lock into `ctrl+<letter>` without caps_lock.
-// oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match CSI
+// Kitty 键盘协议 CSI-u 序列：ESC [ keycode ; modifier[:eventType] u。
+// 只匹配简单的两字段形式——足以将 caps_lock 下的
+// `ctrl+<LETTER>` 重写为无 caps_lock 的 `ctrl+<letter>`。
+// oxlint-disable-next-line no-control-regex -- 需要 ESC (\x1b) 来匹配 CSI
 const KITTY_CSI_U = /^\u001B\[(\d+);(\d+)((?::\d+)*)u$/;
-// Kitty modifier bit layout: shift=1, alt=2, ctrl=4, super=8, hyper=16,
-// meta=32, caps_lock=64, num_lock=128. Reported value is `mask + 1`.
+// Kitty 修饰键位布局：shift=1, alt=2, ctrl=4, super=8, hyper=16,
+// meta=32, caps_lock=64, num_lock=128。报告值为 `mask + 1`。
 const CAPS_LOCK_BIT = 64;
 const CTRL_BIT = 4;
 const SHIFT_BIT = 1;
@@ -45,26 +45,25 @@ interface AutocompleteListFactoryInternals {
   createAutocompleteList?: (prefix: string, items: SelectItem[]) => SelectList;
 }
 
-// Mirror pi-tui's private SLASH_COMMAND_SELECT_LIST_LAYOUT
-// (dist/components/editor.js); keep in sync when bumping pi-tui.
+// 镜像 pi-tui 私有的 SLASH_COMMAND_SELECT_LIST_LAYOUT
+// (dist/components/editor.js)；升级 pi-tui 时需保持同步。
 const SLASH_COMMAND_SELECT_LIST_LAYOUT = {
   minPrimaryColumnWidth: 12,
   maxPrimaryColumnWidth: 32,
 } as const;
 
 /**
- * Workaround for a pi-tui bug that surfaces when Kitty keyboard protocol
- * is active AND caps_lock is on. In that state terminals emit, e.g.,
- * `ESC[68;69u` for ctrl+d (codepoint=68=`D`, modifier=ctrl|caps_lock).
- * pi-tui's `matchesKittySequence` masks `caps_lock` out of the *modifier*
- * but leaves the *codepoint* capitalised, so `matchesKey(data, "ctrl+d")`
- * (which expects codepoint=100=`d`) fails and every ctrl-shortcut is
- * silently dropped.
+ * 解决 pi-tui 在 Kitty 键盘协议激活且 caps_lock 开启时出现的 bug。
+ * 在该状态下，终端会发出例如 `ESC[68;69u` 表示 ctrl+d
+ * （码点=68=`D`，修饰键=ctrl|caps_lock）。
+ * pi-tui 的 `matchesKittySequence` 从*修饰键*中移除了 caps_lock，
+ * 但保留了*码点*的大写形式，因此 `matchesKey(data, "ctrl+d")`
+ * （期望码点=100=`d`）会失败，所有 ctrl 快捷键都被静默丢弃。
  *
- * We rewrite the sequence back to its unlocked form before dispatching,
- * but only when ctrl is held and shift is not — i.e. exactly the
- * `ctrl+<letter>` case. Plain uppercase (caps_lock only, no ctrl) and
- * explicit ctrl+shift+<letter> are left alone.
+ * 在分派之前，将序列重写回未锁定形式，
+ * 但仅在按住 ctrl 且未按住 shift 时——即恰好是
+ * `ctrl+<字母>` 的情况。纯大写（仅 caps_lock，无 ctrl）和
+ * 显式的 ctrl+shift+<字母> 不做处理。
  */
 export function normalizeCapsLockedCtrl(data: string): string {
   const m = data.match(KITTY_CSI_U);
@@ -83,7 +82,7 @@ export function normalizeCapsLockedCtrl(data: string): string {
   return `\u001B[${String(loweredCodepoint)};${String(strippedModifier)}${tail}u`;
 }
 
-/** Convert a visible-char index (ANSI-stripped) back to an index into the raw ANSI-bearing string. */
+/** 将可见字符索引（去除 ANSI 后）转换回含 ANSI 转义的原始字符串的索引。 */
 function mapVisibleIdxToRaw(line: string, visibleIdx: number): number {
   let visibleCount = 0;
   let i = 0;
@@ -122,9 +121,9 @@ export class CustomEditor extends Editor {
   public onInsertNewline?: () => void;
   public onTextPaste?: () => void;
   /**
-   * Called when ↑ is pressed in an empty editor. Return `true` to consume
-   * the key (e.g. recalled a queued message); return `false` to fall
-   * through so pi-tui's built-in history navigation runs.
+   * 在空编辑器中按下 ↑ 时调用。返回 `true` 消费该按键
+   * （例如召回了队列消息）；返回 `false` 让事件穿透，
+   * 以触发 pi-tui 内置的历史导航。
    */
   public onUpArrowEmpty?: () => boolean;
   public onDownArrowEmpty?: () => boolean;
@@ -132,12 +131,11 @@ export class CustomEditor extends Editor {
   public connectedAbove = false;
   public borderHighlighted = false;
   /**
-   * Called when the user triggers "paste image" (Ctrl-V on Unix,
-   * Alt-V on Windows — Ctrl-V is terminal-reserved there). Return
-   * `true` to consume the key (image was read and handled); return
-   * `false` to let the key fall through to the normal paste path.
-   * The callback may be async; pi-tui awaits it before dispatching
-   * the next keystroke.
+   * 用户触发"粘贴图片"时调用（Unix 上为 Ctrl-V，
+   * Windows 上为 Alt-V——因为 Ctrl-V 被终端保留）。返回
+   * `true` 消费该按键（图片已读取并处理）；返回
+   * `false` 让按键穿透到普通粘贴路径。
+   * 回调可以是异步的；pi-tui 会等待它完成后才分派下一个按键。
    */
   public onPasteImage?: () => Promise<boolean>;
 
@@ -145,18 +143,16 @@ export class CustomEditor extends Editor {
   private consumeBuffer = '';
 
   constructor(tui: TUI) {
-    // paddingX: 4 reserves column 0 for the left vertical border (│),
-    // column 1 as a single space between border and prompt, column 2 for
-    // the `>` prompt token, and column 3 as the space between prompt and
-    // content. The right side mirrors with 3 padding columns and the right
-    // border at the last column.
+    // paddingX: 4 将第 0 列预留给左边框（│），
+    // 第 1 列作为边框与提示符之间的空格，第 2 列放置 `>` 提示符，
+    // 第 3 列作为提示符与内容之间的空格。
+    // 右侧对称配置 3 列内边距，最后一列为右边框。
     const theme = createEditorTheme();
     super(tui, theme, { paddingX: 4 });
 
-    // pi-tui keeps `createAutocompleteList` private; shadow it with an
-    // instance property so slash command menus render descriptions wrapped
-    // to at most two lines. Non-slash completion (paths, @ mentions) keeps
-    // pi-tui's single-line list.
+    // pi-tui 将 `createAutocompleteList` 设为私有；用实例属性遮蔽它，
+    // 使斜杠命令菜单的描述文本最多换行显示两行。
+    // 非斜杠补全（路径、@ 提及）仍使用 pi-tui 的单行列表。
     (this as unknown as AutocompleteListFactoryInternals).createAutocompleteList = (
       prefix,
       items,
@@ -207,8 +203,8 @@ export class CustomEditor extends Editor {
   }
 
   private cancelAutocompleteActivity(): void {
-    // pi-tui exposes `isShowingAutocomplete()` but keeps cancellation private.
-    // Kimi needs Esc to win over app-level cancel while the slash menu request is active.
+    // pi-tui 暴露了 `isShowingAutocomplete()` 但将取消操作设为私有。
+    // Kimi 需要 Esc 在斜杠菜单请求活跃时优先于应用级取消。
     (this as unknown as AutocompleteInternals).cancelAutocomplete();
   }
 
@@ -218,8 +214,7 @@ export class CustomEditor extends Editor {
     const firstContentIdx = 1;
     const text = this.getText().trimStart();
     if (text.startsWith('/')) {
-      // Paint only the FIRST editor content line; multi-line slash commands
-      // are not a thing in practice.
+      // 只渲染第一行编辑器内容；实际上不存在多行斜杠命令。
       const original = lines[firstContentIdx];
       if (original !== undefined) {
         const highlighted = highlightFirstSlashToken(original, 'primary');
@@ -235,10 +230,9 @@ export class CustomEditor extends Editor {
         lines[firstContentIdx] = withPrompt;
       }
     }
-    // `this.borderColor` is pi-tui's per-render paint function. The host may
-    // overwrite it (e.g. plan-mode / slash-context highlight via
-    // `editor.borderColor = chalk.hex(primary)`), so we route corners and
-    // side bars through the same hook to stay in sync.
+    // `this.borderColor` 是 pi-tui 的每次渲染着色函数。宿主可以覆盖它
+    // （例如通过 `editor.borderColor = chalk.hex(primary)` 实现计划模式/
+    // 斜杠上下文高亮），因此将圆角和侧边框也通过同一钩子着色以保持同步。
     return wrapWithSideBorders(lines, (s) => this.borderColor(s), {
       connectedAbove: this.connectedAbove && !this.borderHighlighted,
     });
@@ -250,8 +244,8 @@ export class CustomEditor extends Editor {
       return;
     }
 
-    // When a paste marker was just expanded, discard the trailing bracketed
-    // paste data that the terminal sends alongside the Ctrl-V keystroke.
+    // 当刚展开粘贴标记时，丢弃终端在 Ctrl-V 按键时
+    // 发送的后续方括号粘贴数据。
     if (this.consumingPaste) {
       this.consumeBuffer += normalized;
       if (this.consumeBuffer.includes(BRACKET_PASTE_END)) {
@@ -261,8 +255,8 @@ export class CustomEditor extends Editor {
       return;
     }
 
-    // If a bracketed paste arrives while the cursor sits on an existing
-    // paste marker, expand that marker instead of pasting new content.
+    // 如果方括号粘贴到达时光标位于已有的粘贴标记上，
+    // 则展开该标记而不是粘贴新内容。
     if (normalized.includes(BRACKET_PASTE_START) && this.expandPasteMarkerAtCursor()) {
       if (!normalized.includes(BRACKET_PASTE_END)) {
         this.consumingPaste = true;
@@ -270,12 +264,11 @@ export class CustomEditor extends Editor {
       return;
     }
 
-    // Paste image binding — platform-aware:
-    //   Windows terminals reserve Ctrl-V for their own paste handling
-    //   (e.g. Windows Terminal's Ctrl+V shortcut), so we listen for
-    //   Alt-V there. Everywhere else Ctrl-V pastes. When the host
-    //   reports no image available, we fall through to pi-tui's
-    //   normal paste path so text from the clipboard still works.
+    // 粘贴图片绑定——平台感知：
+    //   Windows 终端将 Ctrl-V 保留用于自身的粘贴处理
+    //   （例如 Windows Terminal 的 Ctrl+V 快捷键），因此在此监听
+    //   Alt-V。其他平台使用 Ctrl-V 粘贴。当宿主报告没有可用图片时，
+    //   事件穿透到 pi-tui 的普通粘贴路径，使剪贴板文本仍可正常使用。
     const pasteKey = process.platform === 'win32' ? 'alt+v' : Key.ctrl('v');
     if (matchesKey(normalized, pasteKey)) {
       if (this.expandPasteMarkerAtCursor()) {
@@ -339,7 +332,7 @@ export class CustomEditor extends Editor {
     if (matchesKey(normalized, Key.up)) {
       if (this.getText().length === 0 && this.onUpArrowEmpty) {
         if (this.onUpArrowEmpty()) return;
-        // fall through to super so Editor's built-in history navigation runs
+        // 穿透到 super，让 Editor 的内置历史导航运行
       }
     }
 
@@ -363,22 +356,22 @@ export class CustomEditor extends Editor {
 }
 
 /**
- * Return a copy of `line` with the first `/token` coloured using `hex`.
- * For `/goal next manage`, also colour the command-path tokens.
- * `line` may already contain SGR escapes (cursor inverse, etc.); we
- * locate `/` via visible-index math so ANSI pass-through survives.
- * Returns `undefined` if no token is found.
+ * 返回 `line` 的副本，其中第一个 `/token` 使用 `hex` 着色。
+ * 对于 `/goal next manage`，还会对命令路径 token 着色。
+ * `line` 可能已包含 SGR 转义（光标反转等）；通过可见索引计算
+ * 定位 `/`，确保 ANSI 透传不受影响。
+ * 未找到 token 时返回 `undefined`。
  */
 export function highlightFirstSlashToken(line: string, token: 'primary'): string | undefined {
   const visible = stripSgr(line);
   const slashIdx = visible.indexOf('/');
   if (slashIdx < 0) return undefined;
-  // Guard: only paint when `/` is the first non-whitespace character
-  // on the line (avoids colouring a mid-sentence slash).
+  // 保护：仅当 `/` 是行首第一个非空白字符时才着色
+  // （避免对句中斜杠进行着色）。
   for (let i = 0; i < slashIdx; i++) {
     if (visible[i] !== ' ' && visible[i] !== '\t') return undefined;
   }
-  // Token ends at the next whitespace (or the visible end).
+  // Token 在下一个空白处（或可见末尾）结束。
   let endVisible = slashIdx + 1;
   while (endVisible < visible.length) {
     const ch = visible[endVisible];
@@ -444,14 +437,12 @@ function highlightVisibleRanges(
 }
 
 /**
- * Overlay a terminal-style `> ` prompt symbol on the first content line.
- * Column 0 is reserved for the left vertical border (overlaid later by
- * wrapWithSideBorders); column 1 is a single-space gap, so the `>` token
- * lives at column 2 with column 3 separating it from content.
- * Relies on the editor being configured with `paddingX >= 4` so the line
- * starts with at least four literal spaces. Emits no SGR so the terminal's
- * default foreground colour renders the symbol. Returns `undefined` if the
- * line is too short or doesn't begin with the expected padding.
+ * 在第一行内容上叠加终端风格的 `> ` 提示符。
+ * 第 0 列预留给左边框（后续由 wrapWithSideBorders 叠加）；
+ * 第 1 列为单空格间隔，`>` 符号位于第 2 列，第 3 列将其与内容分隔。
+ * 依赖编辑器配置 `paddingX >= 4`，使行首至少有四个字面空格。
+ * 不发出 SGR，因此使用终端默认前景色渲染该符号。
+ * 行过短或不以预期的内边距开头时返回 `undefined`。
  */
 export function injectPromptSymbol(line: string): string | undefined {
   if (line.length < 4) return undefined;
@@ -462,16 +453,15 @@ export function injectPromptSymbol(line: string): string | undefined {
 }
 
 /**
- * Post-process pi-tui's editor output to draw a full box around it.
+ * 后处理 pi-tui 的编辑器输出，为其绘制完整的边框。
  *
- * pi-tui only renders horizontal top/bottom borders; we wrap them with
- * `╭╮╰╯` corners and add vertical `│` bars on each row's outer columns.
- * Horizontal-border rows (those whose first visible char is `─`, including
- * scroll indicators like `── ↑ N more ──`) are stripped of their existing
- * SGR and repainted as a single box-drawn span. Content rows keep their
- * inner SGR intact; only column 0 and the last column are overlaid, and
- * only if they're literal spaces — that protects the cursor-overflow
- * case where the rightmost column is an SGR-tagged inverse cursor.
+ * pi-tui 只渲染上下水平边框；用 `╭╮╰╯` 圆角包裹，
+ * 并在每行外侧列添加竖线 `│`。
+ * 水平边框行（首个可见字符为 `─` 的行，包括
+ * 滚动指示符如 `── ↑ N more ──`）会去除现有 SGR，
+ * 重新绘制为单一的制表线跨度。内容行保留其内部 SGR 不变；
+ * 仅在第 0 列和最后一列且为字面空格时才叠加——
+ * 这保护了光标溢出的情况，即最右列是带 SGR 标记的反转光标。
  */
 export function wrapWithSideBorders(
   lines: string[],

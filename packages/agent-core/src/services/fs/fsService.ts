@@ -341,7 +341,7 @@ export class FsService extends Disposable implements IFsService {
         throw new FsAlreadyExistsError(req.path);
       }
       if (code === 'ENOENT' || code === 'ENOTDIR') {
-        // Non-recursive mkdir whose parent is missing / not a directory.
+        // 非递归 mkdir，父目录不存在或不是目录。
         throw new FsPathNotFoundError(req.path);
       }
       throw err;

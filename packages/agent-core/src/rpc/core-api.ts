@@ -94,14 +94,14 @@ export interface ExportSessionPayload {
   readonly sessionId: string;
   readonly outputPath?: string | undefined;
   /**
-   * When true, the active global diagnostic log (`$KIMI_CODE_HOME/logs/kimi-code.log`)
-   * is copied into the zip at `logs/global/kimi-code.log`. Off by default to
-   * avoid bundling events from concurrent sessions / other projects.
+   * 为 true 时，当前活动的全局诊断日志（`$KIMI_CODE_HOME/logs/kimi-code.log`）
+   * 会复制到 zip 中的 `logs/global/kimi-code.log`。默认关闭以避免
+   * 打包来自并发会话/其他项目的事件。
    */
   readonly includeGlobalLog?: boolean | undefined;
-  /** Host version to record in the export manifest. */
+  /** 要记录在导出清单中的宿主版本。 */
   readonly version: string;
-  /** How the CLI was installed (e.g. 'npm-global', 'native'). */
+  /** CLI 的安装方式（如 'npm-global'、'native'）。 */
   readonly installSource?: string | undefined;
   readonly shellEnv?: ShellEnvironment | undefined;
 }
@@ -117,11 +117,11 @@ export interface ExportSessionManifest {
   readonly sessionLastActivity?: string | undefined;
   readonly title?: string | undefined;
   readonly workspaceDir?: string | undefined;
-  /** zip-relative path to the session diagnostic log when present. */
+  /** zip 相对路径，指向会话诊断日志（如存在）。 */
   readonly sessionLogPath?: string | undefined;
-  /** zip-relative path to the bundled global diagnostic log (only when --include-global-log). */
+  /** zip 相对路径，指向打包的全局诊断日志（仅在 --include-global-log 时）。 */
   readonly globalLogPath?: string | undefined;
-  /** How the CLI was installed (e.g. 'npm-global', 'native'). */
+  /** CLI 的安装方式（如 'npm-global'、'native'）。 */
   readonly installSource?: string | undefined;
   readonly shellEnv?: ShellEnvironment | undefined;
 }
@@ -202,7 +202,7 @@ export interface SetActiveToolsPayload {
 }
 export interface StopBackgroundPayload {
   readonly taskId: string;
-  /** Free-form human-readable reason persisted with the task record. */
+  /** 随任务记录持久化的自由格式人类可读原因。 */
   readonly reason?: string;
 }
 export interface GetBackgroundOutputPayload {
@@ -211,12 +211,12 @@ export interface GetBackgroundOutputPayload {
 }
 export interface GetBackgroundPayload {
   /**
-   * When omitted, returns all tasks (including terminal/lost). Pass
-   * `true` to filter down to active-only — useful for model-facing
-   * surfaces. UI/TUI consumers should leave it undefined.
+   * 省略时返回所有任务（包括已终止/丢失的）。传入
+   * `true` 以筛选为仅活动任务——适用于面向模型的接口。
+   * UI/TUI 消费者应保持未定义。
    */
   readonly activeOnly?: boolean;
-  /** Caps the number of tasks returned. When omitted, returns all matching tasks. */
+  /** 限制返回的任务数量。省略时返回所有匹配的任务。 */
   readonly limit?: number;
 }
 export interface SkillSummary {
@@ -284,10 +284,10 @@ export interface UpdateSessionMetadataPayload {
   readonly metadata: SessionMetadataPatch;
 }
 
-// Goal lifecycle payloads and re-exported goal value types. These describe the
-// deterministic user/SDK control surface; the goal's terminal status is decided
-// by the model via the UpdateGoal tool (or the goal driver on budget/error),
-// not set through this API.
+// Goal 生命周期载荷和重新导出的 goal 值类型。这些描述了
+// 确定性的用户/SDK 控制面；goal 的终端状态由模型通过
+// UpdateGoal 工具（或预算/错误时的 goal 驱动器）决定，
+// 而非通过此 API 设置。
 export type {
   GoalBudgetLimits,
   GoalBudgetReport,
@@ -308,7 +308,7 @@ export interface GetKimiConfigPayload {
 }
 
 export interface ConfigDiagnostics {
-  /** Warnings from the most recent config.toml load attempt; empty when the config is fully valid. */
+  /** 最近一次 config.toml 加载尝试的警告；配置完全有效时为空。 */
   readonly warnings: readonly string[];
 }
 

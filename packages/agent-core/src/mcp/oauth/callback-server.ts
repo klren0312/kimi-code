@@ -1,12 +1,10 @@
 /**
- * One-shot localhost OAuth callback listener.
+ * 一次性本地主机 OAuth 回调监听器。
  *
- * `startCallbackServer()` binds 127.0.0.1 on a random free port and returns a
- * handle exposing the resulting `redirect_uri` and an awaitable
- * `waitForCode()` that resolves with `{ code, state }` from the first
- * `/callback` request. Any subsequent requests get a generic 404 and a
- * non-callback path is ignored. The server is closed automatically once a
- * code has been delivered (or `close()` is called explicitly).
+ * `startCallbackServer()` 绑定 127.0.0.1 上的随机空闲端口并返回一个句柄，
+ * 暴露结果的 `redirect_uri` 和可等待的 `waitForCode()`，该方法使用第一个
+ * `/callback` 请求中的 `{ code, state }` 解析。后续请求收到通用的 404，
+ * 非回调路径被忽略。代码交付后（或显式调用 `close()` 后）服务器自动关闭。
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -20,10 +18,10 @@ export interface CallbackResult {
 export interface CallbackServer {
   readonly redirectUri: string;
   /**
-   * Resolves with the OAuth callback payload, or rejects when:
-   *  - `signal` aborts → AbortError
-   *  - `timeoutMs` elapses → Error('OAuth callback timed out')
-   *  - the user's authorization server returns an error → Error('OAuth error: <code>')
+   * 使用 OAuth 回调载荷解析，或在以下情况拒绝：
+   *  - `signal` 中止 → AbortError
+   *  - `timeoutMs` 超时 → Error('OAuth callback timed out')
+   *  - 用户的授权服务器返回错误 → Error('OAuth error: <code>')
    */
   waitForCode(opts: { signal?: AbortSignal; timeoutMs?: number }): Promise<CallbackResult>;
   close(): Promise<void>;

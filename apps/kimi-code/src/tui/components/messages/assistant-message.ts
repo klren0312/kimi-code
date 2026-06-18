@@ -1,8 +1,7 @@
 /**
- * Renders an assistant message using pi-tui Markdown.
+ * 使用 pi-tui Markdown 渲染助手消息。
  *
- * Displays a white bullet prefix with markdown content indented
- * to align after the bullet.
+ * 显示白色圆点前缀，Markdown 内容缩进对齐到圆点之后。
  */
 
 import { Container, Markdown, truncateToWidth, visibleWidth, type Component } from '@earendil-works/pi-tui';
@@ -37,9 +36,8 @@ export class AssistantMessageComponent implements Component {
   }
 
   invalidate(): void {
-    // Markdown caches ANSI colour codes keyed on (text, width).  When the
-    // theme changes the cached strings contain stale colours, so we rebuild
-    // the Markdown child with the new theme.
+    // Markdown 以 (text, width) 为键缓存 ANSI 颜色代码。当主题变更时，
+    // 缓存的字符串包含过时的颜色，因此我们用新主题重建 Markdown 子节点。
     this.contentContainer.clear();
     if (this.lastText.trim().length > 0) {
       this.contentContainer.addChild(

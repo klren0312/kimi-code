@@ -1,12 +1,12 @@
 /**
- * Format a `BackgroundTaskInfo` snapshot into the transcript card data
- * consumed by `BackgroundAgentStatusComponent`.
+ * 将 `BackgroundTaskInfo` 快照格式化为 `BackgroundAgentStatusComponent`
+ * 消费的对话卡片数据。
  *
- * Background tasks have several statuses (running / completed / failed /
- * timed_out / killed / lost) but the transcript card only renders three
- * visual phases (started / completed / failed). The
- * mapping packs the extra nuance — exit code, kill reason, lost-reason
- * — into the dim detail line so the user still sees it.
+ * 后台任务有多种状态（运行中 / 已完成 / 已失败 /
+ * 超时 / 已终止 / 丢失），但对话卡片只渲染三个
+ * 视觉阶段（已启动 / 已完成 / 已失败）。
+ * 映射将额外的细节——退出码、终止原因、丢失原因
+ * ——压缩到暗色详情行中，用户仍然可以看到。
  */
 
 import type { BackgroundTaskInfo, BackgroundTaskStatus } from '@moonshot-ai/kimi-code-sdk';
@@ -90,10 +90,10 @@ function detailFor(info: BackgroundTaskInfo): string | undefined {
 }
 
 /**
- * Build a transcript card payload for a background task lifecycle
- * snapshot. The returned phase drives bullet color in the renderer
- * (`BackgroundAgentStatusComponent`); the detail line carries the extra
- * status nuance (exit code, kill reason, etc.).
+ * 为后台任务生命周期快照构建对话卡片载荷。
+ * 返回的阶段驱动渲染器（`BackgroundAgentStatusComponent`）中
+ * 项目符号的颜色；详情行携带额外的状态细节
+ * （退出码、终止原因等）。
  */
 export function formatBackgroundTaskTranscript(
   info: BackgroundTaskInfo,

@@ -1,22 +1,47 @@
+/**
+ * 退出计划模式时呈现计划审查对话框的策略。
+ *
+ * 当 agent 调用 `ExitPlanMode` 且计划非空且显示类型为 `plan_review` 时，
+ * 此策略拦截调用并请求用户批准、修改或拒绝计划。这是计划模式工作流的主要用户交互点。
+ *
+ * 此策略处理计划审查的完整生命周期：
+ * - 批准：退出计划模式，将批准的计划作为合成输出返回。
+ * - 拒绝并"拒绝并退出"：退出计划模式并报错。
+ * - 拒绝并"修改"或反馈：保持计划模式并附带反馈。
+ * - 关闭：静默保持计划模式。
+ *
+ * 在会话批准历史之前运行，以防止过时的会话批准绕过新计划内容的审查。
+ */
+
 import type { Agent } from '../..';
 import type { ApprovalResponse, PermissionPolicy, PermissionPolicyContext, PermissionPolicyResult } from '../types';
 
+/** 与计划一起呈现的可选选项，用于结构化反馈。 */
 interface ExitPlanModeOption {
   readonly label: string;
   readonly description: string;
 }
 
+/** 附加到 ExitPlanMode 执行上下文的计划审查显示数据。 */
 interface PlanReviewDisplay {
   readonly plan: string;
   readonly path?: string | undefined;
   readonly options?: readonly ExitPlanModeOption[] | undefined;
 }
 
+/**
+ * 拦截 `ExitPlanMode` 调用以呈现计划审查对话框。
+ * 追踪计划提交和解决结果的遥测数据。
+ */
 export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
   readonly name = 'exit-plan-mode-review-ask';
 
   constructor(private readonly agent: Agent) {}
 
+  /**
+   * 当满足计划审查条件时返回带有 `resolveApproval` 回调的 `ask` 结果：
+   * 非 auto 模式、计划模式激活、plan_review 显示、且计划内容非空。
+   */
   evaluate(context: PermissionPolicyContext): PermissionPolicyResult | undefined {
     if (context.toolCall.name !== 'ExitPlanMode') return;
     if (this.agent.permission.mode === 'auto') return;
@@ -41,6 +66,10 @@ export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
     };
   }
 
+  /**
+   * 处理已批准的计划：退出计划模式，使用所选选项格式化已批准的计划，
+   * 并将其作为合成工具输出返回。
+   */
   private exitPlanModeApprovalResult(result: ApprovalResponse, display: PlanReviewDisplay) {
     if (result.decision !== 'approved') {
       return this.rejectedExitPlanModeApprovalResult(result);
@@ -77,6 +106,10 @@ export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
     };
   }
 
+  /**
+   * 处理被拒绝的计划：追踪解决结果，然后根据拒绝类型（关闭、拒绝并退出、
+   * 修改或通用拒绝）返回适当的合成输出。
+   */
   private rejectedExitPlanModeApprovalResult(result: ApprovalResponse) {
     this.trackRejectedPlanResolution(result);
 
@@ -127,6 +160,7 @@ export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
     };
   }
 
+  /** 退出计划模式，如果退出失败则返回错误对象。 */
   private exitPlanMode(): { isError: true; output: string } | undefined {
     try {
       this.agent.planMode.exit();
@@ -139,6 +173,7 @@ export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
     }
   }
 
+  /** 追踪被拒绝计划解决结果的遥测数据，按拒绝类型分类。 */
   private trackRejectedPlanResolution(result: ApprovalResponse): void {
     if (result.decision === 'cancelled') {
       this.agent.telemetry.track('plan_resolved', { outcome: 'dismissed' });
@@ -163,6 +198,7 @@ export class ExitPlanModeReviewAskPermissionPolicy implements PermissionPolicy {
   }
 }
 
+/** 从显示选项中按标签查找匹配的选项。 */
 function selectedExitPlanModeOption(
   options: readonly ExitPlanModeOption[] | undefined,
   label: string | undefined,

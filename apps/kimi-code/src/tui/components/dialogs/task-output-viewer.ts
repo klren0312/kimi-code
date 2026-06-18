@@ -1,12 +1,10 @@
 /**
- * TaskOutputViewer — full-screen pi-tui rendered output viewer for
- * a single background task. Replaces the previous "shell out to less"
- * approach so the experience stays inside the TUI: same colors, same
- * fonts, same redraw cycle, no alt-screen flip-flop.
+ * TaskOutputViewer — 全屏 pi-tui 渲染的单个后台任务输出查看器。
+ * 替代了之前"弹出到 less"的方式，体验保持在 TUI 内部：
+ * 相同的颜色、相同的字体、相同的重绘周期，无备用屏幕切换。
  *
- * Mounted by `kimi-tui.ts` via nested container swap on top of the
- * TasksBrowserApp. Snapshot view (no live tail) — content is fetched
- * once when the viewer opens.
+ * 由 `kimi-tui.ts` 通过嵌套容器交换挂载在 TasksBrowserApp 之上。
+ * 快照视图（非实时跟踪）——内容在查看器打开时获取一次。
  */
 
 import {
@@ -73,9 +71,9 @@ export class TaskOutputViewer extends Container implements Focusable {
 
   private props: TaskOutputViewerProps;
   private readonly terminal: Terminal;
-  /** Output split on '\n'. Replaced on `setProps` when `output` changes. */
+  /** 输出按 '\n' 分割。当 `output` 变化时在 `setProps` 中替换。 */
   private lines: string[];
-  /** Index of the topmost visible line. */
+  /** 最顶部可见行的索引。 */
   private scrollTop = 0;
 
   constructor(props: TaskOutputViewerProps, terminal: Terminal) {
@@ -86,10 +84,10 @@ export class TaskOutputViewer extends Container implements Focusable {
   }
 
   /**
-   * Update viewer props. When `output` grows (the watched task wrote
-   * new content), follow the tail like `less +F` if the user is parked
-   * at the bottom; otherwise keep the user's current scroll position
-   * so they can read history without being yanked around.
+   * 更新查看器属性。当输出内容增长（被监视的任务写入了新内容）时，
+   * 如果用户停留在底部，则像 `less +F` 一样跟随尾部；
+   * 否则保持用户当前的滚动位置，
+   * 以便他们可以阅读历史记录而不被拉来拉去。
    */
   setProps(next: TaskOutputViewerProps): void {
     const previousOutput = this.props.output;
@@ -107,7 +105,7 @@ export class TaskOutputViewer extends Container implements Focusable {
     return (output.length > 0 ? output : '[no output captured]').split('\n');
   }
 
-  // ── input ──────────────────────────────────────────────────────────
+  // ── 输入 ──────────────────────────────────────────────────────────
 
   handleInput(data: string): void {
     const visible = this.viewableRows();
@@ -157,14 +155,14 @@ export class TaskOutputViewer extends Container implements Focusable {
   }
 
   /**
-   * Number of content rows visible inside the body frame: total terminal
-   * rows minus header(1) + footer(1) + top border(1) + bottom border(1).
+   * 主体框架内可见的内容行数：总终端行数
+   * 减去 header(1) + footer(1) + 上边框(1) + 下边框(1)。
    */
   private viewableRows(): number {
     return Math.max(1, this.terminal.rows - 4);
   }
 
-  // ── render ─────────────────────────────────────────────────────────
+  // ── 渲染 ─────────────────────────────────────────────────────────
 
   override render(width: number): string[] {
     const rows = Math.max(3, this.terminal.rows);
@@ -199,15 +197,15 @@ export class TaskOutputViewer extends Container implements Focusable {
   }
 
   private renderBody(width: number, bodyHeight: number): string[] {
-    // Reserve 1 col for left/right border each, 1 col for left padding.
+    // 为左右边框各预留 1 列，左侧内边距预留 1 列。
     const innerWidth = Math.max(1, width - 4);
 
-    // Re-clamp scroll in case the terminal got resized smaller.
+    // 在终端缩小的情况下重新限制滚动范围。
     const max = this.maxScroll();
     if (this.scrollTop > max) this.scrollTop = max;
     if (this.scrollTop < 0) this.scrollTop = 0;
 
-    const viewRows = bodyHeight - 2; // inside top + bottom border
+    const viewRows = bodyHeight - 2; // 上下边框内部
     const top = currentTheme.fg('primary', '┌' + '─'.repeat(Math.max(0, width - 2)) + '┐');
     const bottom = currentTheme.fg('primary', '└' + '─'.repeat(Math.max(0, width - 2)) + '┘');
 

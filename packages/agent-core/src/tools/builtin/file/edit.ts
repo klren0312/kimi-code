@@ -1,11 +1,10 @@
 /**
- * EditTool — exact string replacement in a file.
+ * EditTool — 文件中的精确字符串替换。
  *
- * Replaces the first occurrence of `old_string` with `new_string` by
- * default. When `replace_all` is true, replaces all occurrences.
- * Errors when `old_string` is not found or not unique (when
- * `replace_all=false`). Path access policy is resolved before any
- * Kaos I/O.
+ * 默认替换 `old_string` 的第一个匹配项为 `new_string`。
+ * 当 `replace_all` 为 true 时，替换所有匹配项。
+ * 当 `old_string` 未找到或不唯一（`replace_all=false` 时）时报错。
+ * 路径访问策略在任何 Kaos I/O 之前解析。
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
@@ -21,9 +20,8 @@ import type { WorkspaceConfig } from '../../support/workspace';
 import { materializeModelText, toModelTextView } from './line-endings';
 import EDIT_DESCRIPTION from './edit.md?raw';
 
-// `old_string` must be non-empty: the non-replace_all branch walks
-// occurrences with `content.indexOf("", pos)`, which would loop forever
-// on an empty search string.
+// `old_string` 必须非空：非 replace_all 分支使用 `content.indexOf("", pos)`
+// 遍历匹配项，空搜索字符串会导致死循环。
 export const EditInputSchema = z.object({
   path: z
     .string()

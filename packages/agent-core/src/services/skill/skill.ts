@@ -1,34 +1,32 @@
 /**
- * `ISkillService` — daemon-facing skill surface.
+ * `ISkillService` — 面向守护进程的技能服务层。
  *
- * Wraps `ICoreProcessService.rpc.{listSkills, activateSkill}` and adapts the
- * agent-core `SkillSummary` shape (camelCase) into the wire `SkillDescriptor`
- * (snake_case). The adapter helper (`toProtocolSkill`) is co-located here.
+ * 封装 `ICoreProcessService.rpc.{listSkills, activateSkill}`，并将 agent-core
+ * 的 `SkillSummary`（驼峰式）转换为线协议 `SkillDescriptor`（下划线式）。
+ * 适配器辅助函数 `toProtocolSkill` 在此文件中同位定义。
  *
- * **CoreAPI surface used**:
+ * **使用的 CoreAPI 表面**：
  *   - `core.rpc.listSkills({sessionId}) => readonly SkillSummary[]`
- *     (packages/agent-core/src/rpc/core-api.ts:347, SessionAPI).
+ *     （packages/agent-core/src/rpc/core-api.ts:347, SessionAPI）。
  *   - `core.rpc.activateSkill({sessionId, agentId, name, args})`
- *     (line 324, AgentAPI) — renders the skill prompt and starts a turn with a
- *     `skill_activation` origin (trigger 'user-slash'), mirroring the TUI's
- *     slash-command path. It does NOT go through `IPromptService`, so no
- *     `prompt_id` is minted; clients observe progress via `skill.activated` +
- *     `turn.*` events on the WS stream.
+ *     （第 324 行, AgentAPI）— 渲染技能 prompt 并以 `skill_activation` 来源
+ *     （trigger 'user-slash'）启动一轮 turn，复现 TUI 的斜杠命令路径。
+ *     它不经过 `IPromptService`，因此不会生成 `prompt_id`；客户端通过 WS 流
+ *     上的 `skill.activated` + `turn.*` 事件观察进度。
  *
- * **Session scoping**: the skill registry is per-session (project skills are
- * discovered from the session cwd), so both methods are session-scoped and the
- * impl resumes the session before dispatching — sessions that exist on disk
- * but are not in the active map after a daemon restart still resolve.
+ * **会话作用域**：技能注册表是按会话的（项目技能从会话 cwd 发现），因此两个方法
+ * 均为会话作用域，且实现会在分发前恢复会话——即使会话仅存在于磁盘而非守护进程
+ * 重启后的活跃映射中，仍可正常解析。
  *
- * **Error model**:
- *   - `SkillSessionNotFoundError` is NOT defined here — the impl throws the
- *     shared `SessionNotFoundError` (→ 40401).
- *   - `SkillNotFoundError` (→ 40415) when agent-core reports `skill.not_found`.
- *   - `SkillNotActivatableError` (→ 40912) when agent-core reports
- *     `skill.type_unsupported` (e.g. `reference`-type skills).
+ * **错误模型**：
+ *   - `SkillSessionNotFoundError` 不在此处定义——实现抛出共享的
+ *     `SessionNotFoundError`（→ 40401）。
+ *   - 当 agent-core 报告 `skill.not_found` 时抛出 `SkillNotFoundError`（→ 40415）。
+ *   - 当 agent-core 报告 `skill.type_unsupported`（如 `reference` 类型技能）时
+ *     抛出 `SkillNotActivatableError`（→ 40912）。
  *
- * **Anti-corruption**: imports `@moonshot-ai/agent-core` only for the
- * `createDecorator` value and the `SkillSummary` type.
+ * **防腐层**：仅从 `@moonshot-ai/agent-core` 导入 `createDecorator` 值和
+ * `SkillSummary` 类型。
  */
 
 import { createDecorator } from '../../di';
@@ -36,7 +34,7 @@ import type { SkillSummary as AgentCoreSkillSummary } from '../../rpc';
 import type { SkillDescriptor } from '@moonshot-ai/protocol';
 
 // ---------------------------------------------------------------------------
-// Adapter helpers
+// 适配器辅助函数
 // ---------------------------------------------------------------------------
 
 export function toProtocolSkill(info: AgentCoreSkillSummary): SkillDescriptor {
@@ -56,23 +54,23 @@ export function toProtocolSkill(info: AgentCoreSkillSummary): SkillDescriptor {
 }
 
 // ---------------------------------------------------------------------------
-// Interface + errors
+// 接口 + 错误类型
 // ---------------------------------------------------------------------------
 
 export interface ISkillService {
   readonly _serviceBrand: undefined;
 
   /**
-   * Return the skills available to a session (project + user + extra +
-   * builtin). Throws `SessionNotFoundError` (→ 40401) for unknown sessions.
+   * 返回会话可用的技能列表（项目 + 用户 + 额外 + 内置）。
+   * 对未知会话抛出 `SessionNotFoundError`（→ 40401）。
    */
   list(sessionId: string): Promise<readonly SkillDescriptor[]>;
 
   /**
-   * Activate a skill by name in a session — the REST analogue of typing
-   * `/<skill> <args>`. Starts a turn on the session's main agent. Throws
-   * `SessionNotFoundError` (→ 40401), `SkillNotFoundError` (→ 40415) or
-   * `SkillNotActivatableError` (→ 40912).
+   * 在会话中按名称激活技能——等同于 REST 层面输入 `/<skill> <args>`。
+   * 在会话的主 agent 上启动一轮 turn。抛出
+   * `SessionNotFoundError`（→ 40401）、`SkillNotFoundError`（→ 40415）
+   * 或 `SkillNotActivatableError`（→ 40912）。
    */
   activate(sessionId: string, skillName: string, args?: string): Promise<void>;
 }
@@ -81,9 +79,8 @@ export interface ISkillService {
 export const ISkillService = createDecorator<ISkillService>('skillService');
 
 /**
- * Sentinel — daemon's route layer catches this and maps to envelope `code:
- * 40415 skill.not_found`. Other thrown errors fall through to
- * `installErrorHandler` (→ 50001).
+ * 哨兵错误——守护进程的路由层会捕获此错误并映射为信封 `code:
+ * 40415 skill.not_found`。其他抛出的错误会传递到 `installErrorHandler`（→ 50001）。
  */
 export class SkillNotFoundError extends Error {
   readonly skillName: string;
@@ -95,8 +92,8 @@ export class SkillNotFoundError extends Error {
 }
 
 /**
- * Sentinel — maps to envelope `code: 40912 skill.not_activatable`. Raised when
- * the skill exists but its type cannot be user-activated (e.g. `reference`).
+ * 哨兵错误——映射为信封 `code: 40912 skill.not_activatable`。当技能存在
+ * 但其类型不支持用户激活时抛出（如 `reference` 类型）。
  */
 export class SkillNotActivatableError extends Error {
   readonly skillName: string;

@@ -26,16 +26,16 @@ export interface RefreshProviderHost {
 
 export interface ProviderChange {
   readonly providerId: string;
-  /** User-facing name when available. */
+  /** 可用时的面向用户名称。 */
   readonly providerName: string;
   readonly added: number;
   readonly removed: number;
 }
 
 export interface RefreshResult {
-  /** Providers whose model list actually changed. */
+  /** 模型列表实际发生变化的 providers。 */
   readonly changed: readonly ProviderChange[];
-  /** Providers whose model list stayed identical after refresh. */
+  /** 刷新后模型列表保持不变的 providers。 */
   readonly unchanged: readonly string[];
   readonly failed: ReadonlyArray<{ readonly provider: string; readonly reason: string }>;
 }
@@ -142,11 +142,10 @@ interface ProviderModelSnapshot {
   readonly model: ModelAlias;
 }
 
-// Compare the full model metadata for the relevant aliases, not just model IDs:
-// a registry can change capabilities (e.g. enabling reasoning) without changing
-// any model ID. Spreading the whole `ModelAlias` keeps this in sync with the
-// schema automatically; only `capabilities` needs normalizing because its order
-// is not meaningful.
+// 比较相关别名的完整模型元数据，而非仅比较模型 ID：
+// 注册表可以在不更改任何模型 ID 的情况下更改能力（例如启用推理）。
+// 展开整个 `ModelAlias` 使其自动与 schema 保持同步；
+// 只有 `capabilities` 需要标准化，因为其顺序没有意义。
 function providerModelSnapshot(
   config: KimiConfig,
   providerId: string,
@@ -227,16 +226,16 @@ function restoreDefaultSelection(
 ): void {
   if (defaultModel === undefined || config.models?.[defaultModel] === undefined) return;
   config.defaultModel = defaultModel;
-  // A refresh may have just learned that the default model cannot disable
-  // thinking — never restore a stale thinking-off selection onto it.
+  // 刷新可能刚发现默认模型无法关闭思考——
+  // 切勿将过时的关闭思考选择恢复到该模型上。
   const capabilities = config.models[defaultModel]?.capabilities ?? [];
   config.defaultThinking = capabilities.includes('always_thinking') ? true : defaultThinking;
 }
 
-// `apply*` may leave `defaultModel` pointing at an alias that no longer exists
-// (e.g. the previously-selected model was dropped from the registry). The host's
-// `setConfig` deep-merge cannot clear a key, so the matching `removeProvider`
-// call handles disk cleanup while this drops the dangling reference in memory.
+// `apply*` 可能导致 `defaultModel` 指向一个不再存在的别名
+// （例如之前选择的模型已从注册表中移除）。宿主的 `setConfig`
+// 深合并无法清除键，因此匹配的 `removeProvider` 调用处理磁盘清理，
+// 而此处在内存中移除悬空引用。
 function clampDanglingDefault(config: KimiConfig): void {
   if (config.defaultModel !== undefined && config.models?.[config.defaultModel] === undefined) {
     config.defaultModel = undefined;
@@ -282,7 +281,7 @@ export async function refreshAllProviderModels(
   let config = await host.getConfig();
 
   // -------------------------------------------------------------------------
-  // 1. Managed Kimi Code (OAuth)
+  // 1. 托管 Kimi Code（OAuth）
   // -------------------------------------------------------------------------
   const managedProvider = config.providers[KIMI_CODE_PROVIDER_NAME];
   if (
@@ -358,7 +357,7 @@ export async function refreshAllProviderModels(
   }
 
   // -------------------------------------------------------------------------
-  // 2. Open Platforms (moonshot-cn, moonshot-ai, …)
+  // 2. 开放平台（moonshot-cn, moonshot-ai, …）
   // -------------------------------------------------------------------------
   const openPlatformIds = Object.keys(config.providers).filter((id) => isOpenPlatformId(id));
   for (const providerId of openPlatformIds) {
@@ -427,7 +426,7 @@ export async function refreshAllProviderModels(
   }
 
   // -------------------------------------------------------------------------
-  // 3. Custom Registry providers (grouped by URL, with API-key candidates)
+  // 3. 自定义注册表 providers（按 URL 分组，带 API 密钥候选）
   // -------------------------------------------------------------------------
   const customSources = new Map<
     string,
@@ -463,9 +462,8 @@ export async function refreshAllProviderModels(
   for (const { sources, providerIds } of customSources.values()) {
     try {
       const { entries, source } = await fetchCustomRegistryFromSources(sources);
-      // Build the whole batch on one clone so that several changed providers
-      // from the same source do not overwrite each other's aliases, and so the
-      // config we compare is exactly the config we persist.
+      // 在一个克隆上构建整个批次，使得来自同一来源的多个变更 providers
+      // 不会互相覆盖别名，并且我们比较的配置恰好就是我们持久化的配置。
       const next = structuredClone(config);
       const changedProviders: Array<{
         readonly providerId: string;

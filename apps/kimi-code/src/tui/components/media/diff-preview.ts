@@ -1,8 +1,8 @@
 /**
- * Diff preview rendering as plain ANSI strings.
+ * 以纯 ANSI 字符串渲染的 Diff 预览。
  *
- * Reuses the diff algorithm from approval/DiffPreview.tsx, but outputs
- * formatted text lines instead of React elements.
+ * 复用了 approval/DiffPreview.tsx 中的 diff 算法，但输出格式化的
+ * 文本行而非 React 元素。
  */
 
 import chalk from 'chalk';
@@ -85,9 +85,8 @@ export function computeDiffLines(
     result.push(reversed[k]!);
   }
 
-  // While the text is still streaming, suppress trailing delete lines.
-  // They are likely artefacts of newText not having arrived yet rather
-  // than genuine deletions.
+  // 文本仍在流式传输时，抑制末尾的删除行。
+  // 它们更可能是 newText 尚未到达导致的假象，而非真正的删除。
   if (isIncomplete && result.length > 0) {
     let lastNonDelete = result.length - 1;
     while (lastNonDelete >= 0 && result[lastNonDelete]!.kind === 'delete') {
@@ -96,8 +95,8 @@ export function computeDiffLines(
     if (lastNonDelete >= 0) {
       result.length = lastNonDelete + 1;
     } else {
-      // Every line would be shown as deleted; suppress them all so the
-      // UI doesn't flash a wall of red before newText starts arriving.
+      // 所有行都显示为已删除；全部抑制，以免在 newText 开始到达之前
+      // UI 闪烁一片红色。
       result.length = 0;
     }
   }
@@ -222,13 +221,12 @@ function formatDiffRow(line: DiffLine, s: DiffStyles): string {
 }
 
 /**
- * Render a diff with surrounding context, eliding unchanged middle
- * regions between change clusters with a `… N unchanged lines …`
- * separator. When `maxLines` is set, the body is capped at a cluster
- * boundary and a `ctrl+o to expand` footer is appended.
+ * 渲染带有上下文的 diff，在变更簇之间的未变更中间区域用
+ * `… N unchanged lines …` 分隔符省略。当设置了 `maxLines` 时，
+ * 正文在簇边界处截断，并附加 `ctrl+o to expand` 提示。
  *
- * Used by Edit's call preview where we want to show *what changed*
- * with enough context to read the change, but not the whole file.
+ * 用于 Edit 的调用预览，我们希望展示*变更内容*及足够的上下文
+ * 以便阅读变更，而非整个文件。
  */
 export function renderDiffLinesClustered(
   oldText: string,
@@ -276,10 +274,8 @@ export function renderDiffLinesClustered(
         body++;
       }
     }
-    // Emit cluster rows one at a time; allow mid-cluster truncation so
-    // a single huge cluster (e.g. the whole file replaced inline) still
-    // shows the leading lines instead of degenerating to "N changes
-    // hidden" with no body at all.
+    // 逐行输出簇行；允许簇内截断，这样单个巨大簇（例如整个文件被内联替换）
+    // 仍然显示开头的行，而非退化为"N changes hidden"且无正文。
     for (let i = cluster.start; i <= cluster.end; i++) {
       if (body >= cap) {
         truncated = true;

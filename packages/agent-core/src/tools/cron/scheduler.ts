@@ -1,46 +1,37 @@
 /**
- * CronScheduler — the scheduling engine.
+ * CronScheduler — 调度引擎。
  *
- * This is the bottom of the cron stack: it knows about tasks, clocks,
- * jitter, and "is the REPL idle?", but nothing about agents, tools,
- * persistence, locks, or the file system. Persistence is layered on
- * top by `CronManager` writing through to per-id JSON files; the
- * scheduler stays oblivious so its tick-loop tests can run with a
- * pure in-memory `source()`.
+ * 这是 cron 栈的底层：它了解任务、时钟、抖动以及"REPL 是否空闲？"，
+ * 但不了解 agent、工具、持久化、锁或文件系统。持久化由 `CronManager`
+ * 通过写入逐 id JSON 文件在上层叠加；调度器保持无感知，以便其 tick 循环
+ * 测试可以用纯内存 `source()` 运行。
  *
- * Design notes worth keeping near the code:
+ * 值得保留在代码附近的设计笔记：
  *
- *   - **No direct wall-clock reads.** Every wall-clock read goes
- *     through `clocks.wallNow()`. The companion `no-date-now.test.ts`
- *     enforces this at the file level; bypassing the abstraction
- *     here would break bench / test clock injection.
+ *   - **无直接墙钟读取。** 每次墙钟读取都通过 `clocks.wallNow()`。
+ *     伴随的 `no-date-now.test.ts` 在文件级别强制执行此约束；
+ *     绕过此抽象会破坏基准测试/测试的时钟注入。
  *
- *   - **`source()` is called every tick.** It returns the *current*
- *     task list. Callers (the manager) typically wire it to
- *     `() => store.list()`, so creating / deleting tasks between ticks
- *     is picked up automatically. Keep `source()` cheap.
+ *   - **`source()` 每次 tick 调用。** 它返回*当前*任务列表。调用方
+ *     （管理器）通常将其连接到 `() => store.list()`，因此在 tick 之间
+ *     创建/删除的任务会被自动拾取。保持 `source()` 廉价。
  *
- *   - **`isIdle()` gates fires, not state updates.** When the REPL is
- *     mid-turn we skip firing — but we do NOT advance `lastSeenAt`. The
- *     next idle tick will see the tasks as still due and fire them,
- *     with `coalescedCount` reflecting the gap (so the LLM knows it
- *     missed N ideal fires while the user was talking).
+ *   - **`isIdle()` 门控触发，而非状态更新。** 当 REPL 处于回合中时
+ *     我们跳过触发 — 但我们不推进 `lastSeenAt`。下一个空闲 tick 会将
+ *     任务视为仍然到期并触发，`coalescedCount` 反映间隙（让 LLM 知道
+ *     用户交谈期间错过了 N 次理想触发）。
  *
- *   - **`coalescedCount` semantics.** When a sleep / busy turn / system
- *     pause causes the scheduler to miss multiple ideal fires, we
- *     deliver exactly ONE `onFire` call and tell the caller how many
- *     ideal fires we collapsed into it. Floor at 1 — every fire that
- *     happens counts as at least one occurrence.
+ *   - **`coalescedCount` 语义。** 当睡眠/忙碌回合/系统暂停导致调度器
+ *     错过多次理想触发时，我们恰好传递一次 `onFire` 调用并告知调用方
+ *     合并了多少次理想触发。下限为 1 — 每次实际触发至少计为一次。
  *
- *   - **`inFlight` is cleared at end of tick.** `onFire` is synchronous
- *     (the manager's steer is fire-and-forget). The set exists only to
- *     defend against re-entrant ticks within the same call stack — a
- *     theoretical concern, but cheap insurance.
+ *   - **`inFlight` 在 tick 结束时清除。** `onFire` 是同步的（管理器
+ *     的执行是发出即忘）。该集合仅用于防御同一调用栈内的重入 tick —
+ *     理论上的担忧，但保险代价很低。
  *
- *   - **Bad tasks do not poison the loop.** Each task's processing is
- *     wrapped in try/catch; failures are swallowed (with an optional
- *     stderr trace gated on `KIMI_CRON_DEBUG=1`) so one busted cron
- *     expression cannot starve the other tasks.
+ *   - **坏任务不会污染循环。** 每个任务的处理都被 try/catch 包裹；
+ *     失败被吞掉（可选的 stderr 追踪受 `KIMI_CRON_DEBUG=1` 门控），
+ *     一个损坏的 cron 表达式不会饿死其他任务。
  */
 
 import type { ParsedCronExpression } from './cron-expr';
@@ -50,97 +41,86 @@ import { jitteredNextCronRunMs, oneShotJitteredNextCronRunMs } from './jitter';
 import type { CronTask } from './types';
 
 export interface CronSchedulerOptions {
-  /** Required. Wall + monotonic clock source. */
+  /** 必需。墙钟 + 单调时钟源。 */
   readonly clocks: ClockSources;
 
   /**
-   * Required. Returns the live task list (e.g. `() => store.list()`).
-   * Called every tick — keep cheap.
+   * 必需。返回实时任务列表（例如 `() => store.list()`）。
+   * 每次 tick 调用 — 保持廉价。
    */
   readonly source: () => readonly CronTask[];
 
   /**
-   * Required. Called when a task fires. `coalescedCount >= 1`; > 1
-   * when the scheduler slept past multiple ideal fires.
+   * 必需。当任务触发时调用。`coalescedCount >= 1`；当调度器
+   * 睡过多次理想触发时 > 1。
    */
   readonly onFire: (task: CronTask, ctx: { readonly coalescedCount: number }) => void;
 
   /**
-   * Required. Returns true when the REPL is idle and the scheduler
-   * may deliver a fire NOW. False during an active turn so we don't
-   * dump a cron fire mid-stream. When false, the tick returns without
-   * firing but does not lose tasks — the next idle tick fires them
-   * with coalescedCount reflecting the gap.
+   * 必需。当 REPL 空闲且调度器可以立即传递触发时返回 true。
+   * 在活跃回合期间返回 false，避免在流中间抛出 cron 触发。
+   * 为 false 时，tick 不触发即返回但不丢失任务 — 下一个空闲
+   * tick 触发它们，coalescedCount 反映间隙。
    */
   readonly isIdle: () => boolean;
 
   /**
-   * Optional. Returns true when the global killswitch is on; tick()
-   * short-circuits to no-op.
+   * 可选。当全局 killswitch 开启时返回 true；tick() 短路为空操作。
    */
   readonly isKilled?: () => boolean;
 
   /**
-   * Optional. Called when a one-shot task fires and must be removed
-   * from the store. Defaults to a no-op (manager is responsible).
+   * 可选。当一次性任务触发并必须从存储中移除时调用。默认为空操作
+   * （管理器负责）。
    */
   readonly removeOneShot?: (id: string) => void;
 
   /**
-   * Optional. Called after a recurring task fires successfully, with
-   * the wall-clock timestamp of the last ideal occurrence whose
-   * jittered delivery has just been delivered. The manager wires this
-   * to `store.markFired(id, ts)` + a per-id JSON write so a
-   * `kimi resume` does not replay the fire.
+   * 可选。当重复任务成功触发后调用，附带最近一次理想触发的墙钟
+   * 时间戳（其抖动传递刚刚完成）。管理器将其连接到
+   * `store.markFired(id, ts)` + 逐 id JSON 写入，以便
+   * `kimi resume` 不会重放触发。
    *
-   * Fire-and-forget: the scheduler does not wait for persistence to
-   * settle. One-shot tasks do not invoke this callback (the
-   * `removeOneShot` path handles them).
+   * 发出即忘：调度器不等待持久化完成。一次性任务不调用此回调
+   * （`removeOneShot` 路径处理它们）。
    */
   readonly onAdvanceCursor?: (taskId: string, lastFiredAt: number) => void;
 
   /**
-   * Optional. Poll interval for the auto-tick setInterval, in ms.
-   *   - undefined (default) → 1000ms.
-   *   - 0 or null → no automatic polling. Caller drives tick()
-   *     manually.
+   * 可选。自动 tick setInterval 的轮询间隔，毫秒。
+   *   - undefined（默认）→ 1000ms。
+   *   - 0 或 null → 不自动轮询。调用方手动驱动 tick()。
    *
-   * Used by P1.8 to wire `KIMI_CRON_MANUAL_TICK=1` to disable the
-   * timer.
+   * 由 P1.8 用于连接 `KIMI_CRON_MANUAL_TICK=1` 以禁用定时器。
    */
   readonly pollIntervalMs?: number | null;
 }
 
 export interface CronScheduler {
-  /** Begin the auto-tick loop. Idempotent — calling twice is a no-op. */
+  /** 开始自动 tick 循环。幂等 — 调用两次为空操作。 */
   start(): void;
 
   /**
-   * Stop the auto-tick loop and clear any in-flight bookkeeping.
-   * Idempotent.
+   * 停止自动 tick 循环并清除所有进行中的簿记。幂等。
    */
   stop(): Promise<void>;
 
   /**
-   * Run one check cycle synchronously. Safe to call before start() or
-   * after stop().
+   * 同步运行一次检查周期。可在 start() 之前或 stop() 之后安全调用。
    */
   tick(): void;
 
   /**
-   * Earliest theoretical (post-jitter) next fire across all current
-   * tasks, or null if there are no tasks or none have a future fire.
-   * Used by /cron and by external monitoring.
+   * 所有当前任务中最早理论（抖动后）下次触发时间，或无任务/无
+   * 未来触发时返回 null。由 /cron 和外部监控使用。
    */
   getNextFireTime(): number | null;
 
   /**
-   * Post-jitter next-fire for a single task using the scheduler's
-   * internal `lastSeenAt` baseline. Returns null if the task isn't in
-   * the current `source()` snapshot or its expression yields no future
-   * fire. Used by CronList so its rendered `nextFireAt` matches what
-   * the scheduler will actually deliver, including the in-flight
-   * jittered slot of the current period.
+   * 使用调度器内部 `lastSeenAt` 基线的单个任务抖动后下次触发时间。
+   * 如果任务不在当前 `source()` 快照中或其表达式不产生未来触发
+   * 则返回 null。由 CronList 使用，以便其渲染的 `nextFireAt` 与
+   * 调度器实际传递的内容匹配，包括当前周期进行中的抖动槽位。
    */
   getNextFireForTask(taskId: string): number | null;
 }
@@ -148,10 +128,9 @@ export interface CronScheduler {
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 
 /**
- * Cap on how many ideal fires we attempt to enumerate when computing
- * coalescedCount. With a 1-minute cron, this still covers 10 000
- * minutes (~7 days). Beyond that we'd rather report 10 000 than spin —
- * the LLM only needs the order of magnitude.
+ * 计算 coalescedCount 时尝试枚举的理想触发次数上限。1 分钟的 cron
+ * 仍覆盖 10000 分钟（约 7 天）。超出时宁可报告 10000 也不空转 —
+ * LLM 只需要数量级。
  */
 const MAX_COALESCE_ITERATIONS = 10_000;
 
@@ -167,29 +146,25 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
     pollIntervalMs,
   } = opts;
 
-  // Cached parsed cron expressions. Keyed by the raw expression
-  // string. Per-session task counts are tiny, so we never evict.
+  // 缓存已解析的 cron 表达式。以原始表达式字符串为键。
+  // 每会话任务数很少，因此永不淘汰。
   const parsedCache = new Map<string, ParsedCronExpression>();
 
-  // Per-task wall-clock baseline for "where did we last look from".
-  // Now persisted across `kimi resume` via `task.lastFiredAt`: when
-  // the scheduler first sees a task whose `lastFiredAt` is set and
-  // not in the future, that timestamp seeds this map so resume does
-  // not coalesce-replay already-delivered recurring fires. A bogus
-  // `lastFiredAt > now` (clock skew / corrupt store) is ignored and
-  // the scheduler falls back to `createdAt`, matching pre-persistence
-  // behaviour for that task.
+  // 每任务墙钟基线，用于"我们上次从哪里开始看"。现在通过
+  // `task.lastFiredAt` 在 `kimi resume` 之间持久化：当调度器
+  // 首次看到 `lastFiredAt` 已设置且不在未来的任务时，该时间戳
+  // 播种此映射，以便 resume 不会合并重放已传递的重复触发。
+  // 虚假的 `lastFiredAt > now`（时钟偏移/损坏存储）被忽略，
+  // 调度器回退到 `createdAt`，匹配该任务的持久化前行为。
   const lastSeenAt = new Map<string, number>();
 
-  // Tracks which task ids have already had `lastFiredAt` consulted
-  // during this scheduler's lifetime, so the seeding above happens
-  // exactly once per task per scheduler instance. Without this, a
-  // task whose cursor was advanced *during* the session would have
-  // its in-memory map entry silently overwritten back to the
-  // persisted (older) value on the next tick.
+  // 跟踪在此调度器生命周期内已查询过 `lastFiredAt` 的任务 id，
+  // 使上述播种在每个调度器实例中每个任务恰好执行一次。没有这个，
+  // 会话*期间*游标已推进的任务在下次 tick 时其内存映射条目会被
+  // 静默覆写回持久化的（较旧的）值。
   const seededFromDisk = new Set<string>();
 
-  // Defensive re-entry guard for the duration of a single tick.
+  // 单个 tick 期间的防御性重入防护。
   const inFlight = new Set<string>();
 
   let timerHandle: ReturnType<typeof setInterval> | null = null;
@@ -209,9 +184,9 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
   }
 
   /**
-   * Compute the jittered next-fire for a task, starting from `baseMs`.
-   * Returns null when the cron expression has no future fire within
-   * the search budget (legal-but-never-fires expression).
+   * 从 `baseMs` 开始计算任务的抖动后下次触发时间。
+   * 当 cron 表达式在搜索预算内无未来触发（合法但永不触发的表达式）时
+   * 返回 null。
    */
   function computeJitteredNext(
     task: CronTask,
@@ -227,24 +202,19 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
   }
 
   /**
-   * Count how many ideal fires fall in `(firstFireMs, nowMs]` whose
-   * **jittered delivery time** is also ≤ `nowMs`. Returns the count
-   * plus the timestamp of the last ideal occurrence that satisfied the
-   * jittered-due test — used by the caller as the new `lastSeenAt`
-   * baseline so the next scheduler pass still sees any later
-   * occurrence whose jittered delivery slipped past `nowMs`.
+   * 统计落在 \`(firstFireMs, nowMs]\` 区间内、且其**抖动后投递时间**
+   * 也 ≤ \`nowMs\` 的理想触发次数。返回计数加上满足抖动到期测试的
+   * 最后一次理想触发时间戳 — 调用方用作新的 \`lastSeenAt\` 基线，
+   * 使下次调度周期仍能看到抖动投递滑过 \`nowMs\` 的后续触发。
    *
-   * Counting against `nowMs` alone (without re-applying jitter) over-
-   * counted on jobs whose jitter offset pushed the next ideal fire
-   * past the scheduler wake-up window; the caller would then advance
-   * `lastSeenAt` past that occurrence and the jittered delivery would
-   * never happen. The fix is to gate the counting loop on the same
-   * jitter the delivery path uses.
+   * 仅针对 \`nowMs\` 计数（不重新应用抖动）会在抖动偏移将下一次
+   * 理想触发推过调度器唤醒窗口的任务上多计；调用方随后将
+   * \`lastSeenAt\` 推过该触发，抖动投递将永远不会发生。修复方式
+   * 是在与投递路径相同的抖动上限制计数循环。
    *
-   * Always returns at least 1 — every actual fire is one occurrence.
-   * Capped at MAX_COALESCE_ITERATIONS as a defence against runaway
-   * loops; an expression that produces more than 10 000 fires in the
-   * gap is degenerate and the LLM only needs the order of magnitude.
+   * 始终返回至少 1 — 每次实际触发即为一次出现。
+   * 上限为 MAX_COALESCE_ITERATIONS 以防御失控循环；在间隔内产生
+   * 超过 10 000 次触发的表达式是退化的，LLM 只需要数量级即可。
    */
   function countCoalesced(
     task: CronTask,
@@ -259,10 +229,9 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
       const next = computeNextCronRun(parsed, cursor);
       if (next === null) break;
       if (next > nowMs) break;
-      // The scheduler delivers at the jittered time, not the ideal
-      // one. Counting an ideal fire whose jitter pushes its delivery
-      // past `nowMs` would leak the occurrence — the caller advances
-      // `lastSeenAt` past it and the next tick can never re-pick it.
+      // 调度器在抖动时间传递，而非理想时间。将抖动将其传递推过
+      // `nowMs` 的理想触发计入会导致事件泄漏 — 调用方将
+      // `lastSeenAt` 推进到超过它，下次 tick 永远无法重新拾取。
       const jitteredNext =
         task.recurring === false
           ? oneShotJitteredNextCronRunMs(task, next)
@@ -284,8 +253,8 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
 
     const now = clocks.wallNow();
 
-    // We clear inFlight at the end of the tick; entry-time defence
-    // against re-entry handled by the `inFlight.has(id)` skip below.
+    // 我们在 tick 结束时清除 inFlight；入口时的重入防护由下面的
+    // `inFlight.has(id)` 跳过处理。
     try {
       for (const task of tasks) {
         try {
@@ -293,16 +262,14 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
 
           const parsed = getParsed(task.cron);
 
-          // First time we see this task in this scheduler instance,
-          // seed `lastSeenAt` from the persisted `task.lastFiredAt`
-          // (when present and sane). This is the one-line fix for
-          // "resume replays yesterday's already-fired 09:00 cron":
-          // without seeding, the baseline below would fall back to
-          // `task.createdAt` and `countCoalesced` would treat every
-          // ideal fire since creation as still due. A `lastFiredAt`
-          // strictly greater than `now` is treated as corrupt (clock
-          // skew, mis-set bench env) and ignored — never trust a
-          // stored cursor enough to *skip* a legitimately-due fire.
+          // 此调度器实例首次看到此任务时，从持久化的
+          // `task.lastFiredAt`（存在且合理时）播种 `lastSeenAt`。
+          // 这是"resume 重放昨天已触发的 09:00 cron"的单行修复：
+          // 不播种的话，下面的基线会回退到 `task.createdAt`，
+          // `countCoalesced` 会将创建以来的每次理想触发视为仍到期。
+          // 严格大于 `now` 的 `lastFiredAt` 被视为损坏（时钟偏移、
+          // 基准环境设置错误）并忽略 — 永远不要足够信任存储的游标
+          // 以至于*跳过*合法到期的触发。
           if (
             !seededFromDisk.has(task.id) &&
             task.lastFiredAt !== undefined &&
@@ -314,10 +281,9 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
           }
           seededFromDisk.add(task.id);
 
-          // Base from which to compute the next ideal fire. For a
-          // freshly-added task this is its createdAt; once we've fired
-          // (or seen it pass), bump to the wall clock at that moment
-          // so we don't double-count the same fire on the next tick.
+          // 计算下一个理想触发的基线。对于新添加的任务这是其
+          // createdAt；一旦触发（或看到它通过），推进到该时刻的
+          // 墙钟，避免下次 tick 重复计入同一触发。
           const seen = lastSeenAt.get(task.id);
           const baseFromMs =
             seen !== undefined && seen > task.createdAt ? seen : task.createdAt;
@@ -327,13 +293,11 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
 
           if (now < nextFireAt) continue;
 
-          // Due — compute coalescedCount starting from the first
-          // ideal fire (not the jittered one — jitter only shifts the
-          // delivery point, not the underlying schedule). One-shot
-          // tasks are removed after a single delivery and must always
-          // report `coalescedCount: 1`; multi-occurrence semantics
-          // make no sense for "remind me at X" reminders that were
-          // simply slept-through.
+          // 到期 — 从第一次理想触发开始计算 coalescedCount
+          // （而非抖动的触发 — 抖动只移动传递点，不改变底层调度）。
+          // 一次性任务在单次传递后被移除，必须始终报告
+          // `coalescedCount: 1`；多事件语义对"在 X 时刻提醒我"
+          // 被睡过的提醒无意义。
           const ideal = computeNextCronRun(parsed, baseFromMs);
           let coalescedCount = 1;
           let lastDueMs: number | null = null;
@@ -357,16 +321,15 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
           }
 
           if (!delivered) {
-            // Leave lastSeenAt/store untouched — next tick will
-            // re-detect this task as due. A persistently-throwing
-            // onFire becomes loud retry rather than silent loss; the
-            // manager is the layer responsible for ironing out
-            // persistence-level failures so they don't reach here.
+            // 保持 lastSeenAt/store 不变 — 下次 tick 会重新检测
+            // 此任务为到期。持续抛出的 onFire 变为响亮重试而非
+            // 静默丢失；管理器是负责消除持久化级失败的层，
+            // 避免它们到达这里。
             continue;
           }
 
           if (task.recurring === false) {
-            // One-shot: ask the caller to remove and drop our memory of it.
+            // 一次性：请求调用方移除并丢弃我们的记忆。
             try {
               removeOneShot?.(task.id);
             } catch (error) {
@@ -379,22 +342,18 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
             lastSeenAt.delete(task.id);
             seededFromDisk.delete(task.id);
           } else {
-            // Recurring: advance the baseline to the last ideal fire
-            // whose jittered delivery has actually completed (or to
-            // `now` if no ideal fires were enumerated). Using the
-            // *delivered* timestamp — rather than `now` — keeps any
-            // later ideal fire whose jitter pushes its delivery past
-            // `now` reachable on the next tick. If `lastDueMs` is
-            // null (degenerate cron / no enumerated ideal) we fall
-            // back to `now`, matching the original behaviour.
+            // 重复：将基线推进到抖动传递实际完成的最后一次理想
+            // 触发（或如果未枚举理想触发则为 `now`）。使用*已传递的*
+            // 时间戳（而非 `now`）使抖动将其传递推过 `now` 的任何
+            // 较晚理想触发在下次 tick 仍可达。如果 `lastDueMs` 为
+            // null（退化 cron / 无枚举理想），回退到 `now`，
+            // 匹配原始行为。
             const advancedTo = lastDueMs ?? now;
             lastSeenAt.set(task.id, advancedTo);
-            // Mirror the cursor to the manager so it can persist
-            // through to disk. Fire-and-forget — the callback is
-            // expected to schedule the write asynchronously; throws
-            // are swallowed here so a flaky writer never poisons the
-            // tick loop. The persistence path is the manager's
-            // responsibility (consistent with addTask / removeTasks).
+            // 将游标镜像到管理器以便持久化到磁盘。发出即忘 —
+            // 回调预期异步调度写入；抛出在此被吞掉，使不稳定的
+            // 写入器不会污染 tick 循环。持久化路径是管理器的
+            // 责任（与 addTask / removeTasks 一致）。
             try {
               onAdvanceCursor?.(task.id, advancedTo);
             } catch (error) {
@@ -406,7 +365,7 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
             }
           }
         } catch (error) {
-          // A single bad task must not stop the rest of the loop.
+          // 单个坏任务不能停止循环其余部分。
           debugLog(
             `tick failed for task ${task.id}: ${
               error instanceof Error ? error.message : String(error)
@@ -415,9 +374,8 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
         }
       }
     } finally {
-      // onFire is synchronous so re-entrant ticks within the same
-      // call stack are the only thing inFlight defends against. Clear
-      // at end-of-tick to keep the invariant simple.
+      // onFire 是同步的，因此同一调用栈内的重入 tick 是 inFlight
+      // 防御的唯一目标。在 tick 结束时清除以保持不变量简单。
       inFlight.clear();
     }
   }
@@ -427,12 +385,11 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
 
     const interval =
       pollIntervalMs === undefined ? DEFAULT_POLL_INTERVAL_MS : pollIntervalMs;
-    // 0 and null both mean "no automatic polling".
+    // 0 和 null 都表示"不自动轮询"。
     if (interval === null || interval === 0) return;
 
     const handle = setInterval(tick, interval);
-    // Don't keep the event loop alive on the scheduler alone — the
-    // user's REPL / agent owns lifetime.
+    // 不要仅因调度器就保持事件循环活跃 — 用户的 REPL / agent 拥有生命周期。
     if (typeof handle === 'object' && handle !== null && 'unref' in handle) {
       (handle as { unref: () => void }).unref();
     }
@@ -448,19 +405,18 @@ export function createCronScheduler(opts: CronSchedulerOptions): CronScheduler {
     lastSeenAt.clear();
     seededFromDisk.clear();
     parsedCache.clear();
-    // Async signature for forward compatibility with Phase 2 (file
-    // I/O cleanup, lock release). Session-only resolves immediately.
+    // 异步签名，为 Phase 2（文件 I/O 清理、锁释放）前向兼容。
+    // 仅会话立即 resolve。
   }
 
   function nextFireFor(task: CronTask): number | null {
     try {
       const parsed = getParsed(task.cron);
       const seen = lastSeenAt.get(task.id);
-      // Mirror tick()'s seeding: when the scheduler has not yet ticked
-      // this session, consult `task.lastFiredAt` so CronList renders
-      // the resume-corrected nextFireAt instead of a value re-derived
-      // from `createdAt`. Bogus values (future timestamp) are ignored,
-      // identical to tick()'s sanity gate.
+      // 镜像 tick() 的播种：当调度器尚未为本会话 tick 时，
+      // 查询 `task.lastFiredAt` 以便 CronList 渲染 resume 校正的
+      // nextFireAt，而非从 `createdAt` 重新派生的值。虚假值
+      // （未来时间戳）被忽略，与 tick() 的健全性门控一致。
       const persistedCursor =
         task.lastFiredAt !== undefined &&
         Number.isFinite(task.lastFiredAt) &&

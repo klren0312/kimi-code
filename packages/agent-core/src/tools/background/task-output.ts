@@ -1,15 +1,13 @@
 /**
- * TaskOutputTool — read output from a background task.
+ * TaskOutputTool — 读取后台任务的输出。
  *
- * Returns structured task metadata plus a fixed-size tail preview of the
- * task's output. The full, never-truncated output lives on disk at
- * `output_path`; the caller is always pointed at the `Read` tool to page
- * through the complete log, and the preview also carries a banner when it
- * has been truncated to a tail.
+ * 返回结构化的任务元数据加上固定大小的输出尾部预览。完整的、未截断的
+ * 输出保存在磁盘上的 `output_path`；调用方始终被指向 `Read` 工具以分页
+ * 查看完整日志，当预览被截断为尾部时也会携带提示横幅。
  *
- * For terminal tasks the output also surfaces why the task ended:
- * `stop_reason` records the concrete reason; `terminal_reason` classifies
- * timeout vs. explicit stop vs. failure for callers that need stable labels.
+ * 对于已终止的任务，输出还会展示任务结束的原因：
+ * `stop_reason` 记录具体原因；`terminal_reason` 为需要稳定标签的调用方
+ * 分类为超时 vs 显式停止 vs 失败。
  */
 
 import { z } from 'zod';
@@ -29,13 +27,12 @@ import { formatPlainObject } from './format';
 import TASK_OUTPUT_DESCRIPTION from './task-output.md?raw';
 
 /**
- * Maximum bytes of output included inline as a preview. Output larger
- * than this is truncated to its tail; the full log is read separately
- * via the `Read` tool with the returned `output_path`.
+ * 作为预览内联输出的最大字节数。超过此大小的输出将被截断为尾部；
+ * 完整日志通过 `Read` 工具使用返回的 `output_path` 单独读取。
  */
 const OUTPUT_PREVIEW_BYTES = 32 * 1024; // 32 KiB
 
-/** Number of lines the paging hint suggests reading per `Read` call. */
+/** 分页提示建议每次 `Read` 调用读取的行数。 */
 const PAGING_HINT_LINES = 300;
 
 // ── Input schema ─────────────────────────────────────────────────────
@@ -120,15 +117,14 @@ export class TaskOutputTool implements BuiltinTool<TaskOutputInput> {
       await this.manager.wait(args.task_id, (args.timeout ?? 30) * 1000);
     }
 
-    // Re-fetch after potential wait.
+    // 等待后重新获取。
     const current = this.manager.getTask(args.task_id);
     if (!current) {
       return { isError: true, output: `Task not found: ${args.task_id}` };
     }
 
-    // A single manager-owned snapshot drives the tail window and every
-    // reported metric below. Persisted logs remain authoritative when
-    // available; detached managers fall back to their live ring buffer.
+    // 单个 manager 拥有的快照驱动尾部窗口和下面报告的每个指标。
+    // 当持久化日志可用时，它们是权威来源；分离的 manager 回退到其实时环形缓冲区。
     const output = await this.manager.getOutputSnapshot(args.task_id, OUTPUT_PREVIEW_BYTES);
 
     const lines = [
@@ -148,9 +144,8 @@ export class TaskOutputTool implements BuiltinTool<TaskOutputInput> {
       '',
     ];
 
-    // When the preview omits the head of the log, emit an explicit
-    // banner just before the `[output]` marker so the model knows it is
-    // looking at a tail, not the full output.
+    // 当预览省略了日志头部时，在 `[output]` 标记前发出明确的横幅，
+    // 以便模型知道它看到的是尾部而非完整输出。
     if (output.truncated) {
       lines.push(
         output.fullOutputAvailable && output.outputPath !== undefined
@@ -160,9 +155,8 @@ export class TaskOutputTool implements BuiltinTool<TaskOutputInput> {
     }
     lines.push('[output]', output.preview || '[no output available]');
 
-    // Side-channel brief for the host UI / log readers. Distinct from
-    // the `output` body which is parsed by the LLM. Kept short so log
-    // readers can render it as a one-liner.
+    // 供宿主 UI / 日志读取器使用的旁路摘要。与 LLM 解析的 `output` 正文不同。
+    // 保持简短以便日志读取器可以将其渲染为单行。
     return {
       output: lines.join('\n'),
       isError: false,

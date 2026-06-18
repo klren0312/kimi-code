@@ -1,5 +1,5 @@
 /**
- * TaskListTool — list background tasks.
+ * TaskListTool — 列出后台任务。
  */
 
 import { z } from 'zod';
@@ -35,8 +35,8 @@ export type TaskListInput = z.Infer<typeof TaskListInputSchema>;
 // ── Implementation ───────────────────────────────────────────────────
 
 function formatTaskList(tasks: BackgroundTaskInfo[], activeOnly: boolean): string {
-  // `active_only=false` mixes in terminal/lost tasks, so the count is no
-  // longer purely "active" — use a neutral label to avoid mislabeling them.
+  // `active_only=false` 会混入已终止/丢失的任务，因此计数不再是纯粹的"活跃"数量
+  // — 使用中性标签以避免误导。
   const label = activeOnly ? 'active_background_tasks' : 'background_tasks';
   const header = `${label}: ${String(tasks.length)}`;
   if (tasks.length === 0) return `${header}\nNo background tasks found.`;

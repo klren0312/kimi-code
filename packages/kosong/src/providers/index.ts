@@ -44,12 +44,11 @@ export function createProvider(config: ProviderConfig): ChatProvider {
 }
 
 /**
- * Look up the declared {@link ModelCapability} for a `(wire, model)` pair.
+ * 查找 `(wire, model)` 对应的已声明 {@link ModelCapability}。
  *
- * This is a pure static table lookup — it does not instantiate a provider.
- * Unknown / uncatalogued models (and the Kimi wire, whose capabilities come
- * from the host's catalog/config rather than the model name) return
- * {@link UNKNOWN_CAPABILITY} so capability checks stay non-fatal.
+ * 这是纯静态的表查找——不会实例化 provider。
+ * 未知/未编目模型（以及 Kimi 线路，其能力来自宿主的目录/配置而非模型名称）
+ * 返回 {@link UNKNOWN_CAPABILITY}，以使能力检查保持非致命。
  */
 export function getModelCapability(wire: ProviderType, modelName: string): ModelCapability {
   switch (wire) {

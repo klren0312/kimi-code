@@ -28,7 +28,7 @@ import {
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// Auth: login / logout
+// 认证：登录 / 登出
 // ---------------------------------------------------------------------------
 
 export async function handleLoginCommand(host: SlashCommandHost): Promise<void> {

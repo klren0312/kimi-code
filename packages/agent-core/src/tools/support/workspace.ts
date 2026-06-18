@@ -1,17 +1,16 @@
 /**
- * WorkspaceConfig — defines the roots that tools are allowed to access.
+ * WorkspaceConfig — 定义工具允许访问的根目录。
  *
- * Injected through each Tool's constructor. Not passed through Runtime:
- * the Runtime keeps a small fixed shape and workspace limits live on
- * the Tool side.
+ * 通过每个 Tool 的构造函数注入，不通过 Runtime 传递：
+ * Runtime 保持固定的小结构，工作区限制在 Tool 侧管理。
  *
- * Paths should already be canonicalized lexically (absolute + normalized);
- * callers are responsible for normalizing before constructing this config.
+ * 路径应已完成词法规范化（绝对路径 + 标准化）；
+ * 调用方负责在构造此配置前进行规范化。
  */
 
 export interface WorkspaceConfig {
-  /** Primary workspace directory (absolute, canonicalized). */
+  /** 主工作区目录（绝对路径，已规范化）。 */
   readonly workspaceDir: string;
-  /** Extra allowed roots (e.g. `--add-dir` CLI flag). */
+  /** 额外允许的根目录（如 `--add-dir` CLI 参数）。 */
   readonly additionalDirs: readonly string[];
 }

@@ -8,8 +8,8 @@ import {
   type SelectListTheme,
 } from '@earendil-works/pi-tui';
 
-// Mirror pi-tui's private select-list layout constants
-// (dist/components/select-list.js); keep in sync when bumping pi-tui.
+// 镜像 pi-tui 私有的 select-list 布局常量
+// (dist/components/select-list.js)；升级 pi-tui 时需保持同步。
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
@@ -18,12 +18,12 @@ const DESCRIPTION_MAX_LINES = 2;
 const ELLIPSIS = '…';
 const ELLIPSIS_WIDTH = visibleWidth(ELLIPSIS);
 
-// truncateToWidth appends an ANSI reset whenever it actually truncates.
-// Labels and descriptions here are plain text, and the reset would sit
-// inside the theme's colour wrapping and reset the rest of the line (e.g.
-// a selected row with a truncated name loses its colour after the name),
-// so strip it.
-// oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
+// truncateToWidth 在实际截断时会追加 ANSI 重置序列。
+// 此处的标签和描述为纯文本，重置序列会位于
+// 主题颜色包装内部并重置该行其余部分（例如
+// 截断名称的选中行在名称后会丢失颜色），
+// 因此将其去除。
+// oxlint-disable-next-line no-control-regex -- 需要 ESC (\x1b) 来匹配 ANSI SGR 转义序列
 const TRAILING_ANSI_RESET = /(?:\u001B\[0m)+$/;
 
 function truncatePlainToWidth(text: string, maxWidth: number): string {
@@ -39,14 +39,12 @@ interface SelectListInternals {
 }
 
 /**
- * SelectList that wraps item descriptions onto up to two lines instead of
- * truncating them to one. Long command / skill descriptions stay readable;
- * anything past the second line is ellipsized.
+ * 将条目描述最多换行显示两行而非截断为一行的 SelectList。
+ * 长命令/技能描述保持可读性；超出第二行的部分用省略号截断。
  *
- * Only `render` is replaced — selection, filtering, and key handling stay in
- * pi-tui. pi-tui keeps the row state private, so the renderer reads it
- * through a cast, the same idiom CustomEditor uses for autocomplete
- * internals.
+ * 仅替换 `render`——选择、过滤和按键处理仍保留在 pi-tui 中。
+ * pi-tui 将行状态设为私有，因此渲染器通过类型转换读取，
+ * 与 CustomEditor 访问自动补全内部状态的惯用方式相同。
  */
 export class WrappingSelectList extends SelectList {
   override render(width: number): string[] {
@@ -104,7 +102,7 @@ export class WrappingSelectList extends SelectList {
       const truncatedValueWidth = visibleWidth(truncatedValue);
       const spacing = ' '.repeat(Math.max(1, effectivePrimaryColumnWidth - truncatedValueWidth));
       const descriptionStart = prefixWidth + truncatedValueWidth + spacing.length;
-      const remainingWidth = width - descriptionStart - 2; // -2 for safety, as upstream
+      const remainingWidth = width - descriptionStart - 2; // -2 为安全余量，与上游一致
       if (remainingWidth > MIN_DESCRIPTION_WIDTH) {
         const descriptionLines = wrapDescription(description, remainingWidth);
         const indent = ' '.repeat(descriptionStart);
@@ -161,9 +159,8 @@ export class WrappingSelectList extends SelectList {
 }
 
 /**
- * Wrap `text` to at most DESCRIPTION_MAX_LINES lines of `width` columns.
- * When the text needs more lines, the last visible line is rebuilt from the
- * remaining text and ellipsized.
+ * 将 `text` 最多换行至 DESCRIPTION_MAX_LINES 行，每行 `width` 列。
+ * 当文本需要更多行时，最后一行从剩余文本重建并添加省略号截断。
  */
 function wrapDescription(text: string, width: number): string[] {
   const wrapped = wrapTextWithAnsi(text, width);

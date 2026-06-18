@@ -9,9 +9,9 @@ import { SocksClient } from 'socks';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/** A parsed SOCKS proxy endpoint, in the shape the `socks` client expects. */
+/** 解析后的 SOCKS 代理端点，符合 `socks` 客户端的预期格式。 */
 export interface SocksProxyConfig {
-  /** SOCKS protocol version: 4 (socks4/socks4a) or 5 (socks/socks5/socks5h). */
+  /** SOCKS 协议版本：4（socks4/socks4a）或 5（socks/socks5/socks5h）。 */
   readonly type: 4 | 5;
   readonly host: string;
   readonly port: number;
@@ -19,25 +19,24 @@ export interface SocksProxyConfig {
   readonly password?: string;
 }
 
-// Loopback hosts always bypass the proxy. Neither undici's EnvHttpProxyAgent,
-// Node's `--use-env-proxy`, nor our SOCKS connector exempt loopback by default,
-// so without this a user with a proxy set would route `http://localhost:PORT`
-// traffic (e.g. a local MCP server) through the proxy — a confusing failure
-// that only proxy users would hit.
-// `::1` and the bracketed `[::1]` are both listed: undici's EnvHttpProxyAgent
-// only bypasses the IPv6 loopback when the NO_PROXY entry is bracketed (it
-// otherwise mis-parses `::1` as host `:` port `1`), while our own SOCKS matcher
-// normalizes brackets away — so including both covers every path.
+// 回环主机始终绕过代理。undici 的 EnvHttpProxyAgent、Node 的 `--use-env-proxy`
+// 和我们的 SOCKS 连接器默认都不会豁免回环地址，因此如果用户设置了代理，
+// `http://localhost:PORT` 的流量（如本地 MCP 服务器）会被路由通过代理
+// ——这是一个只有代理用户会遇到的令人困惑的故障。
+// `::1` 和带方括号的 `[::1]` 都列出：undici 的 EnvHttpProxyAgent 仅在
+// NO_PROXY 条目带方括号时才绕过 IPv6 回环（否则会将 `::1` 错误解析为
+// 主机 `:` 端口 `1`），而我们的 SOCKS 匹配器会去掉方括号——因此同时包含
+// 两者以覆盖所有路径。
 const LOOPBACK_NO_PROXY = ['localhost', '127.0.0.1', '::1', '[::1]'] as const;
 
 const SOCKS_SCHEMES = new Set(['socks', 'socks4', 'socks4a', 'socks5', 'socks5h']);
 
-/** Lowercase URL scheme (without the trailing colon), or undefined if absent. */
+/** 小写 URL scheme（不含尾部冒号），不存在时为 undefined。 */
 function schemeOf(value: string): string | undefined {
   return /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
 }
 
-/** First non-blank value among `keys` (both casings are passed in by callers). */
+/** `keys` 中第一个非空值（调用方传入两种大小写形式）。 */
 function firstNonBlank(env: Env, keys: readonly string[]): string | undefined {
   for (const key of keys) {
     const value = env[key]?.trim();
@@ -46,14 +45,14 @@ function firstNonBlank(env: Env, keys: readonly string[]): string | undefined {
   return undefined;
 }
 
-/** The value if it is an HTTP/HTTPS-scheme proxy (not SOCKS), else undefined. */
+/** 如果值是 HTTP/HTTPS scheme 代理（非 SOCKS）则返回该值，否则返回 undefined。 */
 function httpSchemeValue(value: string | undefined): string | undefined {
   return value !== undefined && !SOCKS_SCHEMES.has(schemeOf(value) ?? '') ? value : undefined;
 }
 
 /**
- * True when an HTTP/HTTPS-scheme proxy is configured — via `HTTP_PROXY`,
- * `HTTPS_PROXY`, or an http-scheme `ALL_PROXY` (the catch-all fallback).
+ * 当通过 `HTTP_PROXY`、`HTTPS_PROXY` 或 http scheme 的 `ALL_PROXY`（兜底回退）
+ * 配置了 HTTP/HTTPS 代理时返回 true。
  */
 function hasHttpProxy(env: Env): boolean {
   return [
@@ -64,10 +63,9 @@ function hasHttpProxy(env: Env): boolean {
 }
 
 /**
- * Resolve the effective http/https proxy URLs: the scheme-specific
- * `HTTP_PROXY`/`HTTPS_PROXY` (ignoring a SOCKS-scheme value), falling back to an
- * http-scheme `ALL_PROXY` catch-all. `undefined` for a scheme with no usable
- * value.
+ * 解析有效的 http/https 代理 URL：优先使用 scheme 特定的
+ * `HTTP_PROXY`/`HTTPS_PROXY`（忽略 SOCKS scheme 的值），回退到
+ * http scheme 的 `ALL_PROXY` 兜底。没有可用值的 scheme 返回 `undefined`。
  */
 function resolveHttpProxyUrls(env: Env): { httpProxy?: string; httpsProxy?: string } {
   const allProxy = httpSchemeValue(firstNonBlank(env, ['all_proxy', 'ALL_PROXY']));
@@ -78,10 +76,10 @@ function resolveHttpProxyUrls(env: Env): { httpProxy?: string; httpsProxy?: stri
 }
 
 /**
- * Resolve a SOCKS proxy from the environment, or `undefined` if none. A SOCKS
- * proxy may be declared via `ALL_PROXY` (the common form for Clash / V2RayN) or
- * by putting a `socks*` scheme in `HTTP(S)_PROXY`. `ALL_PROXY` wins, then
- * `HTTPS_PROXY`, then `HTTP_PROXY`. `socks://` is an alias for `socks5://`.
+ * 从环境变量解析 SOCKS 代理，没有则返回 `undefined`。SOCKS 代理可通过
+ * `ALL_PROXY`（Clash / V2RayN 常见形式）或在 `HTTP(S)_PROXY` 中使用
+ * `socks*` scheme 声明。优先级：`ALL_PROXY` > `HTTPS_PROXY` > `HTTP_PROXY`。
+ * `socks://` 是 `socks5://` 的别名。
  */
 export function resolveSocksProxy(env: Env = process.env): SocksProxyConfig | undefined {
   const candidates = [
@@ -101,8 +99,8 @@ export function resolveSocksProxy(env: Env = process.env): SocksProxyConfig | un
     }
     const config: SocksProxyConfig = {
       type: scheme === 'socks4' || scheme === 'socks4a' ? 4 : 5,
-      // Strip IPv6 brackets: the `socks` client wants the bare address (`::1`),
-      // not the URL's bracketed `[::1]`, which it would treat as a hostname.
+      // 去除 IPv6 方括号：`socks` 客户端需要裸地址（`::1`），
+      // 而非 URL 的带方括号形式 `[::1]`（会被当作主机名处理）。
       host: url.hostname.replaceAll(/^\[|\]$/g, ''),
       port: url.port ? Number(url.port) : 1080,
       ...(url.username ? { userId: decodeURIComponent(url.username) } : {}),
@@ -113,25 +111,21 @@ export function resolveSocksProxy(env: Env = process.env): SocksProxyConfig | un
   return undefined;
 }
 
-/** True when any HTTP(S) or SOCKS proxy variable is set to a usable value. */
+/** 当任何 HTTP(S) 或 SOCKS 代理变量被设置为可用值时返回 true。 */
 export function isProxyConfigured(env: Env = process.env): boolean {
   return hasHttpProxy(env) || resolveSocksProxy(env) !== undefined;
 }
 
 /**
- * The effective `NO_PROXY` with loopback hosts guaranteed present so local
- * traffic stays direct. Reads both casings (lowercase first when non-blank,
- * matching undici), preserves the user's entries, and appends only the missing
- * loopback hosts.
+ * 有效的 `NO_PROXY`，保证包含回环主机以使本地流量直连。读取两种大小写
+ * （非空时优先小写，与 undici 一致），保留用户的条目，仅追加缺失的回环主机。
  *
- * The `*` wildcard ("bypass everything") is returned verbatim: undici only
- * honors it as an exact-string match, so appending loopback would silently
- * defeat the user's explicit opt-out and route all non-loopback traffic
- * through the proxy.
+ * `*` 通配符（"绕过所有"）原样返回：undici 仅将其作为精确字符串匹配处理，
+ * 追加回环地址会静默破坏用户的显式选择，将所有非回环流量路由通过代理。
  */
 export function resolveNoProxy(env: Env = process.env): string {
-  // Prefer the first non-blank casing; an empty `no_proxy=''` must not mask a
-  // populated `NO_PROXY` (`??` would, since `''` is not nullish).
+  // 优先使用第一个非空大小写形式；空的 `no_proxy=''` 不应遮蔽有值的
+  // `NO_PROXY`（`??` 会，因为 `''` 不是 nullish）。
   const raw = [env['no_proxy'], env['NO_PROXY']].find((value) => (value?.trim() ?? '').length > 0) ?? '';
   const hosts = raw
     .split(',')
@@ -145,11 +139,10 @@ export function resolveNoProxy(env: Env = process.env): string {
 }
 
 /**
- * Build a predicate that returns true when a host (and optional port) should
- * bypass the proxy, given a `NO_PROXY` string. Matches `*` (all), exact hosts,
- * and subdomains for both bare (`example.com`) and leading-dot (`.example.com`)
- * entries; a port-qualified entry (`host:443`) matches only that port. Used for
- * the SOCKS path, where bypass is not handled by undici for us.
+ * 构建一个谓词函数，给定 `NO_PROXY` 字符串，判断主机（和可选端口）是否
+ * 应绕过代理。匹配 `*`（全部）、精确主机，以及裸域名（`example.com`）和
+ * 前导点（`.example.com`）条目的子域名；带端口的条目（`host:443`）仅匹配
+ * 该端口。用于 SOCKS 路径，因为 undici 不为我们处理绕过。
  */
 export function makeNoProxyMatcher(noProxy: string): (host: string, port?: number | string) => boolean {
   const entries = noProxy
@@ -170,9 +163,9 @@ export function makeNoProxyMatcher(noProxy: string): (host: string, port?: numbe
 }
 
 /**
- * Split a `NO_PROXY` entry into host (leading `.` stripped) and optional port.
- * Handles bracketed IPv6 (`[::1]:443`) and avoids mistaking a bare IPv6
- * address's colons (`::1`) for a `host:port` separator.
+ * 将 `NO_PROXY` 条目拆分为主机（去掉前导 `.`）和可选端口。
+ * 处理带方括号的 IPv6（`[::1]:443`），避免将裸 IPv6 地址的冒号
+ *（`::1`）误认为 `host:port` 分隔符。
  */
 function parseNoProxyEntry(entry: string): { host: string; port?: string } {
   let host = entry;
@@ -184,43 +177,42 @@ function parseNoProxyEntry(entry: string): { host: string; port?: string } {
     if (rest.startsWith(':')) port = rest.slice(1);
   } else {
     const colon = entry.indexOf(':');
-    // Only a single colon followed by digits is a port; multiple colons mean a
-    // bare IPv6 address (e.g. `::1`), which carries no port.
+    // 只有单个冒号后跟数字才是端口；多个冒号意味着裸 IPv6 地址
+    //（如 `::1`），不含端口。
     if (colon !== -1 && colon === entry.lastIndexOf(':') && /^\d+$/.test(entry.slice(colon + 1))) {
       host = entry.slice(0, colon);
       port = entry.slice(colon + 1);
     }
   }
-  // Normalize a wildcard domain (`*.example.com`) and a leading-dot
-  // (`.example.com`) to the bare domain; subdomain matching is handled below.
+  // 将通配域名（`*.example.com`）和前导点（`.example.com`）标准化为裸域名；
+  // 子域名匹配在下方处理。
   if (host.startsWith('*.')) host = host.slice(2);
   else if (host.startsWith('.')) host = host.slice(1);
   return port === undefined ? { host } : { host, port };
 }
 
 export interface ProxyAgentFactories {
-  /** Build the dispatcher for an HTTP/HTTPS proxy. */
+  /** 构建 HTTP/HTTPS 代理的 dispatcher。 */
   readonly makeHttpAgent: (options: {
     httpProxy?: string;
     httpsProxy?: string;
     noProxy: string;
   }) => Dispatcher;
-  /** Build the dispatcher for a SOCKS proxy. */
+  /** 构建 SOCKS 代理的 dispatcher。 */
   readonly makeSocksAgent: (options: { proxy: SocksProxyConfig; noProxy: string }) => Dispatcher;
 }
 
 const defaultMakeHttpAgent: ProxyAgentFactories['makeHttpAgent'] = ({ httpProxy, httpsProxy, noProxy }) =>
-  // Pass the resolved proxy URLs explicitly: left to itself EnvHttpProxyAgent
-  // reads `http_proxy ?? HTTP_PROXY`, where a blank lowercase value would mask a
-  // populated uppercase one and silently disable proxying. noProxy is likewise
-  // pre-resolved to guarantee the loopback bypass.
+  // 显式传入已解析的代理 URL：如果交给 EnvHttpProxyAgent 自行读取
+  // `http_proxy ?? HTTP_PROXY`，空的小写值会遮蔽有值的大写形式，
+  // 静默禁用代理。noProxy 同样预先解析以保证回环绕过。
   new EnvHttpProxyAgent({ httpProxy, httpsProxy, noProxy });
 
 const defaultMakeSocksAgent: ProxyAgentFactories['makeSocksAgent'] = ({ proxy, noProxy }) => {
-  // undici has no SOCKS support, so we drive a custom connector: tunnel the
-  // destination through the SOCKS proxy with the `socks` client, then hand the
-  // established socket back to undici's connector — which performs the TLS
-  // upgrade for https targets (reusing undici's ALPN/servername handling).
+  // undici 不支持 SOCKS，因此我们驱动一个自定义连接器：通过 SOCKS 代理
+  // 使用 `socks` 客户端隧道传输目标，然后将已建立的 socket 交还给
+  // undici 的连接器——它会为 https 目标执行 TLS 升级（复用 undici 的
+  // ALPN/服务器名称处理）。
   const directConnect = buildConnector({});
   const bypass = makeNoProxyMatcher(noProxy);
   const connect: typeof directConnect = (options, callback) => {
@@ -238,7 +230,7 @@ const defaultMakeSocksAgent: ProxyAgentFactories['makeSocksAgent'] = ({ proxy, n
           destination: { host: options.hostname, port },
         });
         if (isTls) {
-          // Upgrade the SOCKS socket to TLS via undici's own connector.
+          // 通过 undici 自己的连接器将 SOCKS socket 升级为 TLS。
           directConnect({ ...options, httpSocket: socket } as Parameters<typeof directConnect>[0], callback);
         } else {
           socket.setNoDelay(true);
@@ -253,12 +245,10 @@ const defaultMakeSocksAgent: ProxyAgentFactories['makeSocksAgent'] = ({ proxy, n
 };
 
 /**
- * Build an undici dispatcher that routes outbound `fetch` through the
- * configured proxy while honoring the (loopback-augmented) `NO_PROXY`. An
- * HTTP/HTTPS proxy takes precedence for matching traffic; otherwise a SOCKS
- * proxy (`ALL_PROXY` or a `socks*` scheme) is used. Returns `undefined` when no
- * proxy variable is set, so the zero-config majority keeps Node's default
- * dispatcher untouched.
+ * 构建一个 undici dispatcher，将出站 `fetch` 路由通过已配置的代理，
+ * 同时遵守（增强回环的）`NO_PROXY`。HTTP/HTTPS 代理优先匹配流量；
+ * 否则使用 SOCKS 代理（`ALL_PROXY` 或 `socks*` scheme）。未设置代理变量时
+ * 返回 `undefined`，使无配置的大多数用户保持 Node 默认 dispatcher 不变。
  */
 export function createProxyDispatcher(
   env: Env = process.env,
@@ -267,9 +257,8 @@ export function createProxyDispatcher(
   const { makeHttpAgent = defaultMakeHttpAgent, makeSocksAgent = defaultMakeSocksAgent } = factories;
   try {
     if (hasHttpProxy(env)) {
-      // Coerce a missing value to '' (falsy to undici) so EnvHttpProxyAgent
-      // neither builds a broken agent from a socks: URI nor re-reads a
-      // blank-masked value from env.
+      // 将缺失值强制为 ''（对 undici 为 falsy），使 EnvHttpProxyAgent 既不会
+      // 从 socks: URI 构建损坏的 agent，也不会从环境变量重新读取被遮蔽的空值。
       const { httpProxy, httpsProxy } = resolveHttpProxyUrls(env);
       return makeHttpAgent({
         httpProxy: httpProxy ?? '',
@@ -283,8 +272,8 @@ export function createProxyDispatcher(
     }
     return undefined;
   } catch (error) {
-    // A malformed proxy URL makes agent construction throw synchronously. Don't
-    // abort startup with a raw stack trace — report it and fall back to direct.
+    // 格式错误的代理 URL 会导致 agent 构造同步抛出。不要用原始栈跟踪
+    // 中止启动——报告错误并回退到直连。
     const reason = error instanceof Error ? error.message : String(error);
     process.stderr.write(`kimi: ignoring invalid proxy configuration (${reason}); connecting directly\n`);
     return undefined;
@@ -302,10 +291,10 @@ const defaultInstallProxyDeps: InstallProxyDeps = {
 };
 
 /**
- * Install the proxy dispatcher as the process-wide undici dispatcher so every
- * `fetch` — LLM SDKs, in-process MCP HTTP, telemetry, OAuth, web tools, update
- * checks, downloads — honors the proxy. Call once at process startup, before
- * any network use. No-op (returns `false`) when no proxy variable is set.
+ * 将代理 dispatcher 安装为进程级 undici dispatcher，使所有 `fetch`
+ * ——LLM SDK、进程内 MCP HTTP、遥测、OAuth、Web 工具、更新检查、下载
+ * ——都遵守代理。在进程启动时、任何网络使用前调用一次。未设置代理变量时
+ * 空操作（返回 `false`）。
  */
 export function installGlobalProxyDispatcher(
   env: Env = process.env,
@@ -318,20 +307,18 @@ export function installGlobalProxyDispatcher(
 }
 
 /**
- * Environment additions for spawned child node processes (e.g. stdio MCP
- * servers) so they honor the proxy natively via Node's `--use-env-proxy`
- * without bundling undici. An in-process global dispatcher is NOT inherited
- * across a process boundary — only env vars are — so children rely on this.
+ * 用于衍生子 Node 进程（如 stdio MCP 服务器）的环境变量补充，使其通过
+ * Node 的 `--use-env-proxy` 原生遵守代理，无需打包 undici。进程内全局
+ * dispatcher 不会跨进程边界继承——只有环境变量会——因此子进程依赖此函数。
  *
- * Only applies to HTTP/HTTPS proxies: Node's `--use-env-proxy` does not support
- * SOCKS, so a SOCKS-only proxy yields `{}` (child SOCKS proxying is out of
- * scope). Everything is set in BOTH casings: the child inherits the parent's
- * env and undici reads the lowercase form first, so the lowercase variants must
- * also carry the resolved values or the protection/proxying is silently lost.
+ * 仅适用于 HTTP/HTTPS 代理：Node 的 `--use-env-proxy` 不支持 SOCKS，
+ * 因此仅 SOCKS 代理返回 `{}`（子进程 SOCKS 代理超出范围）。所有变量
+ * 同时设置两种大小写：子进程继承父进程的环境变量，undici 优先读小写形式，
+ * 因此小写变体也必须携带已解析的值，否则保护/代理会被静默丢失。
  *
- * Because `--use-env-proxy` reads `HTTP_PROXY`/`HTTPS_PROXY` (not `ALL_PROXY`),
- * an http-scheme `ALL_PROXY` is synthesized into the scheme-specific variables
- * so an `ALL_PROXY`-only parent still proxies the child.
+ * 由于 `--use-env-proxy` 读取 `HTTP_PROXY`/`HTTPS_PROXY`（不读 `ALL_PROXY`），
+ * http scheme 的 `ALL_PROXY` 会被合成为 scheme 特定变量，使仅设置了
+ * `ALL_PROXY` 的父进程仍能代理子进程。
  */
 export function proxyEnvForChild(env: Env = process.env): Record<string, string> {
   if (!hasHttpProxy(env)) return {};
@@ -354,15 +341,13 @@ export function proxyEnvForChild(env: Env = process.env): Record<string, string>
 }
 
 /**
- * Mirror a server config's `NO_PROXY` override onto both casings of the child
- * env. undici reads the lowercase `no_proxy` first, so without this the value
- * {@link proxyEnvForChild} injected in the other casing would shadow an
- * explicit per-server override.
+ * 将服务器配置的 `NO_PROXY` 覆盖同步到子进程环境变量的两种大小写形式。
+ * undici 优先读小写 `no_proxy`，因此如果不这样做，{@link proxyEnvForChild}
+ * 注入的另一种大小写形式的值会遮蔽显式的每服务器覆盖。
  *
- * Uses the first NON-blank casing (a blank `no_proxy=''` must not mask a
- * populated `NO_PROXY`, mirroring {@link resolveNoProxy}) and runs the value
- * back through {@link resolveNoProxy} so the loopback bypass is preserved and
- * `*` passes through verbatim. No-op when config sets no usable `NO_PROXY`.
+ * 使用第一个非空大小写形式（空的 `no_proxy=''` 不应遮蔽有值的 `NO_PROXY`，
+ * 与 {@link resolveNoProxy} 一致），并通过 {@link resolveNoProxy} 重新处理
+ * 以保留回环绕过和 `*` 原样传递。配置未设置可用 `NO_PROXY` 时为空操作。
  */
 export function reconcileChildNoProxy(
   childEnv: Record<string, string>,

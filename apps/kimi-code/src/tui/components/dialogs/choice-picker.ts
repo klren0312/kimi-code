@@ -1,11 +1,9 @@
 /**
- * ChoicePicker — modal single-select list for slash commands that ask
- * the user to pick from a small set of preset values.
+ * ChoicePicker —— 用于斜杠命令的模态单选列表，要求用户从少量预设值中选择。
  *
- * Mirrors SessionPickerComponent's container-replacement pattern: host
- * calls `showChoicePicker(...)` which clears the editor container,
- * addChild(picker), setFocus(picker); the picker invokes `onSelect` or
- * `onCancel`, and the host tears it down.
+ * 镜像 SessionPickerComponent 的容器替换模式：宿主调用 `showChoicePicker(...)`，
+ * 该方法清除编辑器容器，addChild(picker)，setFocus(picker)；选择器调用
+ * `onSelect` 或 `onCancel`，宿主将其移除。
  */
 
 import {
@@ -22,13 +20,13 @@ import { printableChar } from '#/tui/utils/printable-key';
 import { SearchableList } from '#/tui/utils/searchable-list';
 
 export interface ChoiceOption {
-  /** Value passed to onSelect (e.g. the actual editor command string). */
+  /** 传递给 onSelect 的值（如实际的编辑器命令字符串）。 */
   readonly value: string;
-  /** Display text shown in the list. */
+  /** 列表中显示的文本。 */
   readonly label: string;
-  /** Optional semantic tone for labels that need stronger visual treatment. */
+  /** 可选的语义色调，用于需要更强视觉效果的标签。 */
   readonly tone?: 'danger';
-  /** Optional explanatory text shown below the label. */
+  /** 可选的说明文本，显示在标签下方。 */
   readonly description?: string | undefined;
 }
 
@@ -39,14 +37,15 @@ export interface ChoicePickerOptions {
   readonly notice?: string;
   readonly options: readonly ChoiceOption[];
   readonly currentValue?: string;
-  /** When true, typed characters filter the list (fuzzy) and a search line is shown. */
+  /** 为 true 时，输入的字符会过滤列表（模糊匹配），并显示搜索行。 */
   readonly searchable?: boolean;
-  /** Items per page. Lists longer than this paginate. */
+  /** 每页显示项数。超过此数量的列表会分页。 */
   readonly pageSize?: number;
   readonly onSelect: (value: string) => void;
   readonly onCancel: () => void;
 }
 
+/** 将描述文本按指定宽度自动换行。 */
 function wrapDescription(text: string, width: number): string[] {
   const maxWidth = Math.max(1, width);
   const words = text
@@ -94,7 +93,7 @@ export class ChoicePickerComponent extends Container implements Focusable {
       this.opts.onCancel();
       return;
     }
-    // Left/Right page through the list (this picker has no horizontal control).
+    // 左/右方向键用于翻页（此选择器无水平控制）。
     if (matchesKey(data, Key.left)) {
       this.list.pageUp();
       return;
@@ -103,8 +102,8 @@ export class ChoicePickerComponent extends Container implements Focusable {
       this.list.pageDown();
       return;
     }
-    // Enter always selects. Space selects too — but only when the list is not
-    // searchable; in a searchable list a space must reach the query instead.
+    // Enter 始终选中。空格也选中 —— 但仅在列表不可搜索时；
+    // 在可搜索列表中，空格需要传递给查询输入。
     const isSpace = matchesKey(data, Key.space) || printableChar(data) === ' ';
     if (matchesKey(data, Key.enter) || (isSpace && this.opts.searchable !== true)) {
       const chosen = this.list.selected();
@@ -119,9 +118,9 @@ export class ChoicePickerComponent extends Container implements Focusable {
     const view = this.list.view();
     const options = view.items;
 
-    // Header mirrors the model dialog (see model-selector.ts): border, title
-    // with a "(type to search)" suffix until you type, the hint, a blank, then
-    // the search line. Key vocabulary is lowercase to match every list dialog.
+    // 标题栏镜像模型对话框（见 model-selector.ts）：边框、标题带
+    // "(type to search)" 后缀（输入前显示），提示，空行，然后搜索行。
+    // 关键词词汇统一使用小写以匹配所有列表对话框。
     const navParts = ['↑↓ navigate'];
     if (view.page.pageCount > 1) navParts.push('←→ page');
     navParts.push('Enter select', 'Esc cancel');
@@ -180,6 +179,7 @@ export class ChoicePickerComponent extends Container implements Focusable {
   }
 }
 
+/** 根据选项的语义色调和选中状态返回标签样式函数。 */
 function optionLabelStyle(
   option: ChoiceOption,
   selected: boolean,

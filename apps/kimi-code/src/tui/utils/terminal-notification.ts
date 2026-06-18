@@ -57,19 +57,17 @@ export function formatNotification(notification: TerminalNotification): string {
 }
 
 /**
- * Build the OSC/BEL bytes for a terminal notification.
+ * 构建终端通知的 OSC/BEL 字节序列。
  *
- * - `supportsOsc9 === true`: emit a single OSC 9 sequence — the modern
- *   desktop-notification path used by iTerm2, WezTerm, Kitty, Ghostty
- *   and Warp.
- * - `supportsOsc9 === false`: fall back to a bare BEL so the user still
- *   gets the system bell on terminals that don't recognize OSC 9.
+ * - `supportsOsc9 === true`：发出单个 OSC 9 序列——iTerm2、WezTerm、
+ *   Kitty、Ghostty 和 Warp 使用的现代桌面通知路径。
+ * - `supportsOsc9 === false`：回退到裸 BEL，以便在不识别 OSC 9 的
+ *   终端上用户仍能收到系统铃声。
  *
- * When `insideTmux === true` and we're emitting OSC 9, wrap the sequence
- * in a tmux DCS passthrough (`ESC P tmux ; <payload> ESC \`) and double
- * any `ESC` bytes inside the payload — otherwise tmux swallows the OSC.
- * BEL is single-byte and passes through tmux unchanged, so no wrap is
- * needed in the fallback path.
+ * 当 `insideTmux === true` 且正在发出 OSC 9 时，将序列包装在
+ * tmux DCS 直通中（`ESC P tmux ; <payload> ESC \`），
+ * 并将载荷中的任何 `ESC` 字节加倍——否则 tmux 会吞掉 OSC。
+ * BEL 是单字节的，可以不受影响地通过 tmux，因此回退路径不需要包装。
  */
 export function buildTerminalNotificationSequences(
   notification: TerminalNotification,
@@ -89,11 +87,9 @@ export function buildTerminalNotificationSequences(
 }
 
 /**
- * Best-effort detection of OSC 9 desktop-notification support, driven
- * entirely off well-known environment variables. The allow-list is
- * intentionally short and conservative because BEL is safe everywhere,
- * while shipping OSC 9 to a terminal that doesn't grok it would print
- * escape garbage on screen.
+ * 尽力检测 OSC 9 桌面通知支持，完全基于已知环境变量驱动。
+ * 白名单有意简短且保守，因为 BEL 在所有地方都是安全的，
+ * 而向不识别 OSC 9 的终端发送它会在屏幕上打印转义垃圾字符。
  */
 export function supportsOsc9Notification(env: NodeJS.ProcessEnv = process.env): boolean {
   const termProgram = env['TERM_PROGRAM'] ?? '';
@@ -111,13 +107,12 @@ export function supportsOsc9Notification(env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
- * Best-effort detection of ConEmu-style OSC 9;4 progress support, driven
- * off well-known environment variables like `supportsOsc9Notification`.
- * The two allow-lists must stay separate: iTerm2 posts a desktop
- * notification for ANY `OSC 9;<payload>` it receives, so sending the 9;4
- * progress sequence there pops a "4;3" notification every keepalive tick.
- * Terminals outside this list simply get no progress reporting, which is
- * always safe.
+ * 尽力检测 ConEmu 风格的 OSC 9;4 进度支持，基于已知环境变量驱动，
+ * 与 `supportsOsc9Notification` 类似。
+ * 两个白名单必须保持独立：iTerm2 对收到的任何 `OSC 9;<payload>`
+ * 都会发布桌面通知，因此在那里发送 9;4 进度序列会在每次心跳时
+ * 弹出一个 "4;3" 通知。此列表之外的终端不会获得进度报告，
+ * 这始终是安全的。
  */
 export function supportsTerminalProgress(env: NodeJS.ProcessEnv = process.env): boolean {
   if ((env['WT_SESSION'] ?? '').length > 0) return true;

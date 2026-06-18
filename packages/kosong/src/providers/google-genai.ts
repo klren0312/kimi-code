@@ -20,14 +20,13 @@ import { ApiError as GoogleApiError, GoogleGenAI as GenAIClient } from '@google/
 import { requireProviderApiKey, resolveAuthBackedClient } from './request-auth';
 
 /**
- * Normalize a Google GenAI (Gemini) `finishReason` value to the unified
- * {@link FinishReason} enum.
+ * 将 Google GenAI (Gemini) 的 `finishReason` 值归一化为统一的
+ * {@link FinishReason} 枚举。
  *
- * Source: `candidates[0].finishReason` (works for both stream and
- * non-stream — the SDK normalizes them). Gemini does not emit a
- * `tool_calls`-style reason; tool calls come via `parts[].functionCall`
- * and `finishReason` stays `'completed'` even when the model produces
- * function calls.
+ * 数据来源：`candidates[0].finishReason`（流式和非流式均适用——
+ * SDK 会自动归一化）。Gemini 不会发出 `tool_calls` 风格的原因值；
+ * 工具调用通过 `parts[].functionCall` 返回，即使模型产生了函数调用，
+ * `finishReason` 仍为 `'completed'`。
  */
 function normalizeGoogleGenAIFinishReason(raw: unknown): {
   finishReason: FinishReason | null;
@@ -36,10 +35,9 @@ function normalizeGoogleGenAIFinishReason(raw: unknown): {
   if (raw === null || raw === undefined) {
     return { finishReason: null, rawFinishReason: null };
   }
-  // The SDK normally hands us a plain string but older builds wrap it in
-  // an enum-like object. Accept both shapes and uppercase to match the
-  // documented constants. Anything else collapses to "no signal" so we
-  // never emit a junk `[object Object]` raw value.
+  // SDK 通常返回一个纯字符串，但较早版本会将其包装在类似枚举的对象中。
+  // 同时接受两种形式，并转为大写以匹配文档中的常量。其他任何值
+  // 都会退化为"无信号"，避免发出无意义的 `[object Object]` 原始值。
   let rawString: string;
   if (typeof raw === 'string') {
     rawString = raw.toUpperCase();
@@ -136,21 +134,20 @@ interface GooglePart {
 function toolCallIdToName(toolCallId: string, toolNameById: Map<string, string>): string {
   const name = toolNameById.get(toolCallId);
   if (name !== undefined) return name;
-  // Fallback: ids produced by this provider follow the format
-  // "{tool_name}_{id_suffix}" where `tool_name` may itself contain
-  // underscores (e.g. `fetch_image`) and `id_suffix` is a single trailing
-  // token without underscores (e.g. a random hex / UUID fragment). We strip
-  // the last "_<suffix>" segment by matching it explicitly — splitting on
-  // the first underscore would truncate multi-word tool names like
-  // `fetch_image_<id>` to just `fetch`.
+  // 后备方案：此 provider 生成的 id 格式为
+  // "{tool_name}_{id_suffix}"，其中 `tool_name` 本身可能包含
+  // 下划线（例如 `fetch_image`），`id_suffix` 是末尾的单个
+  // 不含下划线的标记（如随机十六进制 / UUID 片段）。我们通过
+  // 显式匹配来去除最后的 "_<suffix>" 段——如果按第一个下划线
+  // 分割会将多词工具名如 `fetch_image_<id>` 截断为 `fetch`。
   const match = /^(.+)_[^_]+$/.exec(toolCallId);
   return match?.[1] ?? toolCallId;
 }
 
 /**
- * Convert a data URL or HTTP URL to a Google GenAI inline/file data part.
- * - data: URLs are parsed into { inlineData: { mimeType, data } }
- * - http(s): URLs use { fileData: { fileUri, mimeType } }
+ * 将 data URL 或 HTTP URL 转换为 Google GenAI 内联/文件数据部分。
+ * - data: URL 被解析为 { inlineData: { mimeType, data } }
+ * - http(s): URL 使用 { fileData: { fileUri, mimeType } }
  */
 function convertMediaUrl(
   url: string,
@@ -173,7 +170,7 @@ function convertMediaUrl(
         : fallbackMimeType;
     return { inlineData: { mimeType, data } };
   }
-  // For HTTP(S) URLs, try to guess mime type from extension
+  // 对于 HTTP(S) URL，尝试从扩展名猜测 MIME 类型
   let mimeType = fallbackMimeType;
   try {
     const pathname = new URL(url).pathname.toLowerCase();
@@ -185,7 +182,7 @@ function convertMediaUrl(
     else if (pathname.endsWith('.wav')) mimeType = 'audio/wav';
     else if (pathname.endsWith('.ogg')) mimeType = 'audio/ogg';
   } catch {
-    // URL parsing failed, use fallback
+    // URL 解析失败，使用后备值
   }
   return { fileData: { fileUri: url, mimeType } };
 }
@@ -197,7 +194,7 @@ function createAbortError(): DOMException {
 async function abortPromise(signal: AbortSignal | undefined): Promise<never> {
   if (signal === undefined) {
     return new Promise(() => {
-      // Intentionally never settles when no signal is provided.
+      // 未提供信号时，故意永不结算。
     });
   }
   if (signal.aborted) {
@@ -221,18 +218,18 @@ function messageToGoogleGenAI(message: Message): GoogleContent {
     );
   }
 
-  // GoogleGenAI uses "model" instead of "assistant"
+  // GoogleGenAI 使用 "model" 代替 "assistant"
   const role = message.role === 'assistant' ? 'model' : message.role;
   const parts: GooglePart[] = [];
 
-  // Handle content parts
+  // 处理内容部分
   for (const part of message.content) {
     switch (part.type) {
       case 'text':
         parts.push({ text: part.text });
         break;
       case 'think':
-        // Skip think parts (synthetic)
+        // 跳过思考部分（合成内容）
         break;
       case 'image_url':
         parts.push(convertMediaUrl(part.imageUrl.url, 'image/jpeg'));
@@ -246,7 +243,7 @@ function messageToGoogleGenAI(message: Message): GoogleContent {
     }
   }
 
-  // Handle tool calls
+  // 处理工具调用
   for (const toolCall of message.toolCalls) {
     let args: Record<string, unknown> = {};
     if (toolCall.arguments) {
@@ -270,7 +267,7 @@ function messageToGoogleGenAI(message: Message): GoogleContent {
       },
     };
 
-    // Restore thought_signature if available
+    // 如果可用则恢复 thought_signature
     if (toolCall.extras && 'thought_signature_b64' in toolCall.extras) {
       functionCallPart['thought_signature'] = toolCall.extras['thought_signature_b64'] as string;
     }
@@ -282,13 +279,12 @@ function messageToGoogleGenAI(message: Message): GoogleContent {
 }
 
 /**
- * Convert a tool message into a list of Google GenAI parts.
+ * 将工具消息转换为 Google GenAI parts 列表。
  *
- * Returns a `functionResponse` part carrying the text output, followed by
- * independent media parts (`inlineData` / `fileData`) for any image/audio/video
- * content in the tool result. This preserves multimodal tool outputs so the
- * next Gemini/Vertex turn can see them — returning only the text would silently
- * drop media and break tool chains that rely on images or audio.
+ * 返回一个携带文本输出的 `functionResponse` part，后跟独立的媒体 parts
+ * （`inlineData` / `fileData`）用于工具结果中的任何图片/音频/视频内容。
+ * 这样可以保留多模态工具输出，使下一轮 Gemini/Vertex 能够看到它们——
+ * 如果只返回文本，会静默丢弃媒体数据，破坏依赖图片或音频的工具链。
  */
 function toolMessageToFunctionResponseParts(
   message: Message,
@@ -301,7 +297,7 @@ function toolMessageToFunctionResponseParts(
     throw new ChatProviderError('Tool response is missing `toolCallId`.');
   }
 
-  // Separate text output from media parts
+  // 分离文本输出和媒体部分
   let textOutput = '';
   const mediaParts: GooglePart[] = [];
   for (const part of message.content) {
@@ -319,7 +315,7 @@ function toolMessageToFunctionResponseParts(
         mediaParts.push(convertMediaUrl(part.videoUrl.url, 'video/mp4'));
         break;
       case 'think':
-        // Skip — handled separately via reasoning channel.
+        // 跳过——通过推理通道单独处理。
         break;
     }
   }
@@ -345,14 +341,12 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
     if (message === undefined) break;
 
     if (message.role === 'system') {
-      // Google GenAI's `Content.role` only accepts "user" or "model", so a
-      // system message in the history (e.g. from session restore or
-      // cross-provider migration) would be rejected by the API. Preserve
-      // the content by wrapping it in a `<system>` tag and attaching it as
-      // a user turn — mirrors the Anthropic provider's behavior. The
-      // dedicated top-level `systemPrompt` still flows into
-      // `system_instruction` separately; only historical system messages
-      // come through here.
+      // Google GenAI 的 `Content.role` 只接受 "user" 或 "model"，因此
+      // 历史记录中的系统消息（例如来自会话恢复或跨 provider 迁移）
+      // 会被 API 拒绝。通过将内容包装在 `<system>` 标签中并附加为
+      // user 轮次来保留内容——与 Anthropic provider 的行为一致。
+      // 专用的顶层 `systemPrompt` 仍单独流入 `system_instruction`；
+      // 只有历史系统消息会经过这里。
       const text = message.content
         .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
         .map((p) => p.text)
@@ -375,7 +369,7 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
         expectedToolCallIds.push(toolCall.id);
       }
 
-      // Collect consecutive tool messages
+      // 收集连续的工具消息
       let j = i + 1;
       const toolMessages: Message[] = [];
       while (j < messages.length) {
@@ -386,10 +380,10 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
       }
 
       if (toolMessages.length > 0) {
-        // Sort tool results to match the order of tool calls in the assistant
-        // message, and reject incomplete / duplicated / unexpected results.
-        // Gemini/Vertex expects the next user turn to contain a matching set of
-        // function responses for the preceding function calls.
+        // 对工具结果进行排序以匹配 assistant 消息中工具调用的顺序，
+        // 并拒绝不完整/重复/意外的结果。
+        // Gemini/Vertex 期望下一个 user 轮次包含与前面函数调用
+        // 匹配的函数响应集合。
         const toolMsgById = new Map<string, Message>();
         const seenToolCallIds = new Set<string>();
         for (const toolMsg of toolMessages) {
@@ -418,9 +412,9 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
           );
         }
 
-        // Pack all tool results into a single user Content.
-        // Each tool result may expand to multiple parts (functionResponse +
-        // media parts for image/audio/video outputs).
+        // 将所有工具结果打包到单个 user Content 中。
+        // 每个工具结果可能展开为多个 parts（functionResponse +
+        // 用于图片/音频/视频输出的媒体 parts）。
         const parts: GooglePart[] = [];
         for (const toolMsg of sortedToolMessages) {
           parts.push(...toolMessageToFunctionResponseParts(toolMsg, toolNameById));
@@ -435,7 +429,7 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
     }
 
     if (message.role === 'tool') {
-      // Tool message without preceding assistant message
+      // 没有前置 assistant 消息的工具消息
       const parts: GooglePart[] = toolMessageToFunctionResponseParts(message, toolNameById);
       contents.push({ role: 'user', parts });
       i += 1;
@@ -504,16 +498,16 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
       return;
     }
     const normalized = normalizeGoogleGenAIFinishReason(raw);
-    // Only overwrite when we got a definitive signal — early stream
-    // chunks may contain `FINISH_REASON_UNSPECIFIED` while the model is
-    // still generating, and we treat those as "not yet known".
+    // 仅在获得确定性信号时才覆盖——流式传输的早期块可能包含
+    // `FINISH_REASON_UNSPECIFIED`（模型仍在生成），我们将其视为
+    // "尚未确定"。
     if (normalized.finishReason !== null || normalized.rawFinishReason !== null) {
       this._finishReason = normalized.finishReason;
       this._rawFinishReason = normalized.rawFinishReason;
     }
   }
 
-  /** Yield parts from a single (non-streamed) GenerateContentResponse. */
+  /** 从单个（非流式）GenerateContentResponse 中提取 parts。 */
   private _extractChunkParts(response: Record<string, unknown>): StreamedMessagePart[] {
     const parts: StreamedMessagePart[] = [];
 
@@ -553,7 +547,7 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
     return parts;
   }
 
-  /** Extract usage metadata from a response chunk. */
+  /** 从响应块中提取用量元数据。 */
   private _extractUsage(response: Record<string, unknown>): void {
     const usageMetadata = response['usageMetadata'] as Record<string, unknown> | undefined;
     if (usageMetadata) {
@@ -574,7 +568,7 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
     }
   }
 
-  /** Extract response ID from a response chunk. */
+  /** 从响应块中提取响应 ID。 */
   private _extractId(response: Record<string, unknown>): void {
     if (response['responseId'] !== undefined) {
       this._id = response['responseId'] as string;
@@ -582,9 +576,9 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
   }
 
   private _throwIfAborted(signal: AbortSignal | undefined): void {
-    // Helper kept small so TypeScript's control-flow narrowing does not
-    // collapse `signal.aborted` to `false | undefined` at call sites that
-    // check the signal repeatedly between async steps.
+    // 辅助函数保持精简，以便 TypeScript 的控制流收窄不会在
+    // 反复检查信号的调用点将 `signal.aborted` 收窄为
+    // `false | undefined`。
     if (signal !== undefined && signal.aborted) {
       throw createAbortError();
     }
@@ -610,9 +604,9 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
   ): AsyncGenerator<StreamedMessagePart> {
     try {
       for await (const chunk of response) {
-        // Check abort at each chunk boundary so users who pass an
-        // AbortSignal see cancellation honored promptly even though the
-        // Google GenAI SDK does not forward it to the underlying fetch.
+        // 在每个块边界检查中止信号，以便传入 AbortSignal 的用户
+        // 能及时看到取消生效，尽管 Google GenAI SDK 不会将其
+        // 转发到底层 fetch。
         this._throwIfAborted(signal);
         this._extractUsage(chunk);
         this._extractId(chunk);
@@ -623,8 +617,8 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
         }
       }
     } catch (error: unknown) {
-      // Preserve AbortError identity so the retry/generate loop can
-      // distinguish it from transient provider errors.
+      // 保留 AbortError 身份，以便重试/生成循环能够将其
+      // 与临时性 provider 错误区分开来。
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
@@ -636,24 +630,24 @@ const NETWORK_RE = /network|connection|connect|disconnect|fetch failed/i;
 const TIMEOUT_RE = /timed?\s*out|timeout|deadline/i;
 
 /**
- * Convert a Google GenAI SDK error (or raw Error) to a kosong `ChatProviderError`.
+ * 将 Google GenAI SDK 错误（或原始 Error）转换为 kosong 的 `ChatProviderError`。
  */
 export function convertGoogleGenAIError(error: unknown): ChatProviderError {
-  // Google SDK's exported ApiError carries an HTTP status code
+  // Google SDK 导出的 ApiError 携带 HTTP 状态码
   if (error instanceof GoogleApiError) {
     return normalizeAPIStatusError(error.status, error.message);
   }
   if (error instanceof Error) {
     const msg = error.message;
-    // Timeout takes priority over network (a timeout is also a connection issue)
+    // 超时优先于网络错误（超时也是一种连接问题）
     if (TIMEOUT_RE.test(msg)) {
       return new APITimeoutError(msg);
     }
-    // Network / fetch errors (e.g. TypeError: fetch failed)
+    // 网络/fetch 错误（例如 TypeError: fetch failed）
     if (NETWORK_RE.test(msg) || (error instanceof TypeError && msg.includes('fetch'))) {
       return new APIConnectionError(msg);
     }
-    // Try to extract status code from unknown error shapes
+    // 尝试从未知错误格式中提取状态码
     const statusCode = (error as { code?: number }).code;
     if (typeof statusCode === 'number') {
       return normalizeAPIStatusError(statusCode, msg);
@@ -711,12 +705,12 @@ export class GoogleGenAIChatProvider implements ChatProvider {
     const thinkingConfig = this._generationKwargs.thinking_config;
     if (thinkingConfig === undefined) return null;
 
-    // For gemini-3 models that use thinking_level
+    // 对于使用 thinking_level 的 gemini-3 模型
     if (thinkingConfig.thinking_level !== undefined) {
       switch (thinkingConfig.thinking_level) {
         case 'MINIMAL':
-          // MINIMAL + suppressed thoughts is how 'off' is encoded for Gemini 3,
-          // which has no true "disabled" level.
+          // MINIMAL + 抑制思考输出是 Gemini 3 中 'off' 的编码方式，
+          // 因为它没有真正的"禁用"级别。
           return thinkingConfig.include_thoughts === false ? 'off' : 'low';
         case 'LOW':
           return 'low';
@@ -729,7 +723,7 @@ export class GoogleGenAIChatProvider implements ChatProvider {
       }
     }
 
-    // For other models that use thinking_budget
+    // 对于使用 thinking_budget 的其他模型
     if (thinkingConfig.thinking_budget !== undefined) {
       if (thinkingConfig.thinking_budget === 0) return 'off';
       if (thinkingConfig.thinking_budget <= 1024) return 'low';
@@ -753,8 +747,8 @@ export class GoogleGenAIChatProvider implements ChatProvider {
     history: Message[],
     options?: GenerateOptions,
   ): Promise<StreamedMessage> {
-    // Short-circuit if the caller has already aborted — the Google GenAI
-    // SDK will not honor the signal natively, so we must check manually.
+    // 如果调用方已中止则短路——Google GenAI SDK 不会原生处理
+    // 信号，因此必须手动检查。
     if (options?.signal?.aborted === true) {
       throw createAbortError();
     }
@@ -776,10 +770,9 @@ export class GoogleGenAIChatProvider implements ChatProvider {
 
       const params = { model: this._model, contents, config };
 
-      // The Google GenAI SDK does not accept an AbortSignal, so we must race
-      // the initial SDK request against the caller's abort signal ourselves.
-      // Once we have a response/stream object, the wrapper below continues to
-      // check the signal at each chunk boundary.
+      // Google GenAI SDK 不接受 AbortSignal，因此必须将初始 SDK 请求
+      // 与调用方的中止信号进行竞争。一旦获得响应/流对象，下面的包装器
+      // 会在每个块边界继续检查信号。
       if (this._stream) {
         const stream = await Promise.race([
           models.generateContentStream(params),
@@ -814,12 +807,11 @@ export class GoogleGenAIChatProvider implements ChatProvider {
       { cachedClient: this._client, clientFactory: this._clientFactory },
       auth,
       (a) => {
-        // Vertex AI auth flows through google-auth-library service credentials,
-        // not a request-scoped apiKey, and the @google/genai SDK has no
-        // perRequest header channel — so neither `auth.apiKey` nor
-        // `auth.headers` is propagated in vertexai mode. Callers that need
-        // request-scoped credentials should instead point their service
-        // account at the right principal.
+        // Vertex AI 认证通过 google-auth-library 服务凭证流转，
+        // 而非请求作用域的 apiKey，且 @google/genai SDK 没有
+        // 逐请求的 header 通道——因此在 vertexai 模式下，`auth.apiKey`
+        // 和 `auth.headers` 都不会被传播。需要请求作用域凭证的
+        // 调用方应改为将服务帐户指向正确的主体。
         if (this._vertexai) return this._buildClient(this._apiKey);
         return this._buildClient(requireProviderApiKey('GoogleGenAIChatProvider', a, this._apiKey));
       },
@@ -830,9 +822,9 @@ export class GoogleGenAIChatProvider implements ChatProvider {
     const thinkingConfig: ThinkingConfig = { include_thoughts: true };
 
     if (this._model.includes('gemini-3')) {
-      // Gemini 3 models use thinking_level (MINIMAL/LOW/MEDIUM/HIGH). The SDK
-      // does not expose a "disabled" level, so 'off' maps to MINIMAL with
-      // thought output suppressed — the lowest thinking intensity available.
+      // Gemini 3 模型使用 thinking_level（MINIMAL/LOW/MEDIUM/HIGH）。
+      // SDK 不提供"禁用"级别，因此 'off' 映射为 MINIMAL 并抑制
+      // 思考输出——这是可用的最低思考强度。
       switch (effort) {
         case 'off':
           thinkingConfig.thinking_level = 'MINIMAL';

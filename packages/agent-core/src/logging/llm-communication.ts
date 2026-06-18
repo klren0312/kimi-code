@@ -1,18 +1,18 @@
 /**
- * LLM Communication Logger & Web Viewer
+ * LLM 通信日志记录器 & Web 查看器
  *
- * This module provides real-time logging of AI communication (LLM requests/responses)
- * with both file-based logging and a built-in web viewer via Server-Sent Events (SSE).
+ * 此模块提供 AI 通信（LLM 请求/响应）的实时日志记录，
+ * 包括基于文件的日志记录和通过 Server-Sent Events (SSE) 的内置 Web 查看器。
  *
- * Features:
- * - Logs all LLM requests (system prompt, tools, messages) and responses (content, tool calls, usage)
- * - Real-time web viewer at http://127.0.0.1:9877
- * - OAuth device code flow integration (shows auth prompts in web viewer)
- * - Auto-rotating log files (10MB limit)
+ * 功能：
+ * - 记录所有 LLM 请求（系统提示词、工具、消息）和响应（内容、工具调用、用量）
+ * - 实时 Web 查看器：http://127.0.0.1:9877
+ * - OAuth 设备码流程集成（在 Web 查看器中显示授权提示）
+ * - 自动轮转日志文件（10MB 限制）
  *
- * Usage:
- *   Set KIMI_CODE_LOG_LLM=1 environment variable to enable
- *   The web viewer URL will be displayed in the terminal on startup
+ * 用法：
+ *   设置 KIMI_CODE_LOG_LLM=1 环境变量以启用
+ *   启动时终端会显示 Web 查看器 URL
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -24,101 +24,101 @@ import { grandTotal, inputTotal, type TokenUsage } from '@moonshot-ai/kosong';
 import type { ContentPart, Message, Tool } from '@moonshot-ai/kosong';
 
 // ============================================================================
-// Constants & Configuration
+// 常量 & 配置
 // ============================================================================
 
-/** Directory for log files: ~/.kimi-code/logs/ */
+/** 日志文件目录：~/.kimi-code/logs/ */
 const LOG_DIR = join(homedir(), '.kimi-code', 'logs');
 
-/** Main log file path */
+/** 主日志文件路径 */
 const LOG_FILE = join(LOG_DIR, 'llm-communication.log');
 
-/** Maximum log file size before rotation (10MB) */
+/** 日志文件轮转前的最大大小（10MB） */
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-/** Rotated log file path (when current file exceeds MAX_FILE_SIZE) */
+/** 轮转后的日志文件路径（当当前文件超过 MAX_FILE_SIZE 时） */
 const ROTATED_FILE = `${LOG_FILE}.1`;
 
-/** Default port for the web viewer HTTP server */
+/** Web 查看器 HTTP 服务器的默认端口 */
 const DEFAULT_PORT = 9877;
 
 // ============================================================================
-// Module State
+// 模块状态
 // ============================================================================
 
-/** Whether logging is enabled (controlled by KIMI_CODE_LOG_LLM env var) */
+/** 是否启用日志记录（由 KIMI_CODE_LOG_LLM 环境变量控制） */
 let enabled = false;
 
-/** Connected SSE (Server-Sent Events) clients for real-time web viewer */
+/** 已连接的 SSE（Server-Sent Events）客户端，用于实时 Web 查看器 */
 let sseClients: Set<ServerResponse> = new Set();
 
-/** HTTP server instance for the web viewer */
+/** Web 查看器的 HTTP 服务器实例 */
 let httpServer: ReturnType<typeof createServer> | null = null;
 
-/** Callback for OAuth device code events (optional) */
+/** OAuth 设备码事件的回调（可选） */
 let deviceCodeCallback: ((info: DeviceCodeInfo) => void) | null = null;
 
-/** Callback for approval responses from web viewer */
+/** 来自 Web 查看器的审批响应回调 */
 let approvalResponseCallback: ((requestId: string, approved: boolean, scope?: string) => void) | null = null;
 
 // ============================================================================
-// Types
+// 类型
 // ============================================================================
 
 /**
- * OAuth device code authorization information (RFC 8628).
- * Displayed in the web viewer when login is required.
+ * OAuth 设备码授权信息（RFC 8628）。
+ * 需要登录时在 Web 查看器中显示。
  */
 export interface DeviceCodeInfo {
-  /** The code the user must enter at the verification URI */
+  /** 用户需要在验证 URI 中输入的代码 */
   userCode: string;
-  /** Base verification URI (user types code manually) */
+  /** 基础验证 URI（用户手动输入代码） */
   verificationUri: string;
-  /** Complete verification URI with code pre-filled (clickable link) */
+  /** 预填代码的完整验证 URI（可点击链接） */
   verificationUriComplete: string;
-  /** Seconds until the device code expires (null if unknown) */
+  /** 设备码过期的剩余秒数（未知时为 null） */
   expiresIn: number | null;
-  /** Polling interval in seconds */
+  /** 轮询间隔（秒） */
   interval: number;
 }
 
 /**
- * LLM request data to be logged.
- * Contains all information sent to the AI model.
+ * 待记录的 LLM 请求数据。
+ * 包含发送给 AI 模型的所有信息。
  */
 export interface LlmCommunicationRequest {
-  /** Provider name (e.g., 'kimi', 'openai', 'anthropic') */
+  /** Provider 名称（如 'kimi'、'openai'、'anthropic'） */
   provider: string;
-  /** Model name (e.g., 'kimi-k2', 'gpt-4') */
+  /** 模型名称（如 'kimi-k2'、'gpt-4'） */
   model: string;
-  /** System prompt sent to the model */
+  /** 发送给模型的系统提示词 */
   systemPrompt: string;
-  /** Available tools the model can call */
+  /** 模型可调用的可用工具 */
   tools: readonly Tool[];
-  /** Conversation history (messages sent to the model) */
+  /** 对话历史（发送给模型的消息） */
   history: readonly Message[];
 }
 
 /**
- * LLM response data to be logged.
- * Contains the model's output and usage statistics.
+ * 待记录的 LLM 响应数据。
+ * 包含模型的输出和用量统计。
  */
 export interface LlmCommunicationResponse {
-  /** Text content of the response */
+  /** 响应的文本内容 */
   content: string;
-  /** Tool calls requested by the model */
+  /** 模型请求的工具调用 */
   toolCalls: Array<{ name: string; arguments: string }>;
-  /** Token usage statistics (null if not reported by provider) */
+  /** Token 用量统计（provider 未报告时为 null） */
   usage: TokenUsage | null;
-  /** Why the model stopped generating (e.g., 'completed', 'tool_calls', 'truncated') */
+  /** 模型停止生成的原因（如 'completed'、'tool_calls'、'truncated'） */
   finishReason: string | null;
-  /** Total request duration in milliseconds */
+  /** 总请求耗时（毫秒） */
   durationMs: number;
 }
 
 /**
- * Union type for all log entries sent via SSE to the web viewer.
- * Each entry has a `type` field to distinguish between different event types.
+ * 通过 SSE 发送到 Web 查看器的所有日志条目的联合类型。
+ * 每个条目都有一个 `type` 字段用于区分不同的事件类型。
  */
 type LlmLogEntry =
   | {
@@ -179,43 +179,43 @@ type LlmLogEntry =
     };
 
 // ============================================================================
-// Control Functions
+// 控制函数
 // ============================================================================
 
 /**
- * Check if LLM communication logging is enabled.
- * @returns true if KIMI_CODE_LOG_LLM=1 was set
+ * 检查 LLM 通信日志是否启用。
+ * @returns 如果设置了 KIMI_CODE_LOG_LLM=1 则返回 true
  */
 export function isLlmCommunicationLogEnabled(): boolean {
   return enabled;
 }
 
 /**
- * Enable LLM communication logging and create the log directory.
- * Called once at startup when KIMI_CODE_LOG_LLM=1 is set.
+ * 启用 LLM 通信日志并创建日志目录。
+ * 启动时设置 KIMI_CODE_LOG_LLM=1 后调用。
  */
 export function enableLlmCommunicationLog(): void {
   enabled = true;
   try {
     mkdirSync(LOG_DIR, { recursive: true });
   } catch {
-    // Directory may already exist, ignore
+    // 目录可能已存在，忽略
   }
 }
 
 /**
- * Set a callback for OAuth device code events.
- * Used by the auth flow to notify when device code info is received.
+ * 设置 OAuth 设备码事件的回调。
+ * 用于在收到设备码信息时通知认证流程。
  */
 export function setDeviceCodeCallback(callback: (info: DeviceCodeInfo) => void): void {
   deviceCodeCallback = callback;
 }
 
 /**
- * Set a callback for approval responses from the web viewer.
- * Called when user clicks Approve/Reject in the browser.
+ * 设置来自 Web 查看器的审批响应回调。
+ * 当用户在浏览器中点击批准/拒绝时调用。
  *
- * @param callback - Function to handle approval response (requestId, approved, scope)
+ * @param callback - 处理审批响应的函数 (requestId, approved, scope)
  */
 export function setApprovalResponseCallback(
   callback: (requestId: string, approved: boolean, scope?: string) => void,
@@ -224,10 +224,10 @@ export function setApprovalResponseCallback(
 }
 
 /**
- * Trigger an auth event to be broadcast to web viewers.
- * Called when the CLI receives device code authorization info from the OAuth server.
+ * 触发认证事件并广播给 Web 查看器。
+ * 当 CLI 从 OAuth 服务器收到设备码授权信息时调用。
  *
- * @param info - Device code information containing user code and verification URIs
+ * @param info - 设备码信息，包含用户代码和验证 URI
  */
 export function triggerDeviceCodeAuth(info: DeviceCodeInfo): void {
   broadcastToClients({
@@ -242,18 +242,18 @@ export function triggerDeviceCodeAuth(info: DeviceCodeInfo): void {
     },
   });
 
-  // Also call the optional callback if set
+  // 如果设置了回调也调用
   if (deviceCodeCallback) {
     deviceCodeCallback(info);
   }
 }
 
 /**
- * Trigger an auth completion event to be broadcast to web viewers.
- * Called when login succeeds or fails.
+ * 触发认证完成事件并广播给 Web 查看器。
+ * 登录成功或失败时调用。
  *
- * @param success - Whether the login was successful
- * @param message - Optional message to display in the web viewer
+ * @param success - 登录是否成功
+ * @param message - 可选消息，显示在 Web 查看器中
  */
 export function triggerAuthComplete(success: boolean, message?: string): void {
   broadcastToClients({
@@ -264,12 +264,12 @@ export function triggerAuthComplete(success: boolean, message?: string): void {
 }
 
 /**
- * Trigger an approval request event to be broadcast to web viewers.
- * Called when a tool (MCP, bash, file edit, etc.) requires user approval.
+ * 触发审批请求事件并广播给 Web 查看器。
+ * 当工具（MCP、bash、文件编辑等）需要用户批准时调用。
  *
- * @param toolName - Name of the tool requesting approval (e.g., 'bash', 'write', 'mcp__server__tool')
- * @param toolInput - The input/arguments for the tool
- * @param requestId - Unique identifier for this approval request
+ * @param toolName - 请求批准的工具名称（如 'bash'、'write'、'mcp__server__tool'）
+ * @param toolInput - 工具的输入/参数
+ * @param requestId - 此审批请求的唯一标识符
  */
 export function triggerApprovalRequest(
   toolName: string,
@@ -288,12 +288,12 @@ export function triggerApprovalRequest(
 }
 
 /**
- * Trigger an approval result event to be broadcast to web viewers.
- * Called when the user approves or rejects a tool request.
+ * 触发审批结果事件并广播给 Web 查看器。
+ * 当用户批准或拒绝工具请求时调用。
  *
- * @param requestId - The approval request ID
- * @param approved - Whether the request was approved
- * @param scope - 'once' for single use, 'session' for entire session
+ * @param requestId - 审批请求 ID
+ * @param approved - 请求是否被批准
+ * @param scope - 'once' 表示单次使用，'session' 表示整个会话
  */
 export function triggerApprovalResult(
   requestId: string,
@@ -312,12 +312,12 @@ export function triggerApprovalResult(
 }
 
 // ============================================================================
-// Formatting Helpers
+// 格式化辅助函数
 // ============================================================================
 
 /**
- * Truncate a string to a maximum length, adding a notice if truncated.
- * Used to prevent excessively long content in logs.
+ * 将字符串截断到最大长度，截断时添加提示。
+ * 用于防止日志中的内容过长。
  */
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
@@ -325,8 +325,8 @@ function truncate(str: string, maxLen: number): string {
 }
 
 /**
- * Safely serialize an object to JSON string with truncation.
- * Falls back to String() if JSON.stringify fails.
+ * 将对象安全序列化为 JSON 字符串，带截断。
+ * JSON.stringify 失败时回退到 String()。
  */
 function safeStringify(obj: unknown, maxLen: number): string {
   try {
@@ -337,11 +337,11 @@ function safeStringify(obj: unknown, maxLen: number): string {
 }
 
 /**
- * Format a content part for logging.
- * Converts provider-specific content to a simplified representation.
- * - Text: kept as-is
- * - Thinking: truncated to 2000 chars
- * - Images/audio/video: replaced with placeholder
+ * 格式化内容部分用于日志记录。
+ * 将 provider 特定内容转换为简化表示。
+ * - 文本：保持原样
+ * - 思考：截断到 2000 字符
+ * - 图片/音频/视频：替换为占位符
  */
 function formatContentPart(p: ContentPart): unknown {
   if (p.type === 'text') return { type: 'text', text: p.text };
@@ -353,22 +353,22 @@ function formatContentPart(p: ContentPart): unknown {
 }
 
 /**
- * Format an array of messages for logging.
- * Each message includes role, content, and optional tool calls.
+ * 格式化消息数组用于日志记录。
+ * 每条消息包含角色、内容和可选的工具调用。
  */
 function formatMessages(messages: readonly Message[]): unknown[] {
   if (messages.length === 0) return [];
   return messages.map((m) => {
     const summary: Record<string, unknown> = { role: m.role };
 
-    // Handle content (string or array of content parts)
+    // 处理内容（字符串或内容部分数组）
     if (typeof m.content === 'string') {
       summary['content'] = m.content;
     } else if (Array.isArray(m.content)) {
       summary['content'] = m.content.map(formatContentPart);
     }
 
-    // Include tool calls if present
+    // 包含工具调用（如果有）
     if (m.toolCalls && m.toolCalls.length > 0) {
       summary['toolCalls'] = m.toolCalls.map((tc) => ({
         id: tc.id,
@@ -377,7 +377,7 @@ function formatMessages(messages: readonly Message[]): unknown[] {
       }));
     }
 
-    // Include toolCallId for tool result messages
+    // 工具结果消息包含 toolCallId
     if (m.toolCallId !== undefined) {
       summary['toolCallId'] = m.toolCallId;
     }
@@ -387,8 +387,8 @@ function formatMessages(messages: readonly Message[]): unknown[] {
 }
 
 /**
- * Format tools for logging.
- * Only includes name and description (not parameter schemas) to keep logs readable.
+ * 格式化工具列表用于日志记录。
+ * 仅包含名称和描述（不含参数 schema），保持日志可读。
  */
 function formatTools(tools: readonly Tool[]): unknown[] {
   if (tools.length === 0) return [];
@@ -396,19 +396,19 @@ function formatTools(tools: readonly Tool[]): unknown[] {
 }
 
 // ============================================================================
-// SSE Broadcasting
+// SSE 广播
 // ============================================================================
 
 /**
- * Broadcast a log entry to all connected SSE clients (web viewers).
- * Dead connections are automatically cleaned up.
+ * 向所有已连接的 SSE 客户端（Web 查看器）广播日志条目。
+ * 断开的连接会自动清理。
  *
- * @param entry - The log entry to broadcast
+ * @param entry - 要广播的日志条目
  */
 function broadcastToClients(entry: LlmLogEntry): void {
   if (sseClients.size === 0) return;
 
-  // Format as SSE message (data: <json>\n\n)
+  // 格式化为 SSE 消息 (data: <json>\n\n)
   const data = `data: ${JSON.stringify(entry)}\n\n`;
   const dead: ServerResponse[] = [];
 
@@ -416,67 +416,67 @@ function broadcastToClients(entry: LlmLogEntry): void {
     try {
       client.write(data);
     } catch {
-      // Client disconnected, mark for removal
+      // 客户端断开连接，标记待移除
       dead.push(client);
     }
   }
 
-  // Clean up dead connections
+  // 清理断开的连接
   for (const client of dead) {
     sseClients.delete(client);
   }
 }
 
 // ============================================================================
-// File Logging
+// 文件日志
 // ============================================================================
 
 /**
- * Write a line to the log file with auto-rotation.
- * If the file exceeds MAX_FILE_SIZE, it's rotated to <file>.1
+ * 将一行写入日志文件，带自动轮转。
+ * 文件超过 MAX_FILE_SIZE 时轮转到 <file>.1
  */
 function writeLine(line: string): void {
   if (!enabled) return;
 
   try {
-    // Check if rotation is needed
+    // 检查是否需要轮转
     const stat = statSync(LOG_FILE, { throwIfNoEntry: false });
     if (stat && stat.size > MAX_FILE_SIZE) {
       try {
         renameSync(LOG_FILE, ROTATED_FILE);
       } catch {
-        // Rotation failed, continue writing to current file
+        // 轮转失败，继续写入当前文件
       }
     }
 
-    // Append to log file
+    // 追加到日志文件
     appendFileSync(LOG_FILE, line, 'utf-8');
   } catch {
-    // File doesn't exist yet, create directory and try again
+    // 文件尚不存在，创建目录后重试
     try {
       mkdirSync(LOG_DIR, { recursive: true });
       appendFileSync(LOG_FILE, line, 'utf-8');
     } catch {
-      // Last resort: silently fail
+      // 最后手段：静默失败
     }
   }
 }
 
 // ============================================================================
-// Public Logging Functions
+// 公共日志函数
 // ============================================================================
 
 /**
- * Log an LLM request to file and broadcast to web viewers.
- * Called before each LLM API call.
+ * 将 LLM 请求记录到文件并广播给 Web 查看器。
+ * 每次 LLM API 调用前调用。
  *
- * @param req - Request data including provider, model, prompt, tools, and history
+ * @param req - 请求数据，包含 provider、模型、提示词、工具和历史
  */
 export function logLlmRequest(req: LlmCommunicationRequest): void {
   const timestamp = new Date().toISOString();
   const separator = '='.repeat(80);
 
-  // Build log file entry
+  // 构建日志文件条目
   let text = `\n${separator}\n`;
   text += `[${timestamp}] LLM REQUEST\n`;
   text += `Provider: ${req.provider}\n`;
@@ -494,10 +494,10 @@ export function logLlmRequest(req: LlmCommunicationRequest): void {
 
   text += '\n';
 
-  // Write to file
+  // 写入文件
   writeLine(text);
 
-  // Broadcast to web viewers
+  // 广播给 Web 查看器
   broadcastToClients({
     type: 'request',
     timestamp,
@@ -512,16 +512,16 @@ export function logLlmRequest(req: LlmCommunicationRequest): void {
 }
 
 /**
- * Log an LLM response to file and broadcast to web viewers.
- * Called after each LLM API call completes.
+ * 将 LLM 响应记录到文件并广播给 Web 查看器。
+ * 每次 LLM API 调用完成后调用。
  *
- * @param res - Response data including content, tool calls, usage, and timing
+ * @param res - 响应数据，包含内容、工具调用、用量和耗时
  */
 export function logLlmResponse(res: LlmCommunicationResponse): void {
   const timestamp = new Date().toISOString();
   const separator = '-'.repeat(80);
 
-  // Build log file entry
+  // 构建日志文件条目
   let text = `\n--- Response [${timestamp}] (${res.durationMs}ms) ---\n`;
   text += `Finish reason: ${res.finishReason ?? 'unknown'}\n`;
 
@@ -541,10 +541,10 @@ export function logLlmResponse(res: LlmCommunicationResponse): void {
 
   text += '\n';
 
-  // Write to file
+  // 写入文件
   writeLine(text);
 
-  // Broadcast to web viewers (normalize usage to simple totals)
+  // 广播给 Web 查看器（将用量标准化为简单总数）
   broadcastToClients({
     type: 'response',
     timestamp,
@@ -565,33 +565,33 @@ export function logLlmResponse(res: LlmCommunicationResponse): void {
 }
 
 // ============================================================================
-// Web Viewer (HTML/CSS/JS)
+// Web 查看器 (HTML/CSS/JS)
 // ============================================================================
 
 /**
- * Import the HTML page for the web viewer using the raw-text loader.
- * This ensures the HTML content is embedded in the bundle at build time.
+ * 使用原始文本加载器导入 Web 查看器的 HTML 页面。
+ * 确保 HTML 内容在构建时嵌入到 bundle 中。
  */
 import HTML_PAGE from './llm-viewer.html?raw';
 
 // ============================================================================
-// HTTP Server
+// HTTP 服务器
 // ============================================================================
-// HTTP Server
+// HTTP 服务器
 // ============================================================================
 
 /**
- * Handle incoming HTTP requests for the web viewer.
- * Routes:
- *   GET /events              - SSE endpoint for real-time log streaming
- *   GET /api/logs            - Raw log file content
- *   POST /api/approval/:id   - Submit approval response from web viewer
- *   GET /                    - HTML page for the web viewer
+ * 处理 Web 查看器的 HTTP 请求。
+ * 路由：
+ *   GET /events              - SSE 端点，用于实时日志流
+ *   GET /api/logs            - 原始日志文件内容
+ *   POST /api/approval/:id   - 从 Web 查看器提交审批响应
+ *   GET /                    - Web 查看器的 HTML 页面
  */
 function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
-  // SSE endpoint: clients connect here for real-time updates
+  // SSE 端点：客户端连接此端点获取实时更新
   if (url.pathname === '/events' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -599,13 +599,13 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
       'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
     });
-    res.write(':ok\n\n'); // SSE comment to keep connection alive
+    res.write(':ok\n\n'); // SSE 注释，保持连接活跃
     sseClients.add(res);
     req.on('close', () => { sseClients.delete(res); });
     return;
   }
 
-  // Approval response endpoint: web viewer submits approval decision
+  // 审批响应回调端点：Web 查看器提交审批决定
   const approvalMatch = url.pathname.match(/^\/api\/approval\/(.+)$/);
   if (approvalMatch && req.method === 'POST' && approvalMatch[1] !== undefined) {
     const requestId = approvalMatch[1];
@@ -614,7 +614,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     req.on('end', () => {
       try {
         const data = JSON.parse(body);
-        // Always call callback if set, regardless of enabled state
+        // 无论 enabled 状态如何，设置了回调就调用
         if (approvalResponseCallback) {
           approvalResponseCallback(requestId, data.approved === true, data.scope);
         }
@@ -628,7 +628,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  // CORS preflight for POST requests
+  // POST 请求的 CORS 预检
   if (url.pathname.startsWith('/api/') && req.method === 'OPTIONS') {
     res.writeHead(200, {
       'Access-Control-Allow-Origin': '*',
@@ -639,7 +639,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  // Raw log file endpoint
+  // 原始日志文件端点
   if (url.pathname === '/api/logs' && req.method === 'GET') {
     try {
       const content = readFileSync(LOG_FILE, 'utf-8');
@@ -652,28 +652,28 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  // HTML page for the web viewer
+  // Web 查看器的 HTML 页面
   if (url.pathname === '/' || url.pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(HTML_PAGE);
     return;
   }
 
-  // 404 for unknown routes
+  // 未知路由返回 404
   res.writeHead(404);
   res.end('Not found');
 }
 
 // ============================================================================
-// Server Lifecycle
+// 服务器生命周期
 // ============================================================================
 
 /**
- * Start the web viewer HTTP server.
- * Called once at startup when KIMI_CODE_LOG_LLM=1 is set.
- * Displays the URL in the terminal for easy access.
+ * 启动 Web 查看器 HTTP 服务器。
+ * 启动时设置 KIMI_CODE_LOG_LLM=1 后调用。
+ * 在终端中显示 URL 以便访问。
  *
- * @param port - Port to listen on (default: 9877)
+ * @param port - 监听端口（默认：9877）
  */
 export function startLlmLogServer(port = DEFAULT_PORT): void {
   if (httpServer !== null) return;
@@ -691,19 +691,19 @@ export function startLlmLogServer(port = DEFAULT_PORT): void {
 }
 
 /**
- * Stop the web viewer HTTP server and close all SSE connections.
- * Called on process exit or when logging is disabled.
+ * 停止 Web 查看器 HTTP 服务器并关闭所有 SSE 连接。
+ * 进程退出或禁用日志时调用。
  */
 export function stopLlmLogServer(): void {
   if (httpServer === null) return;
 
-  // Close all SSE connections
+  // 关闭所有 SSE 连接
   for (const client of sseClients) {
     try { client.end(); } catch {}
   }
   sseClients.clear();
 
-  // Close HTTP server
+  // 关闭 HTTP 服务器
   httpServer.close();
   httpServer = null;
 }

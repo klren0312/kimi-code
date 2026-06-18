@@ -1,18 +1,16 @@
 /**
- * `BridgeClientAPI` — the SDK side of the in-process RPC pair owned by
- * `CoreProcessService`. Satisfies `SDKAPI` (`@moonshot-ai/agent-core`
- * rpc/sdk-api.ts:78, via `SDKAgentAPI` at :67-72) so `KimiCore` can call
- * into it through `createRPC<CoreAPI, SDKAPI>()`. Methods route to
- * DI-resolved peer services:
+ * `BridgeClientAPI` — `CoreProcessService` 拥有的进程内 RPC 对的 SDK 侧。
+ * 实现 `SDKAPI`（`@moonshot-ai/agent-core` rpc/sdk-api.ts:78，通过
+ * `SDKAgentAPI` :67-72）使 `KimiCore` 能通过 `createRPC<CoreAPI, SDKAPI>()`
+ * 调用它。方法路由到 DI 解析的对等服务：
  *
  *   emitEvent(event)        → IEventService.publish(event)
  *   requestApproval(req)    → IApprovalService.request(req)
  *   requestQuestion(req)    → IQuestionService.request(req)
- *   toolCall(req)           → unsupported (SDK custom tool calls not used here)
+ *   toolCall(req)           → 不支持（此处不使用 SDK 自定义工具调用）
  *
- * The protocol↔in-process adapters (SCHEMAS.md §6.4 snake_case shapes, REST
- * request/response Zod validation) live at the daemon REST boundary —
- * NOT here. The peer-service interfaces stay SDK-shaped.
+ * 协议↔进程内适配器（SCHEMAS.md §6.4 snake_case 形状、REST 请求/响应
+ * Zod 验证）位于 daemon REST 边界 — 不在此处。对等服务接口保持 SDK 形状。
  */
 
 import type { ApprovalRequest, ApprovalResponse, Event, QuestionRequest, QuestionResult, SDKAPI, ToolCallRequest, ToolCallResponse } from '../../rpc';
@@ -60,9 +58,9 @@ export class BridgeClientAPI implements SDKAPI {
   async toolCall(
     request: ToolCallRequest & { sessionId: string; agentId: string },
   ): Promise<ToolCallResponse> {
-    // Mirrors `SDKRpcClientBase.toolCall` (packages/node-sdk/src/rpc.ts:577-582)
-    // — the daemon's in-process adapter does not expose SDK-side custom tool
-    // calls; the agent gets an error result it can surface upstream.
+    // 与 `SDKRpcClientBase.toolCall` 一致（packages/node-sdk/src/rpc.ts:577-582）
+    // — daemon 的进程内适配器不暴露 SDK 侧自定义工具调用；
+    // agent 会收到可向上游展示的错误结果。
     return {
       output: `SDK custom tool calls are not supported in the daemon adapter: ${request.toolCallId}`,
       isError: true,

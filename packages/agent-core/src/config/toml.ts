@@ -26,8 +26,8 @@ import { atomicWrite } from '#/utils/fs';
 import { parse as parseToml, stringify as stringifyToml, TomlError } from 'smol-toml';
 
 /* ------------------------------------------------------------------ */
-/*  Key helpers – reuse generic snake / camel conversion instead of    */
-/*  maintaining per-section *_KEY_MAP tables.                         */
+/*  键辅助函数 – 复用通用 snake/camel 转换，而不是维护                */
+/*  每个配置节的 *_KEY_MAP 表。                                        */
 /* ------------------------------------------------------------------ */
 
 function snakeToCamel(str: string): string {
@@ -39,13 +39,13 @@ function camelToSnake(str: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Read / parse                                                       */
+/*  读取 / 解析                                                         */
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_CONFIG_FILE_TEXT = `# ~/.kimi-code/config.toml
-# Runtime settings for Kimi Code.
-# This file starts empty so built-in defaults can apply.
-# Login will populate managed Kimi provider and model entries.
+# Kimi Code 运行时设置。
+# 此文件初始为空，以便应用内置默认值。
+# 登录后会填充托管的 Kimi provider 和 model 条目。
 `;
 
 export async function ensureConfigFile(filePath: string): Promise<void> {
@@ -71,10 +71,9 @@ export function readConfigFile(filePath: string): KimiConfig {
 }
 
 /**
- * Strict read for write paths (read-merge-write must never use a salvaged
- * config as its base, or the rewrite would drop the user's broken-but-fixable
- * sections). Re-throws validation failures with a short actionable message —
- * UIs surface it directly — instead of the raw validation details.
+ * 用于写路径的严格读取（读取-合并-写入绝不能使用已修复的配置作为基础，
+ * 否则重写会丢弃用户损坏但可修复的部分）。重新抛出验证失败时附带简短的
+ * 可操作消息——UI 可直接展示——而不是原始的验证详情。
  */
 export function readConfigFileForUpdate(filePath: string): KimiConfig {
   try {
@@ -92,10 +91,9 @@ export function readConfigFileForUpdate(filePath: string): KimiConfig {
 }
 
 /**
- * Load the config for runtime consumption: the on-disk config plus any model
- * synthesized from `KIMI_MODEL_*` environment variables. Use this everywhere a
- * value is assigned to the live runtime config; use the raw `readConfigFile`
- * for write-back paths so the synthesized model is never persisted.
+ * 加载运行时配置：磁盘配置加上从 `KIMI_MODEL_*` 环境变量合成的任何模型。
+ * 在所有需要将值赋给活跃运行时配置的地方使用此函数；写回路径使用原始的
+ * `readConfigFile`，以确保合成的模型永远不会被持久化。
  */
 export function loadRuntimeConfig(
   filePath: string,
@@ -106,28 +104,26 @@ export function loadRuntimeConfig(
 
 export interface RuntimeConfigLoadResult {
   readonly config: KimiConfig;
-  /** Problems in config.toml itself; non-empty means parts (or all) of the file were ignored. */
+  /** config.toml 本身的问题；非空表示文件的部分（或全部）内容被忽略。 */
   readonly fileWarnings: readonly string[];
-  /** Problems applying KIMI_MODEL_* env overrides; the overlay was skipped. */
+  /** 应用 KIMI_MODEL_* 环境覆盖时的问题；覆盖层已被跳过。 */
   readonly envWarnings: readonly string[];
   /**
-   * Set when the file is entirely unusable (unreadable, TOML syntax error, or
-   * nothing salvageable) and `config` is pure defaults. Startup fails fast on
-   * this — defaults-only means the user looks logged out, which is worse than
-   * an actionable parse error. Mid-run reloads ignore it and keep the last
-   * good config instead.
+   * 当文件完全不可用（不可读、TOML 语法错误或无法挽救）时设置，
+   * 此时 `config` 为纯默认值。启动时会快速失败——仅默认值意味着
+   * 用户看起来未登录，这比可操作的解析错误更糟糕。运行中的重新加载
+   * 会忽略它并保留上次的有效配置。
    */
   readonly fileError?: KimiError;
 }
 
 /**
- * Lenient variant of `loadRuntimeConfig` that never throws: schema errors
- * drop only the offending sections (whole entry for `providers`/`models`,
- * whole top-level section otherwise) and a bad KIMI_MODEL_* env overlay is
- * skipped, each reported as a warning. A file that cannot be used at all
- * additionally sets `fileError` so startup can fail fast while mid-run
- * reloads degrade. Runtime read paths use this; write paths must keep using
- * the strict readers so a broken file is never silently rewritten.
+ * `loadRuntimeConfig` 的宽松变体，永不抛出异常：schema 错误仅丢弃
+ * 有问题的部分（`providers`/`models` 整个条目，其他整个顶层配置节），
+ * 错误的 KIMI_MODEL_* 环境覆盖会被跳过，每个问题报告为警告。
+ * 完全不可用的文件会额外设置 `fileError`，以便启动时快速失败，
+ * 而运行中的重新加载则降级处理。运行时读取路径使用此函数；
+ * 写路径必须继续使用严格读取器，以确保损坏的文件不会被静默重写。
  */
 export function loadRuntimeConfigSafe(
   filePath: string,
@@ -154,8 +150,8 @@ export function loadRuntimeConfigSafe(
     try {
       data = parseToml(text) as Record<string, unknown>;
     } catch (error) {
-      // Same message as the strict parser, code frame included, so failing
-      // startup points straight at the offending line.
+      // 与严格解析器相同的消息，包含代码帧，以便失败的启动
+      // 直接指向有问题的行。
       fileError = new KimiError(
         ErrorCodes.CONFIG_INVALID,
         `Invalid TOML in ${filePath}: ${describeUnknownError(error)}`,
@@ -200,7 +196,7 @@ export function loadRuntimeConfigSafe(
   return { config, fileWarnings, envWarnings, fileError };
 }
 
-/** Sections keyed by user-chosen names where single entries can be dropped. */
+/** 按用户选择的名称键入的配置节，其中单个条目可以被丢弃。 */
 const ENTRY_KEYED_SECTIONS = new Set(['providers', 'models']);
 
 interface SalvageResult {
@@ -226,9 +222,8 @@ function salvageConfigData(transformed: Record<string, unknown>): SalvageResult 
         typeof entry === 'string' &&
         isPlainObject(sectionValue)
       ) {
-        // Issues on entry-keyed sections only ever drop that entry. An entry
-        // with several issues is deleted by the first one; later issues are
-        // no-ops and must not escalate to deleting the whole section.
+        // 条目键入的配置节上的问题只会丢弃该条目。一个有多个问题的
+        // 条目会被第一个问题删除；后续问题是空操作，不会升级到删除整个配置节。
         if (entry in sectionValue) {
           delete sectionValue[entry];
           dropped.push(`${camelToSnake(section)}.${entry}`);
@@ -251,8 +246,8 @@ function describeUnknownError(error: unknown): string {
 }
 
 /**
- * One-line summary of a smol-toml parse error: first message line plus the
- * line/column location, without the multi-line code-frame block.
+ * smol-toml 解析错误的单行摘要：第一行消息加上行/列位置，
+ * 不含多行代码帧块。
  */
 function describeTomlSyntaxError(error: unknown): string {
   const firstLine = describeUnknownError(error).split('\n', 1)[0] ?? '';
@@ -445,9 +440,9 @@ function transformLoopControlData(data: Record<string, unknown>): Record<string,
 /* ------------------------------------------------------------------ */
 
 export async function writeConfigFile(filePath: string, config: KimiConfig): Promise<void> {
-  // Final guard: never persist the env-synthesized model/provider to disk,
-  // even if a caller passes back the runtime config as a patch (see
-  // stripEnvModelConfig / the getConfig -> setConfig round-trip).
+  // 最终保障：永不将 env 合成的 model/provider 持久化到磁盘，
+  // 即使调用方将运行时配置作为 patch 传回（参见
+  // stripEnvModelConfig / getConfig -> setConfig 往返）。
   const validated = validateConfig(stripEnvModelConfig(config));
   await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
   await atomicWrite(filePath, `${stringifyToml(configToTomlData(validated))}\n`);
@@ -456,12 +451,12 @@ export async function writeConfigFile(filePath: string, config: KimiConfig): Pro
 export function configToTomlData(config: KimiConfig): Record<string, unknown> {
   const out = cloneRecord(config.raw);
 
-  // Strip deprecated fields
+  // 移除已废弃的字段
   delete out['default_yolo'];
   delete out['defaultYolo'];
   delete out['defaultPermissionMode'];
 
-  // Top-level scalar fields
+  // 顶层标量字段
   const scalarFields: (keyof KimiConfig)[] = [
     'defaultProvider',
     'defaultModel',
@@ -682,7 +677,7 @@ function oauthToToml(oauth: OAuthRef): Record<string, unknown> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Utilities                                                          */
+/*  工具函数                                                            */
 /* ------------------------------------------------------------------ */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -1,13 +1,12 @@
 /**
- * Tool result renderer registry.
+ * 工具结果渲染器注册表。
  *
- * Each tool name maps to a `ResultRenderer` that turns the tool's
- * `ToolResultBlockData` into renderable Components. Tools without an
- * explicit entry fall through to `renderTruncated` (the original
- * 3-line + ctrl+o behavior).
+ * 每个工具名称映射到一个 `ResultRenderer`，将工具的 `ToolResultBlockData`
+ * 转换为可渲染的组件。没有显式条目的工具会降级到 `renderTruncated`
+ * （原始的 3 行 + ctrl+o 展开行为）。
  *
- * Keep this dispatch flat — tool names live next to the renderer they
- * choose, so adding a new tool means appending one case.
+ * 保持此分发结构扁平 — 工具名称与其选择的渲染器相邻存放，
+ * 添加新工具只需追加一个 case。
  */
 
 import { readMediaSummary } from './media';
@@ -27,10 +26,9 @@ import { renderTruncated } from './truncated';
 import type { ResultRenderer } from './types';
 
 /**
- * True when a tool has no dedicated renderer and falls back to the generic
- * truncated output (every MCP tool and any tool not listed below). Used to
- * decide whether subagent sub-tool output should be previewed the same way
- * the main agent previews it.
+ * 当工具没有专用渲染器、降级到通用截断输出时返回 true
+ * （所有 MCP 工具及下方未列出的任何工具）。
+ * 用于决定子代理的子工具输出是否应按主代理相同的方式预览。
  */
 export function isGenericToolResult(toolName: string): boolean {
   return pickResultRenderer(toolName) === renderTruncated;

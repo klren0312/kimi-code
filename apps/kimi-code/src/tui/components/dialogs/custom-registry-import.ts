@@ -1,12 +1,10 @@
 /**
- * CustomRegistryImportDialog — blue rounded box that collects a custom
- * registry URL and a Bearer token before importing the registry's
- * provider entries.
+ * CustomRegistryImportDialog —— 蓝色圆角对话框，用于收集自定义注册表 URL
+ * 和 Bearer token，然后导入注册表的提供商条目。
  *
- * Geometry mirrors `ApiKeyInputDialogComponent` so the chrome stays
- * consistent with the API-key login flow. Two fields, switched with
- * Tab / Shift-Tab / Up / Down; Enter advances to the next field (and submits
- * on the last field), Esc cancels. Both fields are required.
+ * 几何布局镜像 `ApiKeyInputDialogComponent`，以保持与 API 密钥登录流程的
+ * 一致性。两个字段通过 Tab / Shift-Tab / Up / Down 切换；Enter 跳转到
+ * 下一个字段（在最后一个字段时提交），Esc 取消。两个字段均为必填。
  */
 
 import {
@@ -39,11 +37,12 @@ const FOOTER_LAST = 'Tab / ↑↓ to switch  ·  Enter to submit  ·  Esc to can
 
 type FieldId = 'url' | 'token';
 
+/** 对输入行中的可见字符进行遮罩处理（用于密码/token 输入），保留 ANSI 转义序列。 */
 function maskInputLine(raw: string): string {
   const prefix = '> ';
   if (!raw.startsWith(prefix)) return raw;
 
-  // Strip trailing padding spaces so they stay as spaces.
+  // 去除尾部填充空格，使其保持为空格。
   let end = raw.length;
   while (end > prefix.length && raw[end - 1] === ' ') {
     end--;
@@ -51,12 +50,12 @@ function maskInputLine(raw: string): string {
   const padding = raw.slice(end);
   const content = raw.slice(prefix.length, end);
 
-  // Protect ANSI escape sequences (reverse-video cursor, IME marker, etc.)
-  // while masking every other visible character.
+  // 保护 ANSI 转义序列（反显光标、IME 标记等），
+  // 同时遮罩其他所有可见字符。
   const parts = content.split(/(\u001B(?:\[[0-9;]*m|_pi:c\u0007))/);
   const maskedContent = parts
     .map((part, index) => {
-      if (index % 2 === 1) return part; // ANSI sequence
+      if (index % 2 === 1) return part; // ANSI 转义序列
       return part.replaceAll(/[^ ]/g, '•');
     })
     .join('');
@@ -81,8 +80,7 @@ export class CustomRegistryImportDialogComponent extends Container implements Fo
     super();
     this.onDone = onDone;
     if (defaultUrl.length > 0) this.urlInput.setValue(defaultUrl);
-    // Enter on the URL field advances to the token field; Enter on the token
-    // (last) field submits.
+    // URL 字段按 Enter 跳转到 token 字段；token 字段（最后一个）按 Enter 提交。
     this.urlInput.onSubmit = () => {
       this.focusField('token');
     };
@@ -213,15 +211,18 @@ export class CustomRegistryImportDialogComponent extends Container implements Fo
     return lines.map((line) => truncateToWidth(line, safeWidth, '…'));
   }
 
+  /** 切换当前活动字段（url <-> token）。 */
   private toggleField(): void {
     this.focusField(this.activeField === 'url' ? 'token' : 'url');
   }
 
+  /** 将焦点设置到指定字段。 */
   private focusField(field: FieldId): void {
     this.hint = 'none';
     this.activeField = field;
   }
 
+  /** 处理表单提交：校验必填字段并回调。 */
   private handleSubmit(): void {
     if (this.done) return;
 
@@ -243,6 +244,7 @@ export class CustomRegistryImportDialogComponent extends Container implements Fo
     this.onDone({ kind: 'ok', value: { url: urlValue, apiKey: tokenValue } });
   }
 
+  /** 取消对话框。 */
   private cancel(): void {
     if (this.done) return;
     this.done = true;

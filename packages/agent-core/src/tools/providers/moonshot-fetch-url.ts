@@ -1,16 +1,15 @@
 /**
- * MoonshotFetchURLProvider — host-side UrlFetcher.
+ * MoonshotFetchURLProvider — 宿主端 UrlFetcher。
  *
- * Flow:
- *   1. Try Moonshot coding-fetch service (POST {url}, Bearer token from a
- *      narrow token provider, Accept: text/markdown, host-provided headers).
- *   2. Moonshot 200 → return the body as `extracted` content (the
- *      service has already extracted the main page text on its side).
- *   3. Any Moonshot failure — non-200, network error, or token
- *      refresh failure — → delegate to `localFallback`, forwarding its
- *      content kind, so the LLM still gets *something* when the service
- *      is down.
- *   4. If localFallback also throws → propagate that error.
+ * 流程：
+ *   1. 尝试 Moonshot coding-fetch 服务（POST {url}，窄范围 token
+ *      提供者的 Bearer 令牌，Accept: text/markdown，宿主提供的 headers）。
+ *   2. Moonshot 200 → 将 body 作为 `extracted` 内容返回（服务端已
+ *      提取页面主文本）。
+ *   3. 任何 Moonshot 失败 ——非 200、网络错误或 token 刷新失败
+ *      ——→ 委托给 `localFallback`，转发其内容类型，使 LLM 在
+ *      服务不可用时仍能获得结果。
+ *   4. 若 localFallback 也抛出异常 → 传播该错误。
  */
 
 import { HttpFetchError, type UrlFetcher, type UrlFetchResult } from '../builtin';
@@ -51,11 +50,11 @@ export class MoonshotFetchURLProvider implements UrlFetcher {
   async fetch(url: string, options?: { toolCallId?: string }): Promise<UrlFetchResult> {
     try {
       const content = await this.fetchViaMoonshot(url, options?.toolCallId);
-      // The service returns text it has already extracted from the page.
+      // 服务返回的是已从页面提取的文本。
       return { content, kind: 'extracted' };
     } catch {
-      // Forward an explicit options object even when the caller passed
-      // none, so downstream consumers always see a defined second arg.
+      // 即使调用方未传入 options，也转发一个显式对象，
+      // 使下游消费者始终看到定义的第二个参数。
       return this.localFallback.fetch(url, options ?? {});
     }
   }
@@ -73,8 +72,7 @@ export class MoonshotFetchURLProvider implements UrlFetcher {
       try {
         detail = await response.text();
       } catch {
-        // ignore — status code alone is informative enough for the
-        // fallback path that catches this.
+        // 忽略 ——状态码本身就足以提供回退路径所需的信息。
       }
       throw new HttpFetchError(
         response.status,

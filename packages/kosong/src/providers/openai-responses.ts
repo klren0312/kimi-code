@@ -40,13 +40,12 @@ import {
 } from './tool-call-id';
 
 /**
- * Normalize the Responses API status / incomplete_details into the unified
- * {@link FinishReason} enum.
+ * 将 Responses API 的 status / incomplete_details 规范化为统一的
+ * {@link FinishReason} 枚举。
  *
- * Note: the Responses API has no `tool_calls`-style status. When a response
- * completes with `function_call` items inline the status is still
- * `'completed'`; callers detect tool calls via `message.toolCalls.length`,
- * not via finishReason.
+ * 注意：Responses API 没有 `tool_calls` 风格的状态。当响应以
+ * `function_call` 项内联完成时，status 仍为 `'completed'`；调用方
+ * 通过 `message.toolCalls.length` 检测工具调用，而非通过 finishReason。
  */
 function normalizeResponsesFinishReason(
   status: string | null | undefined,
@@ -362,9 +361,9 @@ interface ResponseToolParam {
   parameters: Record<string, unknown>;
   strict: boolean;
 }
-// The Responses API has no input type for video, and only mp3/wav audio can
-// be inlined as input_file data. Degrade such parts to placeholder text so
-// the model still learns an attachment existed instead of silently losing it.
+// Responses API 没有视频输入类型，且仅 mp3/wav 音频可以作为
+// input_file 数据内联。将此类内容降级为占位文本，以便模型仍能
+// 得知存在附件，而不是静默丢失。
 const OMITTED_AUDIO_PLACEHOLDER = '(audio omitted: unsupported audio format)';
 const OMITTED_VIDEO_PLACEHOLDER = '(video omitted: not supported by this provider)';
 
@@ -393,7 +392,7 @@ function contentPartsToInputItems(parts: ContentPart[]): unknown[] {
         items.push({ type: 'input_text', text: OMITTED_VIDEO_PLACEHOLDER });
         break;
       case 'think':
-        // Handled separately as reasoning items.
+        // 作为推理项单独处理。
         break;
     }
   }
@@ -423,11 +422,9 @@ function messageContentToFunctionOutputItems(content: ContentPart[]): unknown[] 
         items.push({ type: 'input_image', image_url: part.imageUrl.url });
         break;
       case 'audio_url': {
-        // Tool results can legitimately include audio (e.g. a TTS tool
-        // returning generated speech). The user-message path already
-        // encodes audio via `mapAudioUrlToInputItem`; without the same
-        // branch here, audio returned by a tool would be dropped on the
-        // next turn.
+        // 工具结果可以合法包含音频（例如 TTS 工具返回生成的语音）。
+        // 用户消息路径已通过 `mapAudioUrlToInputItem` 编码音频；
+        // 如果此处不做相同处理，工具返回的音频将在下一轮被丢弃。
         const mapped = mapAudioUrlToInputItem(part.audioUrl.url);
         items.push(mapped ?? { type: 'input_text', text: OMITTED_AUDIO_PLACEHOLDER });
         break;
@@ -436,7 +433,7 @@ function messageContentToFunctionOutputItems(content: ContentPart[]): unknown[] 
         items.push({ type: 'input_text', text: OMITTED_VIDEO_PLACEHOLDER });
         break;
       case 'think':
-        // Handled separately as reasoning items.
+        // 作为推理项单独处理。
         break;
     }
   }
@@ -478,15 +475,14 @@ function convertMessage(
     role = 'developer';
   }
 
-  // tool role -> function_call_output
+  // tool 角色 -> function_call_output
   if (role === 'tool') {
     const callId = message.toolCallId ?? '';
     let output: string | unknown[];
     if (toolMessageConversion === 'extract_text') {
-      // Plain-string output for backends that reject structured
-      // function_call_output. Media parts are reattached as a user message
-      // by `convertHistoryMessages`; when the result carries no text at
-      // all, point the model at that follow-up message.
+      // 针对拒绝结构化 function_call_output 的后端使用纯字符串输出。
+      // 媒体部分由 `convertHistoryMessages` 作为用户消息重新附加；
+      // 当结果不包含任何文本时，引导模型查看该后续消息。
       const text = extractText(message);
       output =
         text.length === 0 && message.content.some(isMediaPart)
@@ -506,7 +502,7 @@ function convertMessage(
 
   const result: ResponseInputItem[] = [];
 
-  // Process content parts
+  // 处理内容部分
   if (message.content.length > 0) {
     const pendingParts: ContentPart[] = [];
 
@@ -534,9 +530,9 @@ function convertMessage(
       const part = message.content[i];
       if (part === undefined) break;
       if (part.type === 'think') {
-        // Flush accumulated non-reasoning parts first
+        // 先刷新已积累的非推理部分
         flushPendingParts();
-        // Aggregate consecutive ThinkParts with the same `encrypted` value
+        // 聚合具有相同 `encrypted` 值的连续 ThinkPart
         const encryptedValue = part.encrypted;
         const summaries: unknown[] = [{ type: 'summary_text', text: part.think || '' }];
         i += 1;
@@ -559,11 +555,11 @@ function convertMessage(
       }
     }
 
-    // Handle remaining trailing non-reasoning parts
+    // 处理剩余的尾部非推理部分
     flushPendingParts();
   }
 
-  // Handle tool calls
+  // 处理工具调用
   for (const toolCall of message.toolCalls) {
     result.push({
       arguments: toolCall.arguments ?? '{}',
@@ -587,10 +583,10 @@ function convertTool(tool: Tool): ResponseToolParam {
 }
 
 /**
- * Convert the history, buffering tool-result media when `extract_text`
- * flattens tool outputs to plain strings. The buffered media items are
- * reattached as a single user message after each run of consecutive tool
- * messages — mirroring the OpenAI Chat Completions provider.
+ * 转换历史消息，在 `extract_text` 将工具输出展平为纯字符串时
+ * 缓冲工具结果中的媒体内容。缓冲的媒体项在每组连续工具消息之后
+ * 作为单条用户消息重新附加——与 OpenAI Chat Completions 提供者
+ * 的行为一致。
  */
 function convertHistoryMessages(
   history: readonly Message[],
@@ -839,10 +835,9 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           case 'response.created':
           case 'response.in_progress': {
             const responseObject = requireObjectField(chunk, 'response', type);
-            // Initial events carry the Responses API `response.id`. Record it
-            // here so callers that inspect `stream.id` before the stream
-            // completes see the actual response id rather than a later
-            // output-item identifier.
+            // 初始事件携带 Responses API 的 `response.id`。在此记录它，
+            // 以便在流完成之前检查 `stream.id` 的调用方看到的是实际的
+            // 响应 ID，而非后续的输出项标识符。
             const respId = readStringField(responseObject, 'id');
             if (respId !== undefined) {
               this._id = respId;
@@ -852,15 +847,15 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           case 'response.output_item.added': {
             const item = readResponseOutputItem(chunk['item'], `${type}.item`);
             const outputIndex = readNumberField(chunk, 'output_index');
-            // NOTE: `item.id` here is an output-item identifier, not the
-            // Responses API `response.id`. Do NOT overwrite `this._id` — it
-            // would clobber the real response id (or leave it undefined for
-            // tool-call items that have no `item.id`).
+            // 注意：此处的 `item.id` 是输出项标识符，而非
+            // Responses API 的 `response.id`。不要覆盖 `this._id`——
+            // 这会破坏真实的响应 ID（或对没有 `item.id` 的工具调用项
+            // 将其留为 undefined）。
             if (item.type === 'function_call') {
-              // The Responses API routes streaming argument deltas via
-              // `item_id`, which matches `item.id` on output_item.added.
-              // Preserve it so the generate loop can dispatch interleaved
-              // deltas across parallel function calls correctly.
+              // Responses API 通过 `item_id` 路由流式参数增量，
+              // 该值与 output_item.added 上的 `item.id` 匹配。
+              // 保留它以便生成循环能正确分发跨并行函数调用的
+              // 交错增量。
               const streamIndex = responseStreamIndex(item.itemId, outputIndex);
               setFunctionCallArguments(streamIndex, item.arguments ?? '');
               const tc: ToolCall = {
@@ -879,7 +874,7 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           case 'response.output_item.done': {
             const item = readResponseOutputItem(chunk['item'], `${type}.item`);
             const outputIndex = readNumberField(chunk, 'output_index');
-            // Same as output_item.added: `item.id` is not the response id.
+            // 与 output_item.added 相同：`item.id` 不是响应 ID。
             if (item.type === 'reasoning') {
               const thinkPart: StreamedMessagePart = { type: 'think', think: '' };
               if (item.encryptedContent !== undefined) {
@@ -893,8 +888,8 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
             break;
           }
           case 'response.function_call_arguments.delta': {
-            // `item_id` uniquely identifies the function_call output item this
-            // delta belongs to; use it as the streaming index.
+            // `item_id` 唯一标识此增量所属的 function_call 输出项；
+            // 将其用作流索引。
             const streamIndex = responseStreamIndex(
               readStringField(chunk, 'item_id'),
               readNumberField(chunk, 'output_index'),
@@ -929,8 +924,8 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           case 'response.completed':
           case 'response.incomplete': {
             const responseObject = requireObjectField(chunk, 'response', type);
-            // Final event confirms the Responses API `response.id`. Prefer
-            // it over any earlier value in case the API refines it.
+            // 最终事件确认 Responses API 的 `response.id`。
+            // 优先使用它，以防 API 对其进行了修正。
             const respId = readStringField(responseObject, 'id');
             if (respId !== undefined) {
               this._id = respId;
@@ -967,7 +962,7 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
             );
           }
           default:
-            // Unknown future event types carry no data we currently consume.
+            // 未知的未来事件类型不携带我们当前需要消费的数据。
             break;
         }
       }
@@ -996,7 +991,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
     this._baseUrl = options.baseUrl ?? 'https://api.openai.com/v1';
     this._defaultHeaders = options.defaultHeaders;
     this._model = options.model;
-    this._stream = true; // Responses API always supports streaming
+    this._stream = true; // Responses API 始终支持流式传输
     this._generationKwargs = {};
     this._toolMessageConversion = options.toolMessageConversion ?? null;
     this._httpClient = options.httpClient;
@@ -1053,7 +1048,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
       kwargs['include'] = ['reasoning.encrypted_content'];
     }
 
-    // Remove undefined values
+    // 移除 undefined 值
     for (const key of Object.keys(kwargs)) {
       if (kwargs[key] === undefined) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete

@@ -1,6 +1,6 @@
 /**
- * Welcome panel shown at the top of the TUI.
- * Renders a round-bordered box with the logo, session, model, and version.
+ * TUI 顶部显示的欢迎面板。
+ * 渲染一个带圆角边框的框，包含 logo、会话信息、模型和版本号。
  */
 
 import type { Component } from '@earendil-works/pi-tui';
@@ -42,7 +42,7 @@ export class WelcomeComponent implements Component {
     const innerWidth = Math.max(1, safeWidth - 4);
     const pad = '  ';
 
-    // Logo + side-by-side text.
+    // Logo 与并排文本。
     const logo = ['▐█▛█▛█▌', '▐█████▌'] as const;
     const logoWidth = Math.max(...logo.map((row) => visibleWidth(row)));
     const gap = '  ';

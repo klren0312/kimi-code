@@ -14,14 +14,14 @@ export function themeFromHexChannels(rHex: string, gHex: string, bHex: string): 
   const r = normalizeChannel(rHex);
   const g = normalizeChannel(gHex);
   const b = normalizeChannel(bHex);
-  // Relative luminance, sRGB-linearised. Threshold 0.5 splits dark/light
-  // backgrounds reliably for both pure-black (#000) and pure-white (#fff).
+  // 相对亮度，sRGB 线性化。阈值 0.5 能可靠地区分纯黑（#000）
+  // 和纯白（#fff）等深色/浅色背景。
   const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return luma > 0.5 ? "light" : "dark";
 }
 
 function normalizeChannel(hex: string): number {
-  // OSC 11 channels can be 1-4 hex digits. Scale into [0,1] regardless.
+  // OSC 11 通道可以是 1-4 位十六进制数字。统一缩放到 [0,1] 范围。
   const max = (1 << (hex.length * 4)) - 1;
   const value = parseInt(hex, 16);
   return Number.isFinite(value) ? value / max : 0;

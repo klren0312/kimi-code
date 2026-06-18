@@ -1,18 +1,18 @@
 /**
- * `OAuthClientProvider` implementation backed by per-MCP-server JSON files.
+ * 由每个 MCP 服务器的 JSON 文件支持的 `OAuthClientProvider` 实现。
  *
- * One provider instance per server/resource identity. The provider:
- *  - Persists OAuth tokens, the registered DCR client info, and discovery
- *    state under `<KIMI_CODE_HOME>/credentials/mcp/<key>-*.json`
- *    (mode 0600; default home is `~/.kimi-code`).
- *  - Captures the authorization URL when the SDK calls
- *    `redirectToAuthorization` — the {@link McpOAuthService} reads that field
- *    after the first `auth()` call returns `'REDIRECT'`.
- *  - Keeps the PKCE verifier and OAuth `state` in-memory (one flow per
- *    provider at a time; callers serialize via the service).
+ * 每个服务器/资源标识一个提供方实例。该提供方：
+ *  - 将 OAuth token、注册的 DCR 客户端信息和发现状态持久化到
+ *    `<KIMI_CODE_HOME>/credentials/mcp/<key>-*.json`
+ *   （模式 0600；默认 home 为 `~/.kimi-code`）。
+ *  - 当 SDK 调用 `redirectToAuthorization` 时捕获授权 URL——
+ *    {@link McpOAuthService} 在第一次 `auth()` 调用返回 `'REDIRECT'` 后
+ *    读取该字段。
+ *  - 在内存中保存 PKCE 验证器和 OAuth `state`（每个提供方同一时间
+ *    只有一个流程；调用方通过服务串行化）。
  *
- * The provider does **not** open browsers or run servers. The service is the
- * orchestrator; the provider is the persistence + flow-state shim.
+ * 提供方**不**打开浏览器或运行服务器。服务是编排器；
+ * 提供方是持久化 + 流程状态垫片。
  */
 
 import { randomBytes } from 'node:crypto';
@@ -33,18 +33,18 @@ import { JsonFileStore, canonicalMcpOAuthResource, mcpOAuthStoreKey } from './st
 const TOKENS_SUFFIX = '-tokens.json';
 const CLIENT_SUFFIX = '-client.json';
 const DISCOVERY_SUFFIX = '-discovery.json';
-// Used only when the SDK probes auth during normal transport startup and no
-// callback listener is active. Interactive login overrides it with a real URL.
+// 仅在 SDK 在正常传输启动期间探测认证且没有活跃的回调监听器时使用。
+// 交互式登录用真实 URL 覆盖它。
 const PASSIVE_REDIRECT_URI = 'http://127.0.0.1:3118/callback';
 
 export interface McpOAuthProviderOptions {
-  /** Friendly name of the MCP server; used in DCR `client_name`. */
+  /** MCP 服务器的友好名称；用于 DCR `client_name`。 */
   readonly serverName: string;
-  /** Canonical resource identity used to isolate credentials for this server entry. */
+  /** 用于隔离此服务器条目凭据的规范资源标识。 */
   readonly serverUrl: string | URL;
-  /** JSON store used for persistence. Tests inject an in-memory dir. */
+  /** 用于持久化的 JSON 存储。测试注入内存目录。 */
   readonly store: JsonFileStore;
-  /** Identifier embedded in DCR `client_name` ("kimi-code (server)"). */
+  /** 嵌入 DCR `client_name` 的标识（"kimi-code (server)"）。 */
   readonly clientLabel?: string;
 }
 
@@ -65,20 +65,20 @@ export class McpOAuthClientProvider implements OAuthClientProvider {
     this.clientLabel = options.clientLabel ?? `kimi-code (${options.serverName})`;
   }
 
-  // ── flow-scoped state, set by McpOAuthService before invoking auth() ────
+  // ── 流程作用域状态，由 McpOAuthService 在调用 auth() 前设置 ────
 
   setRedirectUrl(url: URL): void {
     this._redirectUrl = url;
   }
 
-  /** URL captured from the most recent `redirectToAuthorization` call. */
+  /** 从最近一次 `redirectToAuthorization` 调用捕获的 URL。 */
   takeAuthorizationUrl(): URL | undefined {
     const url = this._lastAuthorizationUrl;
     this._lastAuthorizationUrl = undefined;
     return url;
   }
 
-  /** OAuth `state` value generated for the most recent flow, for callback verification. */
+  /** 为最近一次流程生成的 OAuth `state` 值，用于回调验证。 */
   expectedState(): string | undefined {
     return this._state;
   }
@@ -128,9 +128,8 @@ export class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(url: URL): void {
-    // Capture the URL for the orchestrator instead of actually opening a
-    // browser. The synthetic authenticate tool surfaces it to the model so
-    // the user can complete the flow on their own schedule.
+    // 为编排器捕获 URL 而非实际打开浏览器。合成认证工具将其呈现给模型，
+    // 以便用户可以按自己的节奏完成流程。
     this._lastAuthorizationUrl = url;
   }
 

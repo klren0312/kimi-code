@@ -28,14 +28,14 @@ const OPENAI_VISION_TOOL_PREFIXES = [
   'gpt-4.5',
 ] as const;
 
-// Claude prefixes are grouped by capability set, not by version family:
-// a new model joins the group whose capability it matches (e.g. Fable sits
-// with Opus/Sonnet/Haiku 4), rather than getting a per-version group.
+// Claude 前缀按能力集分组，而非按版本系列：
+// 新模型加入与其能力匹配的组（如 Fable 与 Opus/Sonnet/Haiku 4 同组），
+// 而不是单独为其创建版本组。
 
-// Vision + tool use, no thinking (-> ANTHROPIC_VISION_TOOL_CAPABILITY).
+// 视觉 + 工具使用，无思考（-> ANTHROPIC_VISION_TOOL_CAPABILITY）。
 const CLAUDE_VISION_TOOL_PREFIXES = ['claude-3-', 'claude-3.5-', 'claude-3.7-'] as const;
 
-// Vision + tool use + thinking (-> ANTHROPIC_THINKING_VISION_TOOL_CAPABILITY).
+// 视觉 + 工具使用 + 思考（-> ANTHROPIC_THINKING_VISION_TOOL_CAPABILITY）。
 const CLAUDE_THINKING_VISION_TOOL_PREFIXES = [
   'claude-opus-4',
   'claude-sonnet-4',

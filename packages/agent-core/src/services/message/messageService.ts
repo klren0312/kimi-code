@@ -1,22 +1,19 @@
 /**
- * `MessageService` — implementation of `IMessageService`.
+ * `MessageService` — `IMessageService` 的实现。
  *
- * History source: the agent's `wire.jsonl` record log, NOT the live
- * `getContext().history`. The live history is the model's CURRENT context —
- * after a compaction it collapses into `[compaction_summary, ...tail]`, which
- * made `GET /sessions/{sid}/messages` lose everything before the fold. The
- * wire log keeps every record, so `readWireTranscript` rebuilds the full
- * transcript (the same view the TUI shows after resume). See
- * `./transcript.ts` for the exact mirrored semantics.
+ * 历史来源：agent 的 `wire.jsonl` 记录日志，而非实时的 `getContext().history`。
+ * 实时历史是模型的当前上下文——压缩后会折叠为 `[compaction_summary, ...tail]`，
+ * 导致 `GET /sessions/{sid}/messages` 丢失折叠前的所有内容。wire 日志保留每条
+ * 记录，因此 `readWireTranscript` 能重建完整的对话记录（与 TUI 在 resume 后
+ * 显示的视图相同）。具体镜像语义见 `./transcript.ts`。
  *
- * Live-tail merge: records reach disk through an async flush queue, so a
- * request hitting an actively-running session may find the wire file a few
- * records behind memory. `WireTranscript.foldedLength` is what the live
- * history length WOULD be from the file's records; anything beyond it in the
- * real `getContext().history` is the unflushed tail and gets appended.
+ * 实时尾部合并：记录通过异步刷新队列写入磁盘，因此请求命中正在运行的会话时，
+ * wire 文件可能比内存少几条记录。`WireTranscript.foldedLength` 是文件记录
+ * 对应的实时历史长度；真实 `getContext().history` 中超出此长度的部分即为
+ * 未刷新的尾部，会被追加。
  *
- * Fallback: any transcript read/parse failure degrades to the previous
- * behavior (live context history) instead of failing the endpoint.
+ * 降级策略：任何对话记录读取/解析失败都会降级到旧行为（实时上下文历史），
+ * 而非使端点失败。
  */
 
 import { stat } from 'node:fs/promises';
@@ -46,9 +43,9 @@ import {
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
-/** Agent id used for all session-scoped getContext calls (matches agent-core convention; see `core-impl.ts:788`). */
+/** 所有会话作用域 getContext 调用使用的 agent id（匹配 agent-core 约定；见 `core-impl.ts:788`）。 */
 const MAIN_AGENT_ID = 'main';
-/** Parsed wire transcripts kept in memory (one per session, LRU). */
+/** 缓存在内存中的已解析 wire 对话记录（每会话一条，LRU 淘汰）。 */
 const TRANSCRIPT_CACHE_LIMIT = 8;
 
 interface TranscriptCacheEntry {
@@ -68,7 +65,7 @@ export class MessageService extends Disposable implements IMessageService {
 
   async list(sid: string, query: MessageListQuery): Promise<PageResponse<Message>> {
     const all = await this._getProtocolMessages(sid);
-    // SCHEMAS §1.3: "缺省返回最近 N 条 (created_at desc)" — newest first.
+    // SCHEMAS §1.3: "缺省返回最近 N 条 (created_at desc)"——最新优先。
     const desc = [...all].reverse();
 
     let pivotIndex = -1;
@@ -80,10 +77,10 @@ export class MessageService extends Disposable implements IMessageService {
 
     let slice: Message[];
     if (query.before_id !== undefined && pivotIndex >= 0) {
-      // before_id = older entries → tail of the desc array, exclusive of pivot.
+      // before_id = 更早的条目 → desc 数组的尾部，不包含 pivot。
       slice = desc.slice(pivotIndex + 1);
     } else if (query.after_id !== undefined && pivotIndex >= 0) {
-      // after_id = newer entries → head of the desc array, exclusive of pivot.
+      // after_id = 更新的条目 → desc 数组的头部，不包含 pivot。
       slice = desc.slice(0, pivotIndex);
     } else {
       slice = desc;
@@ -94,7 +91,7 @@ export class MessageService extends Disposable implements IMessageService {
     const page = slice.slice(0, pageSize);
     const hasMore = slice.length > pageSize;
 
-    // Role filter is applied AFTER pagination — see header.
+    // 角色过滤在分页之后应用——见文件头注释。
     const filtered =
       query.role !== undefined ? page.filter((m) => m.role === query.role) : page;
 
@@ -102,8 +99,8 @@ export class MessageService extends Disposable implements IMessageService {
   }
 
   async get(sid: string, mid: string): Promise<Message> {
-    // Resolve the session first: unknown sid must map to 40401 even when the
-    // message id is malformed or belongs to another session (40403).
+    // 先解析会话：未知 sid 必须映射为 40401，即使消息 id 格式错误或属于
+    // 其他会话（40403）。
     const all = await this._getProtocolMessages(sid);
     const parsed = parseMessageId(mid);
     if (parsed === undefined || parsed.sessionId !== sid) {
@@ -117,8 +114,8 @@ export class MessageService extends Disposable implements IMessageService {
   }
 
   /**
-   * Confirms the session exists and returns its summary (for the timestamp
-   * base). Throws `SessionNotFoundError` (→ 40401) on miss.
+   * 确认会话存在并返回其摘要（用于时间戳基准）。
+   * 未找到时抛出 `SessionNotFoundError`（→ 40401）。
    */
   private async _requireSession(sid: string): Promise<SessionSummary> {
     const all = await this.core.rpc.listSessions({});
@@ -130,9 +127,9 @@ export class MessageService extends Disposable implements IMessageService {
   }
 
   /**
-   * Full transcript mapped to protocol messages. Ids stay index-derived;
-   * `created_at` uses the wire record time when known, nudged to stay
-   * strictly increasing so cursor consumers keep a stable total order.
+   * 完整对话记录映射为协议消息。id 保持索引派生；
+   * `created_at` 在已知时使用 wire 记录时间，调整为严格递增
+   * 以使游标消费者保持稳定的全序关系。
    */
   private async _getProtocolMessages(sid: string): Promise<Message[]> {
     const summary = await this._requireSession(sid);
@@ -147,10 +144,9 @@ export class MessageService extends Disposable implements IMessageService {
   }
 
   /**
-   * Wire transcript + unflushed live tail; falls back to the live context
-   * history alone when the wire file is unreadable. Ordering matters: the
-   * file is read BEFORE `getContext` so the in-memory history is always at
-   * least as new as the file snapshot and the tail merge can only append.
+   * wire 对话记录 + 未刷新的实时尾部；当 wire 文件不可读时降级为
+   * 仅实时上下文历史。读取顺序很重要：文件在 `getContext` 之前读取，
+   * 以确保内存中的历史始终至少与文件快照一样新，尾部合并只能追加。
    */
   private async _getTranscriptEntries(
     sid: string,
@@ -183,9 +179,9 @@ export class MessageService extends Disposable implements IMessageService {
   }
 
   /**
-   * Read + reduce the wire log, cached on `(size, mtimeMs)` so repeated
-   * pagination calls do not re-parse an unchanged file. Returns `undefined`
-   * when the file is missing or unreadable (caller falls back to live view).
+   * 读取并 reduce wire 日志，按 `(size, mtimeMs)` 缓存，避免分页调用
+   * 重复解析未变更的文件。文件缺失或不可读时返回 `undefined`
+   *（调用方降级到实时视图）。
    */
   private async _readTranscriptCached(
     sid: string,
@@ -196,7 +192,7 @@ export class MessageService extends Disposable implements IMessageService {
       const info = await stat(wirePath);
       const cached = this.transcriptCache.get(sid);
       if (cached !== undefined && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
-        // Refresh LRU position.
+        // 刷新 LRU 位置。
         this.transcriptCache.delete(sid);
         this.transcriptCache.set(sid, cached);
         return cached.transcript;
@@ -216,7 +212,7 @@ export class MessageService extends Disposable implements IMessageService {
   }
 }
 
-// Self-register under the global singleton registry. All ctor deps are
-// `@I…`-injected; `staticArguments = []`. `supportsDelayedInstantiation =
-// false` preserves current reverse-dispose semantics.
+// 在全局单例注册表中自行注册。所有构造函数依赖均通过 `@I…` 注入；
+// `staticArguments = []`。`supportsDelayedInstantiation = false`
+// 保持当前的反向 dispose 语义。
 registerSingleton(IMessageService, MessageService, InstantiationType.Delayed);

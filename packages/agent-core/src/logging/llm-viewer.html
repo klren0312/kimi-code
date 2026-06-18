@@ -77,6 +77,8 @@
   .approval-box .btn-reject { background: #da3633; border-color: #f85149; color: #fff; }
   .approval-box .btn-reject:hover { background: #f85149; }
   .approval-box .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #overlay { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; padding: 56px 20px 0; pointer-events: none; }
+  #overlay > * { pointer-events: auto; max-width: 600px; width: 100%; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
   #empty { text-align: center; padding: 60px 20px; color: #484f58; }
   #empty h2 { font-size: 16px; margin-bottom: 8px; color: #8b949e; }
 </style>
@@ -90,6 +92,7 @@
     <button onclick="clearLogs()">Clear</button>
   </div>
 </div>
+<div id="overlay"></div>
 <div id="container">
   <div id="empty">
     <h2>Waiting for LLM communication...</h2>
@@ -98,6 +101,7 @@
 </div>
 <script>
 const container = document.getElementById('container');
+const overlay = document.getElementById('overlay');
 const status = document.getElementById('status');
 const empty = document.getElementById('empty');
 const autoScroll = document.getElementById('autoScroll');
@@ -156,8 +160,7 @@ function renderAuthPrompt(entry) {
     + esc(entry.auth.verificationUri) + '</a></div>'
     + '<p style="color:#8b949e;font-size:12px;margin:8px 0">Click the link above, then enter the code</p>'
     + '<div class="auth-timer" id="auth-timer">Waiting for authorization...</div>';
-  container.insertBefore(div, container.firstChild);
-  if (autoScroll.checked) div.scrollIntoView({ behavior: 'smooth' });
+  overlay.appendChild(div);
 
   // Start countdown timer if expiration is known
   if (entry.auth.expiresIn) {
@@ -254,12 +257,11 @@ function renderApprovalRequest(entry) {
   div.appendChild(statusDiv);
   div.appendChild(btnGroup);
 
-  container.insertBefore(div, container.firstChild);
-  if (autoScroll.checked) div.scrollIntoView({ behavior: 'smooth' });
+  overlay.appendChild(div);
 }
 
 /**
- * Submit an approval response to the CLI via HTTP POST.
+ * Submit the user's approval decision to the server.
  */
 async function submitApproval(requestId, approved, scope) {
   const btns = document.getElementById('approval-btns-' + requestId);
@@ -404,7 +406,7 @@ function renderResponse(res) {
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 /** Clear all log entries from the page */
-function clearLogs() { container.innerHTML = ''; entryCount = 0; }
+function clearLogs() { container.innerHTML = ''; overlay.innerHTML = ''; entryCount = 0; }
 
 // Initialize SSE connection on page load
 connect();

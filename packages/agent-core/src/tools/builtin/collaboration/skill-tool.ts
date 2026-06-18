@@ -1,14 +1,12 @@
 /**
- * SkillTool — invoke a registered skill.
+ * SkillTool — 调用已注册的技能。
  *
- * Collaboration tool that lets the LLM proactively invoke an inline
- * registered skill. Inline skills record their activation through the
- * owning agent; non-inline skill types are intentionally not model-invocable
- * in the v1 default runtime.
+ * 协作工具，允许 LLM 主动调用内联注册的技能。内联技能通过
+ * 所属代理记录其激活；在 v1 默认运行时中，非内联技能类型
+ * 不允许模型调用。
  *
- * Anti-loop: `MAX_SKILL_QUERY_DEPTH` caps Skill→Skill recursion so a
- * skill that re-invokes itself (or chains into another) cannot recurse
- * without bound.
+ * 防循环：`MAX_SKILL_QUERY_DEPTH` 限制 Skill→Skill 递归深度，
+ * 防止技能重新调用自身（或链式调用另一个技能）时无限递归。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -55,12 +53,12 @@ export const SkillToolInputSchema: z.ZodType<SkillToolInput> = z.object({
 
 export interface SkillToolOptions {
   /**
-   * Current inline skill recursion depth.
+   * 当前内联技能递归深度。
    */
   readonly queryDepth?: number;
   /**
-   * Alias for `queryDepth`. Kept so older call sites can seed the
-   * inline recursion depth without knowing the internal field name.
+   * `queryDepth` 的别名。保留以便旧调用方在不知道内部字段名的情况下
+   * 设置内联递归深度。
    */
   readonly initialQueryDepth?: number;
 }
@@ -95,11 +93,10 @@ export class SkillTool implements BuiltinTool<SkillToolInput> {
   }
 
   private async execution(args: SkillToolInput): Promise<ExecutableToolResult> {
-    // Recursion hard cap. Once `currentDepth` has reached
-    // MAX_SKILL_QUERY_DEPTH, firing another Skill call would push the
-    // child to depth+1 which violates the invariant. Throw a structured
-    // error (rather than a soft tool-error) so Runtime can distinguish
-    // "LLM mis-dispatched" from "safety net fired".
+    // 递归硬上限。一旦 `currentDepth` 达到 MAX_SKILL_QUERY_DEPTH，
+    // 再发起 Skill 调用会使子级深度变为 depth+1，违反不变量。
+    // 抛出结构化错误（而非软工具错误）以便 Runtime 能区分
+    // "LLM 错误分派" 和 "安全网触发"。
     const currentDepth = this.options.initialQueryDepth ?? this.options.queryDepth ?? 0;
     if (currentDepth >= MAX_SKILL_QUERY_DEPTH) {
       throw new NestedSkillTooDeepError(MAX_SKILL_QUERY_DEPTH, args.skill);
@@ -114,8 +111,8 @@ export class SkillTool implements BuiltinTool<SkillToolInput> {
       return errorResult(`Skill "${args.skill}" not found in the current skill listing.`);
     }
     if (skill.metadata.disableModelInvocation === true) {
-      // Keep the exact wording "can only be triggered by the user" so
-      // contract audits and integration tests stay deterministic.
+      // 保持措辞 "can only be triggered by the user" 不变，以便
+      // 合约审计和集成测试保持确定性。
       return errorResult(
         `Skill "${args.skill}" can only be triggered by the user (model invocation is disabled).`,
       );

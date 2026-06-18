@@ -1,15 +1,14 @@
 /**
- * rg-locator — hybrid ripgrep binary resolution.
+ * rg-locator ——混合 ripgrep 二进制文件解析。
  *
- * Lookup order (first hit wins):
- *   1. System PATH (`which rg`) — fastest, respects developer setup
- *   2. Bundled vendor binary (hook; not wired yet — `getVendorRgPath` is a stub)
- *   3. `<KIMI_CODE_HOME>/bin/rg` — persistent cache for this app.
- *   4. CDN download to <KIMI_CODE_HOME>/bin/ — one-off bootstrap
+ * 查找顺序（首次命中即返回）：
+ *   1. 系统 PATH（`which rg`）——最快，尊重开发者环境配置
+ *   2. 内置供应商二进制文件（钩子；尚未接入——`getVendorRgPath` 是存根）
+ *   3. `<KIMI_CODE_HOME>/bin/rg` ——本应用的持久缓存。
+ *   4. CDN 下载到 <KIMI_CODE_HOME>/bin/ ——一次性引导
  *
- * If steps 1-4 all fail, callers receive a structured error they can
- * turn into a user-facing "install ripgrep" hint instead of the naked
- * `spawn rg ENOENT`.
+ * 若步骤 1-4 全部失败，调用方收到结构化错误，可将其转换为面向用户的
+ * "安装 ripgrep" 提示，而非裸露的 `spawn rg ENOENT`。
  */
 
 import { createHash } from 'node:crypto';
@@ -57,17 +56,16 @@ export interface RgResolution {
 export interface EnsureRgPathOptions {
   readonly shareDir?: string | undefined;
   /**
-   * Cancels this caller's wait. A shared bootstrap download that is already in
-   * progress may continue so other callers can still use the same result.
+   * 取消此调用方的等待。已在进行中的共享引导下载可能继续执行，
+   * 使其他调用方仍可使用同一结果。
    */
   readonly signal?: AbortSignal | undefined;
 }
 
 /**
- * Resolve the absolute path to a usable `rg` binary, downloading it
- * into `<shareDir>/bin/` if necessary. Multiple concurrent callers are
- * serialized by a module-level lock so the download happens at most
- * once per process.
+ * 解析可用 `rg` 二进制文件的绝对路径，必要时下载到
+ * `<shareDir>/bin/`。多个并发调用通过模块级锁序列化，
+ * 使下载在每个进程中最多执行一次。
  */
 export async function ensureRgPath(options: EnsureRgPathOptions = {}): Promise<RgResolution> {
   options.signal?.throwIfAborted();
@@ -86,8 +84,7 @@ async function resolveRgPath(
 }
 
 /**
- * Pure-lookup variant for test harnesses that want to assert on the
- * resolution order without triggering a real download.
+ * 纯查找变体，用于希望断言解析顺序而不触发实际下载的测试环境。
  */
 export async function findExistingRg(shareDir: string): Promise<RgResolution | undefined> {
   const binName = rgBinaryName();
@@ -145,7 +142,7 @@ async function whichRg(): Promise<string | undefined> {
       const st = await stat(candidate);
       if (st.isFile()) return candidate;
     } catch {
-      /* not here, try next */
+      /* 不在此处，尝试下一个 */
     }
   }
   return undefined;
@@ -160,7 +157,7 @@ async function isExecutableFile(p: string): Promise<boolean> {
   }
 }
 
-/** @internal for tests — rust-style `<arch>-<vendor>-<os>` target triple. */
+/** @internal 供测试使用 ——rust 风格 `<arch>-<vendor>-<os>` 目标三元组。 */
 export function detectTarget(): string | undefined {
   const arch = process.arch === 'x64' ? 'x86_64' : process.arch === 'arm64' ? 'aarch64' : undefined;
   if (arch === undefined) return undefined;
@@ -181,9 +178,9 @@ async function downloadAndInstallRg(shareDir: string): Promise<string> {
     );
   }
 
-  // Windows ripgrep releases ship as `.zip`; macOS / Linux as `.tar.gz`.
-  // The extraction branch inside the try block handles the format-specific
-  // unpack; the fetch + download-to-tmp pipeline is identical.
+  // Windows ripgrep 发行版为 `.zip`；macOS / Linux 为 `.tar.gz`。
+  // try 块内的解压分支处理格式特定的解包；
+  // fetch + 下载到临时目录的管道是相同的。
   const isWindows = target.includes('windows');
   const archiveExt = isWindows ? 'zip' : 'tar.gz';
   const archiveName = `ripgrep-${RG_VERSION}-${target}.${archiveExt}`;
@@ -215,21 +212,21 @@ async function downloadAndInstallRg(shareDir: string): Promise<string> {
       throw new Error(`Failed to download ripgrep: HTTP ${String(resp.status)} ${resp.statusText}`);
     }
     const write = createWriteStream(archivePath);
-    // Readable.fromWeb is typed as accepting a web ReadableStream; the
-    // undici/fetch body matches that shape at runtime.
+    // Readable.fromWeb 的类型签名接受 web ReadableStream；
+    // undici/fetch body 在运行时匹配该形状。
     await pipeline(Readable.fromWeb(resp.body as never), write);
     await verifyArchiveChecksum(archivePath, archiveName, expectedSha256);
 
     if (isWindows) {
       await extractRgFromZip(archivePath, destination);
-      // Windows does not need `chmod +x`: execution is gated by the
-      // `.exe` extension + NTFS ACLs, which are already correct.
+      // Windows 不需要 `chmod +x`：执行权限由 `.exe` 扩展名
+      // + NTFS ACL 控制，这些已经正确设置。
     } else {
       const extractDir = join(tmp, 'extract');
       await mkdir(extractDir, { recursive: true });
-      // tar.gz uses hard-coded prefix because the CDN's tar.gz layout is stable
-      // and known from upstream releases; zip branch uses basename matching as
-      // a looser contract so a CDN prefix change doesn't silently fall through.
+      // tar.gz 使用硬编码前缀，因为 CDN 的 tar.gz 布局是稳定的，
+      // 且已从上游发行版获知；zip 分支使用 basename 匹配作为更宽松的
+      // 契约，使 CDN 前缀变更不会静默失败。
       await extractTar({
         file: archivePath,
         cwd: extractDir,
@@ -259,7 +256,7 @@ async function downloadAndInstallRg(shareDir: string): Promise<string> {
   }
 }
 
-/** @internal for tests — fail closed before extracting downloaded bytes. */
+/** @internal 供测试使用 ——在提取下载字节前进行关闭失败校验。 */
 export async function verifyArchiveChecksum(
   archivePath: string,
   archiveName: string,
@@ -277,12 +274,11 @@ export async function verifyArchiveChecksum(
 }
 
 /**
- * Read the downloaded `.zip` at `archivePath`, find the `rg.exe` entry
- * (basename match), and stream it out to `destination`. Throws with
- * the shared "CDN content may have
- * changed" sentinel when the archive holds no matching entry — same
- * failure semantics as the tar.gz path's `existsSync(extracted)` gate
- * so callers see a single actionable message.
+ * 读取已下载的 `.zip`（`archivePath`），查找 `rg.exe` 条目
+ * （basename 匹配），并将其流式输出到 `destination`。当归档中
+ * 无匹配条目时抛出共享的"CDN 内容可能已更改"哨兵错误 ——与
+ * tar.gz 路径的 `existsSync(extracted)` 门控相同的失败语义，
+ * 使调用方看到单一可操作的消息。
  */
 export async function extractRgFromZip(archivePath: string, destination: string): Promise<void> {
   const buf = await readFile(archivePath);
@@ -295,9 +291,9 @@ export async function extractRgFromZip(archivePath: string, destination: string)
       }
       let found = false;
       const onEntry = (entry: Entry): void => {
-        // Match on basename (not full path) — keeps the matcher robust
-        // against CDN repackaging tweaks (e.g. an unexpected
-        // `ripgrep-X.Y.Z-TARGET/` prefix change).
+        // 按 basename（非全路径）匹配 ——保持匹配器对
+        // CDN 重新打包调整（如意外的 `ripgrep-X.Y.Z-TARGET/`
+        // 前缀变更）的健壮性。
         if (basename(entry.fileName) !== binName) {
           zipfile.readEntry();
           return;
@@ -326,10 +322,9 @@ export async function extractRgFromZip(archivePath: string, destination: string)
       };
       zipfile.on('entry', onEntry);
       zipfile.on('end', () => {
-        // With lazyEntries:true, `end` fires only after readEntry() is called
-        // for every central-directory entry. We stop calling readEntry() once
-        // `found` becomes true, so `end` only reaches this branch on the
-        // not-found path.
+        // 使用 lazyEntries:true 时，`end` 仅在对中央目录的每个条目
+        // 调用 readEntry() 后才触发。`found` 变为 true 后停止调用
+        // readEntry()，因此 `end` 仅在未找到路径上到达此分支。
         if (!found) {
           reject(
             new Error(
@@ -348,8 +343,8 @@ export async function extractRgFromZip(archivePath: string, destination: string)
 }
 
 /**
- * User-facing error message to show when `ensureRgPath` throws. Kept
- * in one place so the Grep / Glob / Bash plumbing can reuse it.
+ * `ensureRgPath` 抛出异常时显示的面向用户的错误消息。集中保存，
+ * 使 Grep / Glob / Bash 管道可以复用。
  */
 export function rgUnavailableMessage(cause: unknown): string {
   const detail =

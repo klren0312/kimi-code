@@ -14,9 +14,8 @@ export interface ShellExecutionOptions {
   readonly expanded?: boolean;
   readonly showCommand?: boolean;
   /**
-   * Max command lines to render. `undefined` means no cap — used by the
-   * ctrl+o expanded view so the user can see the full multi-line command
-   * even when the header preview was truncated.
+   * 最大命令行渲染数。`undefined` 表示无上限——用于 ctrl+o 展开视图，
+   * 使用户即使在头部预览被截断时也能查看完整的多行命令。
    */
   readonly commandPreviewLines?: number;
   readonly resultPreviewLines?: number;
@@ -82,9 +81,8 @@ export const shellExecutionResultRenderer: ResultRenderer = (
     command: typeof toolCall.args['command'] === 'string' ? toolCall.args['command'] : '',
     result,
     expanded: ctx.expanded,
-    // Header truncates long bash commands to 60 chars. When the user expands
-    // the card with ctrl+o, reveal the full command (no line cap) so they
-    // can read what actually ran.
+    // 头部将长 bash 命令截断为 60 个字符。当用户通过 ctrl+o 展开卡片时，
+    // 显示完整命令（无行数上限），以便用户查看实际执行的内容。
     showCommand: ctx.expanded,
     commandPreviewLines: undefined,
   }),

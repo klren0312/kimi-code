@@ -31,6 +31,7 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
 
   private readonly opts: ExperimentsSelectorOptions;
   private readonly list: SearchableList<ExperimentalFeatureState>;
+  /** 功能开关的草稿变更，提交时与原始状态对比生成变更列表。 */
   private readonly draft = new Map<ExperimentalFeatureState['id'], boolean>();
 
   constructor(opts: ExperimentsSelectorOptions) {
@@ -114,6 +115,7 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
     return lines.map((line) => truncateToWidth(line, width, ELLIPSIS));
   }
 
+  /** 切换指定功能的草稿启用状态。 */
   private toggleDraft(feature: ExperimentalFeatureState): void {
     if (isLocked(feature)) return;
 
@@ -125,14 +127,17 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
     this.draft.set(feature.id, enabled);
   }
 
+  /** 获取功能的有效启用状态（优先使用草稿值，否则使用原始值）。 */
   private effectiveEnabled(feature: ExperimentalFeatureState): boolean {
     return this.draft.get(feature.id) ?? feature.enabled;
   }
 
+  /** 检查功能的草稿是否与原始状态不同。 */
   private isDraftChanged(feature: ExperimentalFeatureState): boolean {
     return this.effectiveEnabled(feature) !== feature.enabled;
   }
 
+  /** 收集所有已变更的草稿项。 */
   private draftChanges(): ExperimentalFeatureDraftChange[] {
     const changes: ExperimentalFeatureDraftChange[] = [];
     for (const feature of this.opts.features) {
@@ -143,6 +148,7 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
     return changes;
   }
 
+  /** 渲染"应用变更并重新加载"按钮。 */
   private renderApplyButton(): string {
     const changes = this.draftChanges();
     const count = changes.length;
@@ -158,6 +164,7 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
     return ` ${button}  ${summaryText}`;
   }
 
+  /** 渲染单个实验功能条目。 */
   private renderFeature(
     feature: ExperimentalFeatureState,
     selected: boolean,
@@ -184,10 +191,12 @@ export class ExperimentsSelectorComponent extends Container implements Focusable
   }
 }
 
+/** 检查功能是否被环境变量锁定（不可修改）。 */
 function isLocked(feature: ExperimentalFeatureState): boolean {
   return feature.source === 'env' || feature.source === 'master-env';
 }
 
+/** 生成功能的详细信息文本（ID、来源、环境变量名）。 */
 function featureDetail(feature: ExperimentalFeatureState): string {
   const source = sourceLabel(feature);
   if (feature.source === 'env' || feature.source === 'master-env') {
@@ -196,6 +205,7 @@ function featureDetail(feature: ExperimentalFeatureState): string {
   return `id ${feature.id} · ${source} · ${feature.env}`;
 }
 
+/** 根据功能来源返回对应的中文标签。 */
 function sourceLabel(feature: ExperimentalFeatureState): string {
   switch (feature.source) {
     case 'master-env':
@@ -209,6 +219,7 @@ function sourceLabel(feature: ExperimentalFeatureState): string {
   }
 }
 
+/** 将文本按指定宽度自动换行。 */
 function wrapText(text: string, width: number): string[] {
   const maxWidth = Math.max(1, width);
   const words = text

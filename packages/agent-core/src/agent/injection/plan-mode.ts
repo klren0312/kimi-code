@@ -1,3 +1,13 @@
+/**
+ * 计划模式注入器。
+ *
+ * 管理周期性的系统提醒，强制只读行为并引导模型完成计划模式工作流
+ * （理解 → 设计 → 审查 → 编写计划 → 退出）。处理进入、退出和上下文恢复的
+ * 状态转换，并通过去重机制避免重复注入。
+ *
+ * @module plan-mode
+ */
+
 import type { PlanFilePath } from '../plan';
 import { DynamicInjector } from './injector';
 
@@ -5,23 +15,49 @@ const PLAN_MODE_DEDUP_MIN_TURNS = 2;
 const PLAN_MODE_FULL_REFRESH_TURNS = 5;
 
 /**
- * Plan-mode reminder variants.
+ * 计划模式提醒变体。
  *
- * `reentry` is used once when a restored planning session already has plan
- * content. `full` is used for the first reminder and periodic refreshes.
- * `sparse` keeps the read-only invariant visible between full reminders.
+ * - `full` — 用于首次提醒以及每隔 {@link PLAN_MODE_FULL_REFRESH_TURNS} 个
+ *   助手轮次的周期性刷新。
+ * - `sparse` — 在完整提醒之间的轻量级保活提醒，在经过
+ *   {@link PLAN_MODE_DEDUP_MIN_TURNS} 个助手轮次后开始触发。
+ * - `reentry` — 当恢复的规划会话已包含计划内容时使用一次，
+ *   使模型在继续之前先读取现有计划。
  */
 export type PlanModeVariant = 'full' | 'sparse' | 'reentry';
 
+/**
+ * 向代理上下文注入计划模式提醒。
+ *
+ * 当计划模式激活时，注入器会周期性地追加系统提醒，强制只读行为并引导模型
+ * 完成"理解 → 设计 → 审查 → 编写计划 → 退出"的工作流。提醒经过去重处理：
+ * 进入时注入一次完整提醒，之后每隔 {@link PLAN_MODE_FULL_REFRESH_TURNS} 个
+ * 助手轮次注入一次完整提醒，中间穿插轻量级的稀疏提醒。当恢复的会话已包含
+ * 计划内容时，使用重入提醒。
+ *
+ * 退出计划模式时注入一次性的退出提醒以解除只读限制。上下文清除时，
+ * 注入器会记住计划模式是否处于激活状态，以便发出重入提醒而非全新的完整提醒。
+ */
 export class PlanModeInjector extends DynamicInjector {
   protected override readonly injectionVariant = 'plan_mode';
+
+  /** 最近一次上下文清除前计划模式是否处于激活状态。 */
   private wasActive = false;
 
+  /**
+   * 记住上下文清除前计划模式是否处于激活状态，以便下一次 `getInjection`
+   * 调用可以发出重入提醒，而非将其视为全新的计划模式进入。
+   */
   override onContextClear(): void {
     super.onContextClear();
     this.wasActive = this.agent.planMode.isActive;
   }
 
+  /**
+   * 为当前周期生成适当的计划模式提醒。处理三种状态转换：
+   * 进入计划模式（完整或重入提醒）、保持计划模式（根据轮次节奏返回
+   * 完整、稀疏或 null）、退出计划模式（一次性退出提醒）。
+   */
   override async getInjection(): Promise<string | undefined> {
     const { isActive, planFilePath } = this.agent.planMode;
     if (!isActive) {
@@ -49,6 +85,10 @@ export class PlanModeInjector extends DynamicInjector {
         : reentryReminder(planFilePath);
   }
 
+  /**
+   * 根据自上次注入以来的助手轮次数，决定注入哪种提醒变体。如果轮次数太少，
+   * 连稀疏提醒都不值得触发，则返回 `null`（跳过），以防止连续快速的重复注入。
+   */
   protected getVariant(): PlanModeVariant | null {
     if (this.injectedAt === null) return 'full';
     const history = this.agent.context.history;
@@ -69,6 +109,10 @@ export class PlanModeInjector extends DynamicInjector {
     return null;
   }
 
+  /**
+   * 检查代理的计划文件是否已有内容，用于在计划模式于当前上下文中首次激活时
+   * 决定使用完整进入提醒还是重入提醒。
+   */
   private async hasCurrentPlanContent(): Promise<boolean> {
     try {
       const data = await this.agent.planMode.data();

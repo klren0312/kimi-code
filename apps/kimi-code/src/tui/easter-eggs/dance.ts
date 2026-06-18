@@ -1,12 +1,10 @@
 /**
- * `/dance` easter egg — everything it needs lives in this one file: the
- * rainbow text coloring, the animation state machine, and the command handler.
- * Removing the feature is "delete this file + its import sites".
+ * `/dance` 彩蛋——所需的一切都在这个文件中：彩虹文字着色、
+ * 动画状态机和命令处理器。移除此功能即"删除此文件及其导入位置"。
  *
- * It is deliberately NOT registered in BUILTIN_SLASH_COMMANDS, so it stays out
- * of `/help` and autocomplete; `executeSlashCommand` calls the handler as a
- * fallback after builtin/skill resolution, so a real command or a same-named
- * skill always wins.
+ * 故意不注册到 BUILTIN_SLASH_COMMANDS，因此不出现在 `/help` 和自动补全中；
+ * `executeSlashCommand` 在内置/技能解析之后作为回退调用处理器，
+ * 因此真正的命令或同名技能总是优先。
  */
 
 import chalk from 'chalk';
@@ -16,9 +14,9 @@ import type { SlashCommandHost } from '../commands/dispatch';
 import type { ParsedSlashInput } from '../commands/types';
 import { currentTheme } from '../theme';
 
-/** Frame interval for the rainbow flow animation. */
+/** 彩虹流动动画的帧间隔。 */
 export const DANCE_FRAME_MS = 110;
-/** How long the rainbow flows before settling (fading out, or freezing). */
+/** 彩虹在定格（淡出或冻结）前流动的持续时间。 */
 export const DANCE_FLOW_MS = 3000;
 
 const DARK_RAINBOW = [
@@ -48,7 +46,7 @@ function getDanceRainbowPalette(): readonly [string, ...string[]] {
   return currentTheme.palette.text === '#1A1A1A' ? LIGHT_RAINBOW : DARK_RAINBOW;
 }
 
-/** Paint a string character-by-character through a palette, skipping spaces. */
+/** 逐字符通过调色板着色字符串，跳过空格。 */
 export function rainbowText(
   text: string,
   colors: readonly [string, ...string[]],
@@ -67,11 +65,11 @@ export function rainbowText(
     .join('');
 }
 
-/** Read-only view of the dance state for components that only render it. */
+/** 仅用于渲染的组件的舞蹈状态只读视图。 */
 export interface RainbowDanceView {
-  /** Whether consumers should paint themselves in rainbow at all. */
+  /** 消费者是否应使用彩虹色着色。 */
   readonly colored: boolean;
-  /** Palette offset, advancing while the rainbow flows. */
+  /** 调色板偏移量，在彩虹流动时递增。 */
   readonly phase: number;
 }
 
@@ -135,10 +133,9 @@ export function renderDanceFooterModel(modelLabel: string): string {
 }
 
 /**
- * Drives the rainbow: a single timer advances a shared `phase` and asks the UI
- * to repaint. Lives independently of any component, so the welcome banner
- * scrolling away or being rebuilt never disturbs the animation. Three states:
- * off (default), flowing, and a frozen static rainbow.
+ * 驱动彩虹动画：单个定时器推进共享的 `phase` 并请求 UI 重绘。
+ * 独立于任何组件存在，因此欢迎横幅的滚动或重建不会干扰动画。
+ * 三种状态：关闭（默认）、流动、冻结的静态彩虹。
  */
 export class RainbowDance implements RainbowDanceController {
   private currentPhase = 0;
@@ -160,16 +157,16 @@ export class RainbowDance implements RainbowDanceController {
   }
 
   /**
-   * Flow the rainbow for `DANCE_FLOW_MS`, then settle:
-   *  - `hold: false` → fade back to the default (uncolored) banner.
-   *  - `hold: true`  → freeze into a static rainbow that stays on.
+   * 让彩虹流动 `DANCE_FLOW_MS`，然后定格：
+   *  - `hold: false` → 淡出回默认（无色）横幅。
+   *  - `hold: true`  → 冻结为持续显示的静态彩虹。
    */
   start(opts: { hold: boolean }): void {
     this.clearTimers();
     this.isColored = true;
     this.frameTimer = setInterval(() => {
-      // Phase just increments; rainbowText() takes it modulo the *current*
-      // palette length, so the dance never needs to know the palette size.
+      // Phase 只是递增；rainbowText() 会对*当前*调色板长度取模，
+      // 因此动画无需知道调色板大小。
       this.currentPhase += 1;
       this.requestRender();
     }, DANCE_FRAME_MS);
@@ -179,7 +176,7 @@ export class RainbowDance implements RainbowDanceController {
     this.requestRender();
   }
 
-  /** Turn the rainbow off — back to the default colors. */
+  /** 关闭彩虹——恢复默认颜色。 */
   stop(): void {
     this.clearTimers();
     this.isColored = false;
@@ -188,14 +185,14 @@ export class RainbowDance implements RainbowDanceController {
   }
 
   /**
-   * Clear timers without repainting — for shutdown, where the UI is going
-   * away and a final render would be wasted or write to a stopped terminal.
+   * 清除定时器但不重绘——用于关闭场景，此时 UI 即将消失，
+   * 最终渲染会被浪费或写入已停止的终端。
    */
   dispose(): void {
     this.clearTimers();
   }
 
-  /** End the flow: freeze the rainbow (hold) or fade back to default. */
+  /** 结束流动：冻结彩虹（hold）或淡出回默认。 */
   private settle(hold: boolean): void {
     this.clearTimers();
     if (!hold) {
@@ -218,20 +215,20 @@ export class RainbowDance implements RainbowDanceController {
 }
 
 /**
- * Handle `/dance`:
- *   /dance       flow for a few seconds, then fade back to the default colors
- *   /dance on    flow, then freeze into a static rainbow that stays on
- *   /dance off   turn the rainbow off
+ * 处理 `/dance`：
+ *   /dance       流动几秒后淡出回默认颜色
+ *   /dance on    流动后冻结为持续显示的静态彩虹
+ *   /dance off   关闭彩虹
  *
- * Returns true when it claimed the input.
+ * 当输入被消费时返回 true。
  */
 export function tryHandleDanceCommand(host: SlashCommandHost, parsed: ParsedSlashInput): boolean {
   if (parsed.name !== 'dance') return false;
   if (currentDanceController === undefined) return false;
 
-  // The status line dims the whole message, which buried the command in the
-  // hint. Paint just the command in the brand color (bold) so it reads as a
-  // command; chalk nesting resumes the dim run right after it.
+  // 状态行会将整条消息变暗，导致命令在提示中难以辨认。
+  // 仅将命令用品牌色（粗体）着色使其作为命令可读；
+  // chalk 嵌套会在其后恢复暗色。
   const cmd = (text: string): string => currentTheme.boldFg('primary', text);
 
   const sub = parsed.args.trim().toLowerCase();

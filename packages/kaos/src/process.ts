@@ -1,27 +1,26 @@
 import type { Readable, Writable } from 'node:stream';
 
 /**
- * A running process spawned by a {@link Kaos} environment.
+ * 由 {@link Kaos} 环境启动的运行中进程。
  *
- * Provides access to standard I/O streams, the process ID, and lifecycle
- * management (wait / kill). The interface is intentionally minimal so it
- * can be backed by local child processes, SSH sessions, or container runtimes.
+ * 提供标准 I/O 流访问、进程 ID 和生命周期管理（等待/终止）。
+ * 接口刻意保持精简，以便由本地子进程、SSH 会话或容器运行时等多种后端实现。
  */
 export interface KaosProcess {
-  /** Writable stream connected to the process's standard input. */
+  /** 连接到进程标准输入的可写流 */
   readonly stdin: Writable;
-  /** Readable stream for the process's standard output. */
+  /** 进程标准输出的可读流 */
   readonly stdout: Readable;
-  /** Readable stream for the process's standard error. */
+  /** 进程标准错误的可读流 */
   readonly stderr: Readable;
-  /** Operating-system process ID. */
+  /** 操作系统进程 ID */
   readonly pid: number;
-  /** Exit code if the process has already terminated, otherwise `null`. */
+  /** 进程已终止时为退出码，否则为 `null` */
   readonly exitCode: number | null;
-  /** Wait for the process to exit and return its exit code. */
+  /** 等待进程退出并返回退出码 */
   wait(): Promise<number>;
-  /** Send a signal to the process (defaults to `SIGTERM`). */
+  /** 向进程发送信号（默认 `SIGTERM`） */
   kill(signal?: NodeJS.Signals): Promise<void>;
-  /** Release stdin/stdout/stderr resources owned by this process wrapper. */
+  /** 释放此进程包装器持有的 stdin/stdout/stderr 资源 */
   dispose(): Promise<void> | void;
 }

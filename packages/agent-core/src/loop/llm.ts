@@ -1,9 +1,8 @@
 /**
- * LLM contract for the model capability used by the stateless loop.
+ * 无状态循环使用的模型能力 LLM 契约。
  *
- * The immutable `LLM` object owns provider/model metadata, capability metadata,
- * and the system prompt. Other host concerns are injected through separate
- * surfaces.
+ * 不可变的 `LLM` 对象拥有提供者/模型元数据、能力元数据
+ * 和系统提示词。其他宿主关注点通过单独的接口注入。
  */
 
 import type {
@@ -42,17 +41,17 @@ export interface LLMChatParams {
   onThinkDelta?: ((delta: string) => void) | undefined;
   onToolCallDelta?: ((delta: ToolCallDelta) => void) | undefined;
   /**
-   * Fires once per completed text block. Additive relative to
-   * `onTextDelta` — deltas still fire chunk-by-chunk for UI streaming.
-   * Returned promises are awaited by the adapter to preserve transcript append
-   * order. Durable transcript writes receive completed blocks only.
+   * 每个完成的文本块触发一次。相对于 `onTextDelta` 是累加的——
+   * delta 仍然按块逐个触发以支持 UI 流式渲染。
+   * 适配器会等待返回的 Promise 以保持转录追加顺序。
+   * 持久化转录写入仅接收已完成的块。
    */
   onTextPart?: ((part: TextPart) => Promise<void> | void) | undefined;
   /**
-   * Fires once per completed thinking block. Additive relative to
-   * `onThinkDelta` — deltas still fire chunk-by-chunk for UI streaming.
-   * Returned promises are awaited by the adapter to preserve transcript append
-   * order. Durable transcript writes receive completed blocks only.
+   * 每个完成的思考块触发一次。相对于 `onThinkDelta` 是累加的——
+   * delta 仍然按块逐个触发以支持 UI 流式渲染。
+   * 适配器会等待返回的 Promise 以保持转录追加顺序。
+   * 持久化转录写入仅接收已完成的块。
    */
   onThinkPart?: ((part: ThinkPart) => Promise<void> | void) | undefined;
 }

@@ -9,9 +9,8 @@ export interface ToolFileAccess {
 
 export interface ToolResourceAccessAll {
   /**
-   * Arbitrary side effects or resources that cannot be represented as a
-   * file access. This is intentionally operation-less and globally
-   * exclusive for concurrency.
+   * 无法表示为文件访问的任意副作用或资源。
+   * 此类型故意不包含操作类型，并且在并发方面是全局排他的。
    */
   readonly kind: 'all';
 }

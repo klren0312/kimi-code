@@ -1,26 +1,25 @@
 /**
- * BashTool — execute shell commands.
+ * BashTool — 执行 shell 命令。
  *
- * Invokes bash (POSIX) according to an injected `Environment`. On Windows
- * the shell is Git Bash; the path is resolved by `detectEnvironment`.
+ * 根据注入的 `Environment` 调用 bash（POSIX）。Windows 上 shell 为
+ * Git Bash；路径由 `detectEnvironment` 解析。
  *
- * Dependencies injected via constructor:
- *   - `Kaos`        — shell execution abstraction (exec / execWithEnv)
- *   - `cwd`         — default working directory for commands
- *   - `Environment` — cross-platform probe (shellName / shellPath)
- *   - `BackgroundManager?` — optional: required iff run_in_background=true
+ * 通过构造函数注入的依赖：
+ *   - `Kaos`        — shell 执行抽象层（exec / execWithEnv）
+ *   - `cwd`         — 命令的默认工作目录
+ *   - `Environment` — 跨平台探测（shellName / shellPath）
+ *   - `BackgroundManager?` — 可选：仅当 run_in_background=true 时必需
  *
- * Execution goes through Kaos, never directly via node:child_process.
+ * 执行通过 Kaos 进行，不直接使用 node:child_process。
  *
- * Hardening:
- *   - `args.timeout` (seconds) and the ambient `signal` both drive
- *     `Promise.race`; fire-a-kill on either edge.
- *   - stdin is closed immediately so interactive commands (`cat`, `read`,
- *     `python -c 'input()'`) receive EOF instead of hanging.
- *   - Two-phase kill: SIGTERM → 5s grace → SIGKILL (Kaos honours this
- *     contract cross-platform).
- *   - stdout/stderr stream into ToolResultBuilder; excess is replaced with a
- *     truncation marker so a runaway command cannot OOM the host.
+ * 安全加固：
+ *   - `args.timeout`（秒）和环境 `signal` 共同驱动 `Promise.race`；
+ *     任一条件触发即发送 kill。
+ *   - stdin 立即关闭，使交互式命令（`cat`、`read`、`python -c 'input()'`）
+ *     收到 EOF 而非挂起。
+ *   - 两阶段 kill：SIGTERM → 5 秒宽限 → SIGKILL（Kaos 跨平台遵守此约定）。
+ *   - stdout/stderr 流入 ToolResultBuilder；超出部分替换为截断标记，
+ *     防止失控命令导致主机 OOM。
  */
 
 import type { Readable } from 'node:stream';
@@ -128,7 +127,7 @@ async function disposeProcess(proc: KaosProcess): Promise<void> {
   try {
     await proc.dispose();
   } catch {
-    /* best-effort cleanup */
+    /* 尽力清理 */
   }
 }
 
@@ -205,15 +204,14 @@ export class BashTool implements BuiltinTool<BashInput> {
     const noninteractiveEnv: Record<string, string> = {
       NO_COLOR: '1',
       TERM: 'dumb',
-      // Default to '0' so git fails fast on private remotes if a TTY happens
-      // to be inherited; honour an explicit ambient value when the user has
-      // set one.
+      // 默认 '0' 以便在意外继承 TTY 时 git 对私有远程仓库快速失败；
+      // 当用户显式设置了环境变量时遵循该值。
       GIT_TERMINAL_PROMPT: process.env['GIT_TERMINAL_PROMPT'] ?? '0',
       SHELL: this.kaos.osEnv.shellPath,
     };
 
-    // Merge ambient env + noninteractive knobs so tools like git / node
-    // don't open a pager and paints don't colour the stream.
+    // 合并环境变量与非交互模式开关，使 git / node 等工具不打开分页器，
+    // 并且输出不带颜色。
     const mergedEnv: Record<string, string> = {
       ...(process.env as Record<string, string>),
       ...noninteractiveEnv,
@@ -261,8 +259,8 @@ export class BashTool implements BuiltinTool<BashInput> {
     try {
       proc.stdin.end();
     } catch {
-      // Closing stdin on a process that has already exited is a no-op on
-      // some platforms and throws on others — either is safe to ignore.
+      // 对已退出的进程关闭 stdin 在某些平台上是空操作，在其他平台上会抛异常
+      // — 两种情况均可安全忽略。
     }
 
     let timedOut = false;
@@ -275,7 +273,7 @@ export class BashTool implements BuiltinTool<BashInput> {
       try {
         await proc.kill('SIGTERM');
       } catch {
-        /* process already gone */
+        /* 进程已退出 */
       }
       const exited = proc
         .wait()
@@ -293,7 +291,7 @@ export class BashTool implements BuiltinTool<BashInput> {
         try {
           await proc.kill('SIGKILL');
         } catch {
-          /* ignore */
+          /* 忽略 */
         }
       }
 
@@ -389,7 +387,7 @@ export class BashTool implements BuiltinTool<BashInput> {
     try {
       proc.stdin.end();
     } catch {
-      /* process already gone */
+      /* 进程已退出 */
     }
 
     let taskId: string;
@@ -401,7 +399,7 @@ export class BashTool implements BuiltinTool<BashInput> {
       try {
         await proc.kill('SIGTERM');
       } catch {
-        /* process already gone */
+        /* 进程已退出 */
       }
       await disposeProcess(proc);
       return {
@@ -423,8 +421,8 @@ export class BashTool implements BuiltinTool<BashInput> {
       timeoutHandle.unref?.();
     }
 
-    // registerTask() synchronously inserts taskId into the manager's Map, so
-    // this lookup in the same tick cannot return undefined.
+    // registerTask() 将 taskId 同步插入管理器的 Map，因此同一 tick 内
+    // 此查找不可能返回 undefined。
     const status = backgroundManager.getTask(taskId)!.status;
     const builder = new ToolResultBuilder();
     builder.write(

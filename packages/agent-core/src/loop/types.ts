@@ -1,13 +1,11 @@
 /**
- * Public contracts for the stateless agent loop.
+ * 无状态 Agent 循环的公共契约。
  *
- * This file defines the narrow surfaces that connect a Kosong conversation to
- * tool execution, phase hooks, and turn results. Host-layer metadata, policy,
- * archival limits, and UI concerns stay outside these contracts.
+ * 此文件定义了将 Kosong 对话连接到工具执行、阶段钩子和轮次结果的窄接口。
+ * 宿主层元数据、策略、归档限制和 UI 关注点保持在这些契约之外。
  *
- * Field naming is camelCase unless a reused Kosong type says otherwise.
- * Optional fields use `?: T | undefined` intentionally under
- * `exactOptionalPropertyTypes: true`.
+ * 字段命名使用 camelCase，除非复用的 Kosong 类型另有规定。
+ * 可选字段在 `exactOptionalPropertyTypes: true` 下故意使用 `?: T | undefined`。
  */
 
 import type { ContentPart, Message, TokenUsage, Tool, ToolCall } from '@moonshot-ai/kosong';
@@ -21,11 +19,10 @@ export type { ToolCall };
 export type LoopMessageBuilder = () => Message[] | Promise<Message[]>;
 
 /**
- * Stop reason for one completed model step.
+ * 单个已完成模型步骤的停止原因。
  *
- * `tool_use` is a loop-control signal: the loop executes the requested tools and
- * continues with another step. The other values are terminal for the current
- * turn unless a host hook explicitly asks the loop to continue.
+ * `tool_use` 是循环控制信号：循环执行请求的工具并继续下一个步骤。
+ * 其他值对当前轮次是终止性的，除非宿主钩子明确要求循环继续。
  */
 export type LoopStepStopReason =
   | 'end_turn'
@@ -38,18 +35,17 @@ export type LoopStepStopReason =
 export type LoopTerminalStepStopReason = Exclude<LoopStepStopReason, 'tool_use'>;
 
 /**
- * Stop reasons that can be returned in a normal `TurnResult`.
+ * 可在正常 `TurnResult` 中返回的停止原因。
  *
- * `tool_use` is intentionally absent because it cannot be the final result of a
- * completed turn. Errors and max-step exhaustion are represented by thrown
- * errors, not by this union. Compaction is a host-level retry concern rather
- * than a stop reason.
+ * `tool_use` 被故意排除，因为它不能作为已完成轮次的最终结果。
+ * 错误和最大步数耗尽由抛出的错误表示，而非此联合类型。
+ * 压缩是宿主级别的重试关注点，而非停止原因。
  */
 export type LoopTurnStopReason = LoopTerminalStepStopReason | 'aborted';
 
 /**
- * @deprecated Legacy umbrella union. Use `LoopStepStopReason` for per-step
- * model responses and `LoopTurnStopReason` for `TurnResult`.
+ * @deprecated 已废弃的总联合类型。步骤级模型响应用 `LoopStepStopReason`，
+ * `TurnResult` 用 `LoopTurnStopReason`。
  */
 export type StopReason = LoopStepStopReason | 'aborted';
 
@@ -65,17 +61,14 @@ export interface ExecutableToolSuccessResult {
   readonly output: ExecutableToolOutput;
   readonly isError?: false | undefined;
   /**
-   * Internal loop-control hint. Tool result events strip this field before
-   * persistence; it only tells the current turn whether another model step or
-   * later tool calls in the same batch are allowed.
+   * 内部循环控制提示。工具结果事件在持久化前剥离此字段；
+   * 它仅告知当前轮次是否允许另一个模型步骤或同批次中后续的工具调用。
    */
   readonly stopTurn?: boolean | undefined;
   /**
-   * Optional human-readable side channel for tool-result metadata that
-   * should not contaminate the data stream the model sees (e.g. a
-   * "Task snapshot retrieved." brief for TaskOutput). Distinct from
-   * `output`: callers rendering tool results decide whether to surface
-   * this to the user.
+   * 用于工具结果元数据的可选人类可读旁路通道，
+   * 不应污染模型看到的数据流（例如 TaskOutput 的 "Task snapshot retrieved." 简报）。
+   * 与 `output` 不同：渲染工具结果的调用方决定是否向用户展示此内容。
    */
   readonly message?: string | undefined;
 }
@@ -83,9 +76,9 @@ export interface ExecutableToolSuccessResult {
 export interface ExecutableToolErrorResult {
   readonly output: ExecutableToolOutput;
   readonly isError: true;
-  /** See {@link ExecutableToolSuccessResult.message}. */
+  /** 参见 {@link ExecutableToolSuccessResult.message}。 */
   readonly message?: string | undefined;
-  /** See {@link ExecutableToolSuccessResult.stopTurn}. */
+  /** 参见 {@link ExecutableToolSuccessResult.stopTurn}。 */
   readonly stopTurn?: boolean | undefined;
 }
 
@@ -95,14 +88,14 @@ export interface ToolUpdate {
   kind: 'stdout' | 'stderr' | 'progress' | 'status' | 'custom';
   text?: string | undefined;
   percent?: number | undefined;
-  /** Vendor-defined event identifier when `kind === 'custom'`. */
+  /** 当 `kind === 'custom'` 时的供应商定义事件标识符。 */
   customKind?: string | undefined;
-  /** Opaque payload paired with `customKind`. */
+  /** 与 `customKind` 配对的不透明载荷。 */
   customData?: unknown;
 }
 
 /**
- * Per-call context passed to tool implementations.
+ * 传递给工具实现的每次调用上下文。
  */
 export interface ExecutableToolContext {
   readonly turnId: string;
@@ -118,8 +111,8 @@ export interface RunnableToolExecution {
   readonly display?: ToolInputDisplay | undefined;
   readonly description?: string;
   /**
-   * Stops scheduling later tool calls in the same provider batch. Use this only
-   * for tools whose successful action changes turn lifecycle state.
+   * 停止调度同一批次中后续的工具调用。仅用于
+   * 成功执行会改变轮次生命周期状态的工具。
    */
   readonly stopBatchAfterThis?: boolean | undefined;
   readonly approvalRule: string;
@@ -134,8 +127,8 @@ export interface ExecutableTool<Input = unknown> extends Tool {
 }
 
 /**
- * Step hooks are aligned to recorded phase boundaries: `beforeStep` runs before
- * `step.begin`, while `afterStep` runs after `step.end`.
+ * 步骤钩子对齐到记录的阶段边界：`beforeStep` 在 `step.begin` 之前运行，
+ * `afterStep` 在 `step.end` 之后运行。
  */
 
 export interface LoopStepHookContext {
@@ -192,8 +185,8 @@ export interface AfterStepResult {
 
 export interface RecordStepUsageResult {
   /**
-   * Internal loop-control hint. Hosts can return this after recording usage
-   * when the completed model step has reached a hard runtime limit.
+   * 内部循环控制提示。宿主在记录用量后可以返回此值，
+   * 当已完成的模型步骤达到了硬性运行时限制时。
    */
   readonly stopTurn?: boolean | undefined;
 }
@@ -223,14 +216,12 @@ export type ShouldContinueAfterStopHook = (
 ) => Promise<ShouldContinueAfterStopResult | undefined>;
 
 /**
- * Groups every awaited phase hook.
+ * 聚合所有被等待的阶段钩子。
  *
- * Hooks can affect control flow at deterministic transcript points. Event
- * listeners observe output and cannot change turn behavior.
+ * 钩子可以在确定性的转录点影响控制流。事件监听器观察输出，不能改变轮次行为。
  *
- * Tool hooks run serially in provider tool-call order before the matching
- * durable event is recorded, so preparation and finalization decisions are
- * resolved at stable transcript points.
+ * 工具钩子按提供者工具调用顺序在匹配的持久化事件记录之前串行运行，
+ * 因此准备和终结决定在稳定的转录点上解析。
  */
 export interface LoopHooks {
   beforeStep?: BeforeStepHook | undefined;

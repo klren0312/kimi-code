@@ -1,11 +1,10 @@
 /**
- * Pi-tui theme adapters — MarkdownTheme and EditorTheme backed by the
- * global `currentTheme` singleton.
+ * Pi-tui 主题适配器——由全局 `currentTheme` 单例支持的 MarkdownTheme
+ * 和 EditorTheme。
  *
- * All colour lookups route through `currentTheme.color(token)` so that
- * switching themes is instantaneous: old components hold old
- * MarkdownTheme/EditorTheme instances, but every method call on those
- * instances reads the *current* palette via the singleton.
+ * 所有颜色查找都通过 `currentTheme.color(token)` 路由，以便
+ * 切换主题时即时生效：旧组件持有旧的 MarkdownTheme/EditorTheme 实例，
+ * 但这些实例上的每次方法调用都通过单例读取*当前*调色板。
  */
 
 import type { MarkdownTheme, EditorTheme } from '@earendil-works/pi-tui';
@@ -14,12 +13,11 @@ import { highlight, supportsLanguage } from 'cli-highlight';
 
 import { currentTheme } from './theme';
 
-// pi-tui's renderer emits literal "### " / "#### " / ... markers for h3-h6
-// headings (h1/h2 are rendered without the `#` prefix). The prefix arrives
-// here already wrapped in bold SGR codes, so we strip it — after any leading
-// ANSI sequences — before re-styling. Without this, h3+ renders as raw
-// "### Title" and reads like unparsed markdown.
-// eslint-disable-next-line no-control-regex -- intentionally matches the ESC byte that opens ANSI SGR sequences.
+// pi-tui 的渲染器对 h3-h6 标题发出字面的 "### " / "#### " / ... 标记
+// （h1/h2 渲染时不带 `#` 前缀）。前缀到达此处时已被粗体 SGR 代码包裹，
+// 因此我们在重新设置样式之前将其剥离——剥离的是 ANSI 序列之后的前导部分。
+// 不这样做的话，h3+ 会渲染为原始的 "### Title"，看起来像未解析的 markdown。
+// eslint-disable-next-line no-control-regex -- 故意匹配开启 ANSI SGR 序列的 ESC 字节。
 const HEADING_HASH_PREFIX = /^((?:\u001B\[[0-9;]*m)*)#{1,6}[ \t]+/;
 
 export function createMarkdownTheme(): MarkdownTheme {
@@ -35,9 +33,8 @@ export function createMarkdownTheme(): MarkdownTheme {
     quote: (text) => chalk.hex(currentTheme.color('textDim'))(text),
     quoteBorder: (text) => chalk.hex(currentTheme.color('textDim'))(text),
     hr: (text) => chalk.hex(currentTheme.color('border'))(text),
-    // Match the assistant-message bullet so list markers read like a reply
-    // prefix. Ordered lists arrive as "1. " / "2. " and are left
-    // untouched by the leading-dash anchor.
+    // 与助手消息要点匹配，使列表标记读起来像回复前缀。
+    // 有序列表到达时为 "1. " / "2. "，不会被前导短横线锚点修改。
     listBullet: (text) => chalk.hex(currentTheme.color('text'))(text.replace(/^-/, '•')),
     bold: (text) => chalk.bold(text),
     italic: (text) => chalk.italic(text),

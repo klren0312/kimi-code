@@ -19,7 +19,7 @@ export { resolveLoggingConfig } from './logging/resolve-config';
 export type { ResolveLoggingInput } from './logging/resolve-config';
 export { installGlobalProxyDispatcher } from './utils/proxy';
 
-// LLM communication logging
+// LLM 通信日志
 export {
   isLlmCommunicationLogEnabled,
   enableLlmCommunicationLog,
@@ -66,7 +66,7 @@ export type {
   ResolvedRuntimeProvider,
 } from './session/provider-manager';
 
-// ─── Wire records (for in-monorepo consumers like apps/vis) ────────────────
+// ─── Wire records（供 monorepo 内部消费者如 apps/vis 使用）────────────────
 export type {
   AgentRecord,
   AgentRecordEvents,
@@ -96,28 +96,25 @@ export type {
   ExecutableToolErrorResult,
 } from './loop/types';
 
-// ─── Dependency injection container ────────────────────────────────────────
+// ─── 依赖注入容器 ─────────────────────────────────────────────────────────
 export * from './di';
 
-// ─── Base — Event<T> / Emitter<T> ──────────────────────────────────────────
-// NOTE: only `Emitter` is re-exported from the top-level barrel — the new
-// VSCode-style `Event<T>` symbol collides with `./rpc`'s `Event` (agent-core
-// protocol Event union, exported via `export * from './rpc'` above). Callers
-// that need the emitter `Event<T>` type import it from the explicit sub-path
-// `@moonshot-ai/agent-core/base/common/event` (declared in `package.json`
-// `exports`). This keeps the existing top-level `Event` semantics stable for
-// consumers like `services/src/event/event.ts` while letting new code reach
-// for the emitter type without naming clashes.
+// ─── 基础层 — Event<T> / Emitter<T> ───────────────────────────────────────
+// 注意：顶层桶导出仅重新导出了 `Emitter`——新的 VSCode 风格 `Event<T>` 符号
+// 与 `./rpc` 的 `Event`（agent-core 协议 Event 联合类型，通过上方的
+// `export * from './rpc'` 导出）冲突。需要发射器 `Event<T>` 类型的调用方
+// 应从显式子路径 `@moonshot-ai/agent-core/base/common/event` 导入
+//（已在 `package.json` 的 `exports` 中声明）。这样既保持了现有顶层 `Event`
+// 语义对 `services/src/event/event.ts` 等消费者的稳定性，又让新代码可以
+// 无命名冲突地使用发射器类型。
 export { Emitter } from './base/common/event';
 
-// ─── In-process services (merged from @moonshot-ai/services) ─────────────────
-// Re-exports the `IXxxService` contracts, default `XxxService` implementations,
-// `toProtocol*` translators and error classes. Importing this barrel triggers
-// the `registerSingleton(...)` side-effects at the bottom of each `*Service.ts`,
-// populating the DI registry consumed by `getSingletonServiceDescriptors()`.
+// ─── 进程内服务（从 @moonshot-ai/services 合并而来）───────────────────────
+// 重新导出 `IXxxService` 契约、默认 `XxxService` 实现、`toProtocol*` 转换器
+// 和错误类。导入此桶会触发每个 `*Service.ts` 底部的 `registerSingleton(...)`
+// 副作用，填充 `getSingletonServiceDescriptors()` 消费的 DI 注册表。
 //
-// NOTE: `ApprovalRequest` / `ApprovalResponse` / `QuestionRequest` /
-// `QuestionResult` are intentionally NOT re-exported here — they are the
-// canonical protocol shapes already exported via `./rpc` (`rpc/sdk-api.ts`),
-// and re-exporting them again would collide (TS2308).
+// 注意：`ApprovalRequest` / `ApprovalResponse` / `QuestionRequest` /
+// `QuestionResult` 故意不在此处重新导出——它们是已通过 `./rpc`
+//（`rpc/sdk-api.ts`）导出的规范协议形状，再次重新导出会导致冲突（TS2308）。
 export * from './services';

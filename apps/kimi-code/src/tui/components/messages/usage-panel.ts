@@ -1,7 +1,7 @@
 /**
- * UsagePanelComponent — wraps pre-coloured `/usage` lines in a blue box
- * border with a left indent, mirroring the PlanBoxComponent layout so
- * the pattern stays consistent across command-triggered panels.
+ * UsagePanelComponent —— 将预着色的 `/usage` 行包装在蓝色边框框中，
+ * 带左侧缩进，布局与 PlanBoxComponent 一致，
+ * 使命令触发面板的模式保持统一。
  */
 
 import type { Component } from '@earendil-works/pi-tui';
@@ -201,7 +201,7 @@ export function buildUsageReportLines(options: UsageReportOptions): string[] {
 }
 
 export class UsagePanelComponent implements Component {
-  /** Cached coloured lines; rebuilt from `buildLines` on every invalidate. */
+  /** 缓存的彩色行；每次 invalidate 时由 `buildLines` 重建。 */
   private lines: readonly string[];
 
   constructor(
@@ -213,8 +213,8 @@ export class UsagePanelComponent implements Component {
   }
 
   invalidate(): void {
-    // Report bodies embed palette colours, so a theme switch must re-run the
-    // builder to repaint the cached lines (the data itself is captured).
+    // 报告内容嵌入了调色板颜色，因此主题切换时必须重新运行构建器
+    // 以重绘缓存行（数据本身已捕获）。
     this.lines = this.buildLines();
   }
 

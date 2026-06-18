@@ -16,25 +16,22 @@ export class BannerComponent implements Component {
     const main = (s: string): string => currentTheme.boldFg('textStrong', s);
     const dim = (s: string): string => currentTheme.fg('textDim', s);
 
-    // Render nothing but the trailing blank if the terminal cannot hold a
-    // single visible column.
+    // 如果终端宽度不足以显示一个可见列，则只渲染末尾的空行。
     if (width < 1) {
       return [''];
     }
 
     const tagText = this.state.tag ?? '';
-    // Do not add a colon/tag suffix here; the caller-provided tag includes its
-    // own punctuation/separator.
+    // 不要在此处添加冒号/标签后缀；调用方提供的标签已包含自身的标点/分隔符。
     const tagLabel = tagText.length > 0 ? `${PREFIX_STAR} ${tagText}` : '';
     const tagStyled = tagLabel.length > 0 ? currentTheme.boldFg('primary', tagLabel) : '';
     const tagDisplay = tagStyled.length > 0 ? tagStyled + PADDING : '';
     const tagWidth = visibleWidth(tagDisplay);
     const showTag = tagWidth > 0 && tagWidth < width;
-    // Body lines (continuations of the main text) indent to match the first
-    // line's main-text column, which starts right after the tag display.
+    // 正文续行缩进以对齐首行主文本列，即紧跟标签显示之后的位置。
     const bodyIndent = showTag ? ' '.repeat(tagWidth) : '';
-    // Descriptive subtext lines (the second line in the design) start at the
-    // column after the leading star + space, aligning with the tag text itself.
+    // 描述性副文本行（设计中的第二行）从引导星号+空格之后的列开始，
+    // 与标签文本本身对齐。
     const descIndent = showTag ? ' '.repeat(visibleWidth(PREFIX_STAR + PADDING)) : '';
     const bodyContentWidth = width - (showTag ? tagWidth : 0);
     const descContentWidth = width - (showTag ? visibleWidth(PREFIX_STAR + PADDING) : 0);
@@ -67,8 +64,7 @@ export class BannerComponent implements Component {
       }
     }
 
-    // Add a blank line below the banner so the following transcript content
-    // (e.g. the input prompt / status messages) is visually separated.
+    // 在横幅下方添加空行，使后续转录内容（如输入提示/状态消息）在视觉上分隔开来。
     result.push('');
 
     return result;

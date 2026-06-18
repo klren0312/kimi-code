@@ -9,13 +9,12 @@ export interface KimiSlashCommand<Name extends string = string> extends SlashCom
   readonly description: string;
   readonly priority?: number;
   readonly availability?: SlashCommandAvailability | ((args: string) => SlashCommandAvailability);
-  /** When set, the command is hidden from the palette and blocked unless this flag is enabled. */
+  /** 设置后，该命令将从命令面板中隐藏，除非启用此实验性标志，否则无法使用。 */
   readonly experimentalFlag?: FlagId;
   /**
-   * Generic argument autocompletion. `argumentPrefix` is the text typed after
-   * `/<command> `; return suggestions or `null`. Declared as a plain function
-   * property (not a method) so passing it around is `this`-free. Adapted to
-   * pi-tui's `getArgumentCompletions` in the autocomplete setup.
+   * 通用参数自动补全。`argumentPrefix` 是在 `/<command> ` 之后输入的文本；
+   * 返回建议列表或 `null`。声明为普通函数属性（而非方法），
+   * 以便传递时不依赖 `this`。在自动补全设置中适配 pi-tui 的 `getArgumentCompletions`。
    */
   readonly completeArgs?: (argumentPrefix: string) => AutocompleteItem[] | null;
 }

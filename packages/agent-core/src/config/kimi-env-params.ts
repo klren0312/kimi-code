@@ -10,16 +10,15 @@ import { parseFloatEnv } from '#/config/resolve';
 type Env = Readonly<Record<string, string | undefined>>;
 
 /**
- * Apply Kimi sampling params (`KIMI_MODEL_TEMPERATURE`, `KIMI_MODEL_TOP_P`) from
- * the environment to a chat provider. Applied at provider construction
- * (`ConfigState.provider`) so every request built from `config.provider` — the
- * main loop AND full-history compaction — carries them, matching kimi-cli where
- * these live on the shared `create_llm` provider. Applies globally to any Kimi
- * provider (not tied to `KIMI_MODEL_NAME`).
+ * 从环境变量应用 Kimi 采样参数（`KIMI_MODEL_TEMPERATURE`、`KIMI_MODEL_TOP_P`）
+ * 到聊天 provider。在 provider 构造时应用（`ConfigState.provider`），使得从
+ * `config.provider` 构建的每个请求——主循环和完整历史压缩——都携带这些参数，
+ * 与 kimi-cli 中这些参数位于共享 `create_llm` provider 上的行为一致。
+ * 全局应用于任何 Kimi provider（不绑定到 `KIMI_MODEL_NAME`）。
  *
- * Non-Kimi providers — and Kimi providers with neither var set — are returned
- * unchanged. `max_tokens` is intentionally NOT handled here: `KIMI_MODEL_MAX_TOKENS`
- * already flows through the completion-budget path (`resolveCompletionBudget`).
+ * 非 Kimi provider——以及两个变量都未设置的 Kimi provider——原样返回。
+ * `max_tokens` 故意不在此处处理：`KIMI_MODEL_MAX_TOKENS` 已通过
+ * completion-budget 路径（`resolveCompletionBudget`）传递。
  */
 export function applyKimiEnvSamplingParams(
   provider: ChatProvider,
@@ -37,13 +36,13 @@ export function applyKimiEnvSamplingParams(
 }
 
 /**
- * Apply the Moonshot preserved-thinking passthrough (`KIMI_MODEL_THINKING_KEEP`
- * -> `thinking.keep`) to a chat provider. Applied in `ConfigState.provider` after
- * `withThinking`, and only while thinking is on — otherwise the API would
- * receive a `thinking.keep` with no accompanying `thinking.type` it honors.
- * (Compaction uses a raw provider with thinking off, so it correctly skips this.)
+ * 将 Moonshot 保留思维透传（`KIMI_MODEL_THINKING_KEEP` -> `thinking.keep`）
+ * 应用到聊天 provider。在 `ConfigState.provider` 中 `withThinking` 之后应用，
+ * 且仅在 thinking 开启时生效——否则 API 会收到不带 `thinking.type` 的
+ * `thinking.keep`，而 API 不会识别它。
+ *（压缩使用 thinking 关闭的原始 provider，因此正确跳过此步骤。）
  *
- * Non-Kimi providers — and an unset/blank value — are returned unchanged.
+ * 非 Kimi provider——以及未设置/空值——原样返回。
  */
 export function applyKimiEnvThinkingKeep(
   provider: ChatProvider,

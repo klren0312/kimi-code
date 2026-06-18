@@ -1,27 +1,24 @@
 /**
- * Shared helper for deriving the JSON Schema that a tool advertises to the
- * model for its parameters.
+ * 用于派生工具向模型声明参数 JSON Schema 的共享辅助函数。
  *
- * A tool's parameter schema describes the *input* the model is expected to
- * supply. zod v4's `toJSONSchema` defaults to the *output* view, which marks
- * any field carrying a chain-tail `.default()` as `required` — producing a
- * schema that simultaneously declares a `default` and lists the field as
- * required. That contradiction also makes the runtime AJV validator reject
- * legal calls that omit the defaulted fields.
+ * 工具的参数 schema 描述的是模型**输入**而非输出。zod v4 的
+ * `toJSONSchema` 默认采用*输出*视图，会将任何带链尾 `.default()`
+ * 的字段标记为 `required` ——产生一个同时声明 `default` 又列为
+ * 必需的矛盾 schema。该矛盾也会使运行时 AJV 验证器拒绝合法的
+ * 省略了默认值字段的调用。
  *
- * Always render parameter schemas through this helper so the `io: 'input'`
- * view is applied uniformly and defaulted fields remain optional, while the
- * closed-object guard (`additionalProperties: false`) is kept so unknown
- * arguments are still rejected.
+ * 始终通过此辅助函数渲染参数 schema，使 `io: 'input'` 视图统一
+ * 应用，默认字段保持可选，同时保留闭合对象守卫
+ * （`additionalProperties: false`）以继续拒绝未知参数。
  */
 
 import { z } from 'zod';
 
 /**
- * Convert a zod schema into the input JSON Schema exposed to the model.
+ * 将 zod schema 转换为暴露给模型的输入 JSON Schema。
  *
- * @param schema - The zod schema describing the tool's parameters.
- * @returns A draft-07 JSON Schema rendered with the input view.
+ * @param schema - 描述工具参数的 zod schema。
+ * @returns 以输入视图渲染的 draft-07 JSON Schema。
  */
 export function toInputJsonSchema(schema: z.ZodType): Record<string, unknown> {
   const jsonSchema = z.toJSONSchema(schema, {
@@ -33,18 +30,16 @@ export function toInputJsonSchema(schema: z.ZodType): Record<string, unknown> {
 }
 
 /**
- * Re-assert `additionalProperties: false` on every object node.
+ * 对每个对象节点重新断言 `additionalProperties: false`。
  *
- * The input view drops `additionalProperties: false` from `z.object` nodes
- * because, before unknown-key stripping, an *input* object may legally carry
- * extra keys. But a tool's parameter schema is a model-facing contract that
- * the runtime validates with AJV only — there is no zod parse/strip step
- * before dispatch — so without the closed-object guard a misspelled argument
- * passes validation and is silently ignored. Restoring it keeps unknown
- * arguments rejected, matching the output view's pre-input-view behavior.
+ * 输入视图会从 `z.object` 节点移除 `additionalProperties: false`，
+ * 因为在未知键剥离之前，*输入*对象可以合法地携带额外键。
+ * 但工具的参数 schema 是面向模型的契约，运行时仅通过 AJV 验证
+ * ——分发前不存在 zod 解析/剥离步骤——因此没有闭合对象守卫时，
+ * 拼写错误的参数会通过验证并被静默忽略。恢复该守卫可继续拒绝
+ * 未知参数，与输入视图之前的输出视图行为保持一致。
  *
- * Nodes that already declare `additionalProperties` (e.g. `z.record`) are
- * left untouched.
+ * 已声明 `additionalProperties` 的节点（如 `z.record`）保持不变。
  */
 function closeObjectNodes(value: unknown): void {
   if (Array.isArray(value)) {

@@ -14,7 +14,7 @@ import { buildExportMarkdown } from '../utils/export-markdown';
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// Session commands
+// 会话命令
 // ---------------------------------------------------------------------------
 
 export async function handleTitleCommand(host: SlashCommandHost, args: string): Promise<void> {

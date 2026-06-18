@@ -2,9 +2,9 @@ import type { ModelCapability } from './capability';
 import type { ProviderType } from './providers';
 
 /**
- * models.dev-style catalog: a public map of provider/model metadata. Callers
- * consume a snapshot of this shape to populate provider + model configuration
- * without hand-writing context windows or capabilities.
+ * models.dev 风格的目录：一个公开的 provider/model 元数据映射。调用方
+ * 消费此结构的快照，以填充 provider + model 配置，无需手动编写上下文窗口
+ * 或能力信息。
  */
 export interface CatalogModelEntry {
   readonly id?: string;
@@ -23,21 +23,21 @@ export interface CatalogModelEntry {
 export interface CatalogProviderEntry {
   readonly id?: string;
   readonly name?: string;
-  /** Base URL for the provider; may be empty (some SDKs hardcode it). */
+  /** Provider 的基础 URL；可能为空（某些 SDK 会硬编码）。 */
   readonly api?: string;
-  /** Env var names carrying credentials — surfaced as a hint by callers. */
+  /** 携带凭据的环境变量名——由调用方作为提示展示。 */
   readonly env?: readonly string[];
-  /** models.dev SDK package id; used to infer the wire type when `type` is absent. */
+  /** models.dev SDK 包标识符；当 `type` 缺失时用于推断线路类型。 */
   readonly npm?: string;
-  /** Explicit wire type extension; inferred from `npm`/`id` when absent. */
+  /** 显式线路类型扩展；缺失时从 `npm`/`id` 推断。 */
   readonly type?: string;
   readonly models?: Record<string, CatalogModelEntry>;
 }
 
-/** Top-level catalog: `{ [providerId]: ProviderEntry }` (e.g. models.dev/api.json). */
+/** 顶层目录：`{ [providerId]: ProviderEntry }`（如 models.dev/api.json）。 */
 export type Catalog = Record<string, CatalogProviderEntry>;
 
-/** A normalized catalog model: identity plus its {@link ModelCapability}. */
+/** 标准化后的目录模型：标识信息加上其 {@link ModelCapability}。 */
 export interface CatalogModel {
   readonly id: string;
   readonly name?: string;
@@ -76,9 +76,9 @@ function isUsableChatModel(model: CatalogModelEntry): boolean {
 }
 
 /**
- * Resolves a catalog provider entry to a supported wire type. Honors an
- * explicit `type`, otherwise infers from `npm`/`id`. Unknown providers return
- * `undefined` so callers can omit them instead of writing an invalid config.
+ * 将目录中的 provider 条目解析为支持的线路类型。优先使用显式 `type`，
+ * 否则从 `npm`/`id` 推断。未知的 provider 返回 `undefined`，
+ * 以便调用方可以跳过它们，而不是写入无效配置。
  */
 export function inferWireType(entry: CatalogProviderEntry): ProviderType | undefined {
   if (isWireType(entry.type)) return entry.type;
@@ -96,15 +96,16 @@ export function inferWireType(entry: CatalogProviderEntry): ProviderType | undef
 }
 
 /**
- * Resolves the base URL to store for a catalog provider, adapting the catalog's
- * `api` to the wire's SDK convention.
+ * 解析目录 provider 要存储的基础 URL，将目录中的 `api` 适配为
+ * 线路对应 SDK 的约定。
  *
- * models.dev `api` URLs are written for the SDK named in `npm` (e.g.
- * `@ai-sdk/anthropic`), whose base already includes the `/v1` version segment.
- * We route the `anthropic` wire through the official `@anthropic-ai/sdk`, which
- * appends `/v1/messages` itself — so a catalog `api` ending in `/v1` would POST
- * to `/v1/v1/messages` (404). Strip the trailing `/v1` for anthropic. OpenAI
- * family SDKs append `/chat/completions` to a `/v1` base, so those pass through.
+ * models.dev 的 `api` URL 是为 `npm` 中指定的 SDK 编写的（如
+ * `@ai-sdk/anthropic`），其基础 URL 已包含 `/v1` 版本段。
+ * 我们将 `anthropic` 线路路由到官方 `@anthropic-ai/sdk`，后者会自行
+ * 追加 `/v1/messages`——因此以 `/v1` 结尾的目录 `api` 会 POST 到
+ * `/v1/v1/messages`（404）。对 anthropic 需要去掉末尾的 `/v1`。
+ * OpenAI 系列 SDK 会在 `/v1` 基础上追加 `/chat/completions`，
+ * 因此这些可直接通过。
  */
 export function catalogBaseUrl(
   entry: CatalogProviderEntry,
@@ -116,7 +117,7 @@ export function catalogBaseUrl(
   return api;
 }
 
-/** Normalizes one catalog model entry into a {@link CatalogModel}; skips invalid entries. */
+/** 将一个目录模型条目标准化为 {@link CatalogModel}；跳过无效条目。 */
 export function catalogModelToCapability(model: CatalogModelEntry): CatalogModel | undefined {
   if (typeof model.id !== 'string' || model.id.length === 0) return undefined;
   const context = model.limit?.context;
@@ -141,16 +142,16 @@ export function catalogModelToCapability(model: CatalogModelEntry): CatalogModel
 }
 
 function catalogReasoningKey(interleaved: CatalogModelEntry['interleaved']): string | undefined {
-  // models.dev allows `interleaved: true` as "general support" — read it as
-  // the default `reasoning_content` field so providers without an explicit
-  // field name (e.g. some openai-compatible gateways) still round-trip.
+  // models.dev 允许 `interleaved: true` 表示"通用支持"——将其读取为
+  // 默认的 `reasoning_content` 字段，这样没有显式字段名的 provider
+  // （如某些 openai 兼容网关）仍可正常往返。
   if (interleaved === true) return 'reasoning_content';
   if (typeof interleaved !== 'object' || interleaved === null) return undefined;
   const field = interleaved.field?.trim();
   return field !== undefined && field.length > 0 ? field : undefined;
 }
 
-/** Extracts the valid, normalized models from a catalog provider entry. */
+/** 从目录 provider 条目中提取有效的、标准化的模型列表。 */
 export function catalogProviderModels(entry: CatalogProviderEntry): CatalogModel[] {
   const models = entry.models ?? {};
   return Object.values(models)

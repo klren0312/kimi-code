@@ -1,15 +1,14 @@
 /**
- * A tool that the model may invoke during generation.
+ * 模型在生成过程中可能调用的工具。
  *
- * The definition is provider-agnostic; each provider implementation converts
- * it to the appropriate wire format (e.g. OpenAI function-calling, Anthropic
- * tool-use, Google function declarations).
+ * 定义是与提供者无关的；每个提供者实现将其转换为适当的线路格式
+ * （例如 OpenAI function-calling、Anthropic tool-use、Google function declarations）。
  */
 export interface Tool {
-  /** Unique tool name used to match invocations. */
+  /** 用于匹配调用的唯一工具名称。 */
   name: string;
-  /** Human-readable description shown to the model. */
+  /** 展示给模型的人类可读描述。 */
   description: string;
-  /** JSON Schema describing the tool's parameters. */
+  /** 描述工具参数的 JSON Schema。 */
   parameters: Record<string, unknown>;
 }

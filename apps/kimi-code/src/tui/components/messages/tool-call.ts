@@ -1,6 +1,6 @@
 /**
- * Renders a tool call entry in the transcript.
- * Supports expand/collapse via Ctrl+O.
+ * 在转录中渲染工具调用条目。
+ * 支持通过 Ctrl+O 展开/折叠。
  */
 
 import { isAbsolute, relative, sep } from 'node:path';
@@ -37,7 +37,7 @@ import { TruncatedOutputComponent } from './tool-renderers/truncated';
 const MAX_ARG_LENGTH = 60;
 const MAX_SUB_TOOL_CALLS_SHOWN = 4;
 const MAX_SINGLE_SUBAGENT_TOOL_ROWS = 4;
-// Hanging indent for a sub-tool's previewed output, nested under its activity row.
+// 子工具预览输出的悬挂缩进，嵌套在其活动行下方。
 const SUBAGENT_SUBTOOL_OUTPUT_INDENT = 6;
 const APPROVED_PLAN_MARKER = '## Approved Plan:';
 const STREAMING_PROGRESS_INTERVAL_MS = 1000;
@@ -72,14 +72,14 @@ interface SubToolActivity {
 }
 
 /**
- * Immutable subagent state snapshot. `AgentGroupComponent` reads one-time
- * views via `ToolCallComponent.getSubagentSnapshot()` and renders its own
- * branch lines; `onSnapshotChange` notifies it when state changes.
+ * 不可变的子代理状态快照。`AgentGroupComponent` 通过
+ * `ToolCallComponent.getSubagentSnapshot()` 读取一次性视图并渲染自身的分支行；
+ * `onSnapshotChange` 在状态变化时通知它。
  *
- * `latestActivity` priority, used only while running:
- *   1. latest ongoing sub-tool (`Using {name} ({keyArg})`)
- *   2. latest finished sub-tool (`Used {name} ({keyArg})`)
- *   3. last non-empty line from accumulated subagent text
+ * `latestActivity` 优先级，仅在运行时使用：
+ *   1. 最近的进行中子工具 (`Using {name} ({keyArg})`)
+ *   2. 最近完成的子工具 (`Used {name} ({keyArg})`)
+ *   3. 累积子代理文本的最后一行非空行
  */
 export interface ToolCallSubagentSnapshot {
   readonly toolCallId: string;
@@ -96,10 +96,9 @@ export interface ToolCallSubagentSnapshot {
 }
 
 /**
- * Immutable Read tool state snapshot. `ReadGroupComponent` reads one-time
- * views via `ToolCallComponent.getReadSnapshot()` and sums lines for the group
- * header. `lines` is 0 while pending or failed, and the non-empty result line
- * count when done, matching the single-card chip.
+ * 不可变的 Read 工具状态快照。`ReadGroupComponent` 通过
+ * `ToolCallComponent.getReadSnapshot()` 读取一次性视图并汇总行数用于组标题。
+ * `lines` 在等待或失败时为 0，完成时为非空结果行数，与单卡片芯片一致。
  */
 export interface ToolCallReadSnapshot {
   readonly toolCallId: string;
@@ -186,18 +185,14 @@ const SELECTED_APPROACH_RE = /^Exited plan mode\. Selected approach: ([^\n]+)\n/
 const PLAN_SAVED_TO_RE = /\nPlan saved to: ([^\n]+)\n/;
 
 /**
- * Parses the ExitPlanMode result content string to recover the approval outcome
- * and optional plan path. Core-side templates live in
- * `packages/agent-core/src/tools/builtin/planning/exit-plan-mode.ts`:
- *   - Approved output starts with 'Exited plan mode.' and selected options
- *     are reported as 'Selected approach: <label>'. Older outputs may start
- *     with 'User approved option "<label>".' Plan-file mode may include
- *     'Plan saved to: <path>'.
- *   - Rejected output starts with 'Plan rejected by user.' or older
- *     'User rejected the plan.'; feedback uses 'User rejected the plan.
- *     Feedback:\n\n<text>'.
- * This is a string protocol rather than a structured payload. Prefer a
- * structured event payload if core starts emitting one.
+ * 解析 ExitPlanMode 结果内容字符串以恢复审批结果和可选的计划路径。
+ * 核心端模板位于 `packages/agent-core/src/tools/builtin/planning/exit-plan-mode.ts`：
+ *   - 批准输出以 'Exited plan mode.' 开头，选定选项报告为 'Selected approach: <label>'。
+ *     旧版输出可能以 'User approved option "<label>".' 开头。计划文件模式可能包含
+ *     'Plan saved to: <path>'。
+ *   - 拒绝输出以 'Plan rejected by user.' 或旧版 'User rejected the plan.' 开头；
+ *     反馈使用 'User rejected the plan. Feedback:\n\n<text>'。
+ * 这是字符串协议而非结构化载荷。如果核心开始发出结构化事件载荷，应优先使用。
  */
 function interpretExitPlanModeOutcome(output: string): ExitPlanModeOutcome {
   if (output.startsWith(REJECT_PREFIX)) {
@@ -257,11 +252,10 @@ function unescapeJsonString(s: string): string {
 }
 
 /**
- * Pull the live value of a JSON string field out of partially-streamed
- * arguments, even if the closing quote hasn't arrived yet. Handles the
- * common JSON string escapes so `\n` in a streamed `content` becomes a
- * real newline we can highlight. Returns `undefined` if the field hasn't
- * started streaming yet.
+ * 从部分流式传输的参数中提取 JSON 字符串字段的实时值，
+ * 即使关闭引号尚未到达也能提取。处理常见的 JSON 字符串转义，
+ * 使流式 `content` 中的 `\n` 变成可以高亮的真实换行符。
+ * 如果字段尚未开始流式传输，返回 `undefined`。
  */
 function extractPartialStringField(text: string, key: string): string | undefined {
   const opener = new RegExp(`"${key}"\\s*:\\s*"`);
@@ -335,7 +329,7 @@ function parseArgsPreview(value: string): Record<string, unknown> {
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through to partial scan
+      // 跳转到部分扫描
     }
   }
   const result: Record<string, unknown> = {};
@@ -353,8 +347,7 @@ const PATH_KEYS = new Set(['path', 'file_path']);
 function truncateArgValue(key: string, value: string): string {
   if (value.length <= MAX_ARG_LENGTH) return value;
   if (PATH_KEYS.has(key)) {
-    // Preserve the tail (filename) — drop the prefix so the user can
-    // still tell which file is being touched.
+    // 保留尾部（文件名）——丢弃前缀，让用户仍能识别正在操作的文件。
     return '…' + value.slice(value.length - (MAX_ARG_LENGTH - 1));
   }
   return value.slice(0, MAX_ARG_LENGTH - 3) + '...';
@@ -403,13 +396,11 @@ function extractKeyArgument(
     Glob: ['pattern'],
     FetchURL: ['url'],
     WebSearch: ['query'],
-    // Prefer the short `description` so the header preview never spills a
-    // multi-line `prompt` into the TUI chrome.
+    // 优先使用短的 `description`，避免头部预览将多行 `prompt` 溢出到 TUI 界面中。
     Agent: ['description', 'prompt'],
   };
 
-  // Glob: concatenate multiple args into a single summary so the header
-  // shows pattern, optional explicit path, and include_dirs override.
+  // Glob：将多个参数拼接为单个摘要，使头部显示 pattern、可选的显式路径和 include_dirs 覆盖。
   if (toolName === 'Glob') {
     const pattern = args['pattern'];
     if (typeof pattern !== 'string' || pattern.length === 0) return null;
@@ -463,9 +454,8 @@ class PrefixedWrappedLine implements Component {
     private readonly firstPrefix: string,
     private readonly continuationPrefix: string,
     private readonly text: string,
-    // When set, only the last N wrapped display rows are kept, so a long
-    // unwrapped paragraph scrolls within a fixed window instead of growing
-    // unbounded. The first kept row still gets `firstPrefix`.
+    // 设置后，仅保留最后 N 行包装后的显示行，使长段落在固定窗口内滚动
+    // 而非无限增长。保留的第一行仍使用 `firstPrefix`。
     private readonly tailLines?: number,
   ) { }
 
@@ -501,23 +491,20 @@ export class ToolCallComponent extends Container {
   private ui: TUI | undefined;
   private planPath: string | undefined;
   /**
-   * Fallback plan body used when the LLM uses plan-file mode and
-   * `args.plan` is empty. `KimiTUI` calls `setPlanInfo` with
-   * `session.getPlan()` content so the plan box can render while
-   * approval is pending, and so rejected or revised results still show
-   * the plan body even without a `## Approved Plan:` marker.
+   * 当 LLM 使用计划文件模式且 `args.plan` 为空时的回退计划正文。
+   * `KimiTUI` 使用 `session.getPlan()` 的内容调用 `setPlanInfo`，
+   * 使计划框在审批待定期间可以渲染，且被拒绝或修改的结果仍能显示
+   * 计划正文，即使没有 `## Approved Plan:` 标记。
    */
   private currentPlan: string | undefined;
   private headerText: Text;
   private callPreviewEndIndex = 0;
 
-  // ── Subagent state ───────────────────────────────────────────────
+  // ── 子代理状态 ───────────────────────────────────────────────
   //
-  // Populated by `setSubagentMeta` / `appendSubToolCall` / `finishSubToolCall`
-  // when KimiTUI routes a `subagent.event` with this tool call
-  // id as its `parent_tool_call_id`. Rendered at the tail of
-  // buildContent so it shows up both during streaming and after the
-  // parent tool call resolves.
+  // 当 KimiTUI 路由的 `subagent.event` 以此工具调用 id 作为其
+  // `parent_tool_call_id` 时，由 `setSubagentMeta` / `appendSubToolCall` / `finishSubToolCall` 填充。
+  // 渲染在 buildContent 的末尾，因此在流式传输期间和父工具调用解析后都会显示。
   private subagentAgentId: string | undefined;
   private subagentAgentName: string | undefined;
   private readonly ongoingSubCalls = new Map<string, OngoingSubCall>();
@@ -526,22 +513,19 @@ export class ToolCallComponent extends Container {
   private subToolOrderSeq = 0;
   private hiddenSubCallCount = 0;
   /**
-   * Recent normal-output lines from the child agent. Historical replay can also
-   * store mixed text here.
+   * 来自子代理的最近正常输出行。历史回放也可以在此存储混合文本。
    */
   private subagentText = '';
   private subagentThinkingText = '';
-  // ── Subagent lifecycle state from subagent.spawned/started/completed/failed ──
+  // ── 来自 subagent.spawned/started/completed/failed 的子代理生命周期状态 ──
   private subagentPhase: SubagentPhase | undefined;
   /**
-   * Authoritative terminal phase for a backgrounded subagent. Set from
-   * `BackgroundTaskInfo.status` via `setBackgroundTaskTerminalStatus` once
-   * the backing task reaches a terminal state — either live (a bg agent
-   * fails / is killed) or on resume (reconcile reclassifies a still-running
-   * task as `lost`). Beats the spawn-success ToolResult in both render
-   * paths (`getDerivedSubagentPhase` for standalone, `getSubagentSnapshot`
-   * for grouped), which would otherwise mislabel every terminated
-   * background agent — including lost ones — as `✓ Completed`.
+   * 后台子代理的权威终端阶段。当后台任务达到终端状态时——无论是实时（后台代理失败/被终止）
+   * 还是恢复时（协调器将仍在运行的任务重新分类为 `lost`）——通过
+   * `setBackgroundTaskTerminalStatus` 从 `BackgroundTaskInfo.status` 设置。
+   * 在两种渲染路径中（独立时的 `getDerivedSubagentPhase` 和分组时的 `getSubagentSnapshot`）
+   * 优先于 spawn-success ToolResult，否则会将所有已终止的后台代理
+   * （包括丢失的）错误标记为 `✓ Completed`。
    */
   private backgroundTaskTerminalPhase: 'done' | 'failed' | undefined;
   private subagentContextTokens: number | undefined;
@@ -553,25 +537,21 @@ export class ToolCallComponent extends Container {
   private subagentStartedAtMs: number | undefined;
   private subagentEndedAtMs: number | undefined;
 
-  // ── Live progress lines ──────────────────────────────────────────
+  // ── 实时进度行 ──────────────────────────────────────────
   //
-  // Populated by `appendProgress` whenever the tool emits an
-  // `onUpdate({kind:'status', text})` while still running. Used by
-  // long-blocking tools (e.g. the MCP `authenticate` synthetic tool
-  // whose 15-minute browser wait would otherwise display only a
-  // spinner). Cleared when the result lands — the result is the
-  // authoritative final state.
+  // 当工具在运行期间发出 `onUpdate({kind:'status', text})` 时由
+  // `appendProgress` 填充。用于长时间阻塞的工具（例如 MCP `authenticate`
+  // 合成工具，其 15 分钟的浏览器等待否则只会显示旋转指示器）。
+  // 当结果到达时清除——结果是权威的最终状态。
   private progressLines: string[] = [];
   private static readonly MAX_PROGRESS_LINES = 24;
   private liveOutput = '';
 
   /**
-   * Registered by a group container (`AgentGroupComponent` or
-   * `ReadGroupComponent`) when this component is borrowed as a hidden state
-   * container. Any state change (subagent meta, phase, sub-tool, result, etc.)
-   * triggers a throttled group re-render. `undefined` means no group is
-   * subscribed and standalone rendering is unaffected. A ToolCallComponent can
-   * only belong to one group at a time, so one listener slot is enough.
+   * 当此组件被借用为隐藏状态容器时，由组容器（`AgentGroupComponent` 或
+   * `ReadGroupComponent`）注册。任何状态变化（子代理元数据、阶段、子工具、结果等）
+   * 都会触发节流的组重渲染。`undefined` 表示没有组订阅，独立渲染不受影响。
+   * ToolCallComponent 一次只能属于一个组，因此一个监听器槽位就够了。
    */
   private onSnapshotChange: (() => void) | undefined;
 
@@ -609,31 +589,27 @@ export class ToolCallComponent extends Container {
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return;
     this.expanded = expanded;
-    // rebuildBody (not rebuildContent) so the args-driven call preview
-    // — which is what carries Write content / Edit diff — re-renders
-    // with the new line cap. rebuildContent only touches result-driven
-    // children and would leave the call preview stuck at its initial
-    // collapsed size.
+    // rebuildBody（而非 rebuildContent），使参数驱动的调用预览
+    // ——即承载 Write 内容 / Edit diff 的部分——使用新的行数上限重新渲染。
+    // rebuildContent 只处理结果驱动的子项，会使调用预览卡在初始的折叠大小。
     this.rebuildBody();
   }
 
   setResult(result: ToolResultBlockData): void {
     this.result = result;
-    // Result supersedes any live progress chatter; the result body is the
-    // authoritative final state. Without this clear, a finished tool would
-    // show both the streamed status lines and the final output stacked.
+    // 结果取代任何实时进度信息；结果主体是权威的最终状态。
+    // 如果不清除，已完成的工具会同时显示流式状态行和最终输出。
     this.progressLines = [];
     this.liveOutput = '';
     this.finalizeSubagentElapsedIfNeeded();
     this.syncStreamingProgressTimer();
     this.syncSubagentElapsedTimer();
     this.headerText.setText(this.buildHeader());
-    // rebuildBody (not rebuildContent) so the call preview re-renders
-    // with the collapsed cap applied — Write streaming previews and
-    // Edit's progress placeholder needs to snap to the final preview on
-    // result.
+    // rebuildBody（而非 rebuildContent），使调用预览在结果到达时
+    // 使用折叠上限重新渲染——Write 流式预览和 Edit 的进度占位符
+    // 需要在结果到达时切换到最终预览。
     this.rebuildBody();
-    // Final results affect group summaries, especially failed/done counts.
+    // 最终结果影响组摘要，特别是失败/完成计数。
     this.notifySnapshotChange();
   }
 
@@ -647,11 +623,10 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Append a live progress line emitted by the tool via
-   * `onUpdate({kind:'status', text})`. Splits on newlines so multi-line
-   * status payloads render row-by-row. Old lines are dropped once the
-   * buffer fills past {@link ToolCallComponent.MAX_PROGRESS_LINES} so a
-   * misbehaving tool can't grow the box unboundedly.
+   * 追加工具通过 `onUpdate({kind:'status', text})` 发出的实时进度行。
+   * 按换行符拆分，使多行状态载荷逐行渲染。当缓冲区超过
+   * {@link ToolCallComponent.MAX_PROGRESS_LINES} 时丢弃旧行，
+   * 防止行为异常的工具无限增长显示区域。
    */
   appendProgress(text: string): void {
     if (this.result !== undefined) return;
@@ -685,10 +660,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Injects plan body/path asynchronously. Only ExitPlanMode cards use
-   * this: plan-file mode leaves `args.plan` empty, so `KimiTUI` fetches
-   * the plan via `session.getPlan()` and calls this method to render the
-   * plan box.
+   * 异步注入计划正文/路径。仅 ExitPlanMode 卡片使用此方法：
+   * 计划文件模式使 `args.plan` 为空，因此 `KimiTUI` 通过
+   * `session.getPlan()` 获取计划并调用此方法渲染计划框。
    */
   setPlanInfo(info: { plan?: string; path?: string }): void {
     if (this.toolCall.name !== 'ExitPlanMode') return;
@@ -737,7 +711,7 @@ export class ToolCallComponent extends Container {
     }
   }
 
-  // ── Subagent API (called by KimiTUI event routing) ───────────────
+  // ── 子代理 API（由 KimiTUI 事件路由调用）───────────────
 
   setSubagentMeta(agentId: string, agentName?: string): void {
     if (this.subagentAgentId === agentId && this.subagentAgentName === agentName) return;
@@ -750,10 +724,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Lets group containers (AgentGroup or ReadGroup) subscribe to this card's
-   * state changes. Registration immediately calls back so the group receives
-   * the current snapshot without separately calling getSubagentSnapshot or
-   * getReadSnapshot. Pass `undefined` to unsubscribe.
+   * 允许组容器（AgentGroup 或 ReadGroup）订阅此卡片的状态变化。
+   * 注册时立即回调，使组无需单独调用 getSubagentSnapshot 或
+   * getReadSnapshot 即可接收当前快照。传入 `undefined` 取消订阅。
    */
   setSnapshotListener(cb: (() => void) | undefined): void {
     this.onSnapshotChange = cb;
@@ -773,17 +746,14 @@ export class ToolCallComponent extends Container {
       this.getCombinedSubagentText(),
       this.workspaceDir,
     );
-    // Terminal-state priority: SDK `tool.result` is authoritative for Agent
-    // tool calls. Once it arrives, force done/failed over intermediate
-    // spawning/running states for two reasons:
-    //   1. Replay does not replay spawned/completed/failed events, so
-    //      `subagentPhase` stays undefined and result must be used.
-    //   2. Live type-validation failures may skip `subagent.failed`, or
-    //      `tool.result` may arrive first; otherwise the UI can stay stuck at
-    //      'spawning' and keep showing `Initializing...`.
-    // Intermediate states without a result still use `subagentPhase`.
-    // `backgrounded` has no result because background agents do not enter the
-    // transcript.
+    // 终端状态优先级：SDK `tool.result` 对 Agent 工具调用具有权威性。
+    // 一旦到达，强制使用 done/failed 而非中间的 spawning/running 状态，原因有二：
+    //   1. 回放不会重放 spawned/completed/failed 事件，因此 `subagentPhase`
+    //      保持 undefined，必须使用 result。
+    //   2. 实时类型验证失败可能跳过 `subagent.failed`，或 `tool.result` 可能先到达；
+    //      否则 UI 可能卡在 'spawning' 状态并持续显示 `Initializing...`。
+    // 没有结果的中间状态仍使用 `subagentPhase`。
+    // `backgrounded` 没有结果，因为后台代理不进入转录。
     const derivedPhase: ToolCallSubagentSnapshot['phase'] =
       this.backgroundTaskTerminalPhase ??
       (this.result !== undefined
@@ -809,10 +779,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Used by `ReadGroupComponent` to sum line counts across same-step Read
-   * cards. `lines` matches the single-card chip
-   * (`pluralize(countNonEmptyLines(...), 'line')`) so group and card counts do
-   * not drift.
+   * 由 `ReadGroupComponent` 用于汇总同一步骤中 Read 卡片的行数。
+   * `lines` 与单卡片芯片（`pluralize(countNonEmptyLines(...), 'line')`）匹配，
+   * 使组计数和卡片计数保持一致。
    */
   getReadSnapshot(): ToolCallReadSnapshot {
     const args = this.toolCall.args;
@@ -835,12 +804,12 @@ export class ToolCallComponent extends Container {
     };
   }
 
-  // Readonly view for group access to toolCall metadata (id, name, description).
+  // 只读视图，供组访问 toolCall 元数据（id、name、description）。
   get toolCallView(): Readonly<ToolCallBlockData> {
     return this.toolCall;
   }
 
-  /** Notifies the listener when internal state changes, if a group is attached. */
+  /** 当内部状态变化且已附加组时，通知监听器。 */
   private notifySnapshotChange(): void {
     this.onSnapshotChange?.();
   }
@@ -945,10 +914,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Handles SDK `subagent.spawned`. The child agent is registered with the
-   * parent call, but its prompt may still be queued behind other subagents.
-   * `subagent.started` moves it to 'running' when the child turn actually
-   * begins.
+   * 处理 SDK `subagent.spawned`。子代理已注册到父调用，
+   * 但其提示可能仍在其他子代理后面排队。
+   * 当子轮次实际开始时，`subagent.started` 将其移至 'running'。
    */
   onSubagentSpawned(meta: {
     agentId: string;
@@ -967,7 +935,7 @@ export class ToolCallComponent extends Container {
     this.ui?.requestRender();
   }
 
-  /** Handles SDK `subagent.started` once a queued child turn begins. */
+  /** 当排队的子轮次开始时，处理 SDK `subagent.started`。 */
   onSubagentStarted(meta: {
     agentId: string;
     agentName?: string | undefined;
@@ -989,8 +957,8 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Handles SDK `subagent.completed`. Moves the phase to 'done' and records
-   * token usage plus the result summary for the header chip and tail summary.
+   * 处理 SDK `subagent.completed`。将阶段移至 'done' 并记录
+   * token 使用量和结果摘要，用于头部芯片和尾部摘要。
    */
   onSubagentCompleted(payload: {
     contextTokens?: number | undefined;
@@ -1015,7 +983,7 @@ export class ToolCallComponent extends Container {
     this.ui?.requestRender();
   }
 
-  /** Handles SDK `agent.status.updated` from the child agent. */
+  /** 处理来自子代理的 SDK `agent.status.updated`。 */
   updateSubagentMetrics(payload: {
     contextTokens?: number | undefined;
     usage?: TokenUsage | undefined;
@@ -1032,7 +1000,7 @@ export class ToolCallComponent extends Container {
     this.ui?.requestRender();
   }
 
-  /** Handles SDK `subagent.failed`. */
+  /** 处理 SDK `subagent.failed`。 */
   onSubagentFailed(payload: { error: string }): void {
     this.subagentPhase = 'failed';
     this.subagentEndedAtMs ??= Date.now();
@@ -1045,11 +1013,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Records the actual terminal status of the backing background task so
-   * the snapshot phase no longer relies on the spawn-success ToolResult.
-   * Called for `agent-*` background tasks both live (when the bg agent
-   * terminates non-successfully) and on resume (when reconcile
-   * reclassifies a previously-running task as `lost`).
+   * 记录后台任务的实际终端状态，使快照阶段不再依赖 spawn-success ToolResult。
+   * 对 `agent-*` 后台任务在实时（后台代理非成功终止）和
+   * 恢复时（协调器将先前运行的任务重新分类为 `lost`）都会调用。
    */
   setBackgroundTaskTerminalStatus(
     status: 'completed' | 'failed' | 'timed_out' | 'killed' | 'lost',
@@ -1060,17 +1026,13 @@ export class ToolCallComponent extends Container {
     const phaseUnchanged = this.backgroundTaskTerminalPhase === phase;
     let errorChanged = false;
     if (phase === 'failed') {
-      // Surface the failure line through the same `subagentError` slot that
-      // `onSubagentFailed` writes. The standalone card reads this in
-      // `buildSingleSubagentBlock`; the group card reads it via `errorText`
-      // in `getSubagentSnapshot`. Priority:
-      //   1. Explicit `errorText` from the caller (the real message from a
-      //      live `subagent.failed` event) always wins — it is the most
-      //      informative.
-      //   2. Existing `subagentError` (could be from a prior
-      //      `onSubagentFailed` or an earlier explicit override) is kept.
-      //   3. Fall back to a friendly generic so the failure has SOME
-      //      visible explanation when no source has supplied one.
+      // 通过 `onSubagentFailed` 写入的同一 `subagentError` 槽位显示失败行。
+      // 独立卡片在 `buildSingleSubagentBlock` 中读取；
+      // 组卡片通过 `getSubagentSnapshot` 中的 `errorText` 读取。优先级：
+      //   1. 调用方的显式 `errorText`（来自实时 `subagent.failed` 事件的真实消息）
+      //      始终优先——它最具信息量。
+      //   2. 现有的 `subagentError`（可能来自之前的 `onSubagentFailed` 或更早的显式覆盖）保留。
+      //   3. 回退到友好的通用消息，使失败在没有任何来源提供信息时仍有可见的解释。
       if (errorText !== undefined && this.subagentError !== errorText) {
         this.subagentError = errorText;
         errorChanged = true;
@@ -1092,25 +1054,21 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Subagent id for the backing AgentTool call, used by routing to find a
-   * tool call's backing subagent when reconciling background task lifecycle
-   * events.
+   * 后台 AgentTool 调用的子代理 id，路由在协调后台任务生命周期事件时
+   * 用于查找工具调用的后台子代理。
    *
-   * Two writers, in priority order:
-   *   1. In-memory `subagentAgentId` — wired by `setSubagentMeta` /
-   *      `onSubagentSpawned` for foreground agents. For backgrounded agents
-   *      this stays undefined: `handleSubagentSpawned` early-returns before
-   *      calling `tc.onSubagentSpawned`, and `applySubagentReplay` early-
-   *      returns when the wire payload omits the `subagent` block — which
-   *      it does for every replayed Agent call.
-   *   2. The spawn-success ToolResult body — AgentTool unconditionally
-   *      emits `agent_id: agent-N` for every Agent call (foreground and
-   *      background). Parsing it gives the stable identifier even when the
-   *      in-memory field is empty, which is the only way the resume path
-   *      can reliably route a `background.task.terminated` to the right
-   *      card and the only way the live path avoids matching by description
-   *      and accidentally updating an unrelated Agent card that happens to
-   *      share the same `args.description`.
+   * 两个写入方，按优先级排列：
+   *   1. 内存中的 `subagentAgentId`——由 `setSubagentMeta` /
+   *      `onSubagentSpawned` 为前台代理接线。对于后台代理，此值保持
+   *      undefined：`handleSubagentSpawned` 在调用 `tc.onSubagentSpawned`
+   *      之前提前返回，且 `applySubagentReplay` 在传输载荷省略 `subagent`
+   *      块时提前返回——每个重放的 Agent 调用都是如此。
+   *   2. spawn-success ToolResult 主体——AgentTool 对每个 Agent 调用
+   *     （前台和后台）无条件发出 `agent_id: agent-N`。解析它可以得到
+   *      稳定标识符，即使内存字段为空。这是恢复路径能够可靠地将
+   *      `background.task.terminated` 路由到正确卡片的唯一方式，
+   *      也是实时路径避免通过描述匹配而意外更新共享相同 `args.description`
+   *      的无关 Agent 卡片的唯一方式。
    */
   getSubagentAgentId(): string | undefined {
     if (this.subagentAgentId !== undefined) return this.subagentAgentId;
@@ -1119,9 +1077,8 @@ export class ToolCallComponent extends Container {
     return match?.[1];
   }
 
-  /** `args.description` for `Agent` tool calls, used as a resume-path
-   *  fallback when the wire format pre-dates persisted subagent ids and
-   *  the only stable cross-restart identifier is the description string. */
+  /** `Agent` 工具调用的 `args.description`，当传输格式早于持久化的子代理 id
+   *  且唯一稳定的跨重启标识符是描述字符串时，用作恢复路径的回退。 */
   getAgentToolDescription(): string | undefined {
     if (this.toolCall.name !== 'Agent') return undefined;
     const desc = this.toolCall.args['description'];
@@ -1134,7 +1091,7 @@ export class ToolCallComponent extends Container {
     } else {
       this.subagentText += text;
     }
-    // Child-agent activity means it is running unless already terminal/backgrounded.
+    // 子代理活动意味着它正在运行，除非已处于终端/后台状态。
     if (
       this.subagentPhase === undefined ||
       this.subagentPhase === 'queued' ||
@@ -1262,8 +1219,7 @@ export class ToolCallComponent extends Container {
     } else if (isTruncated) {
       bullet = currentTheme.fg('error', '✗ ');
     } else {
-      // Solid bullet for in-flight tools — the previous marker ↔ blank
-      // toggle caused visible flicker on every re-render.
+      // 进行中工具使用实心圆点——之前的标记↔空白切换在每次重渲染时会造成可见闪烁。
       bullet = currentTheme.fg('text', STATUS_BULLET);
     }
 
@@ -1358,14 +1314,12 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Render the accumulated `progressLines` between the call preview and
-   * the result body. URLs inside a line are wrapped in an OSC 8 hyperlink
-   * sequence so terminals that support it (iTerm2, Ghostty, kitty, modern
-   * Terminal.app, VS Code) make the URL Cmd-clickable and expose
-   * "Copy Link" via the context menu — even when pi-tui soft-wraps the
-   * URL across multiple rows (pi-tui's wrapTextWithAnsi re-opens the
-   * active OSC 8 link on each continuation line). Each embedded URL is
-   * styled individually so surrounding prose keeps its default dim tone.
+   * 在调用预览和结果主体之间渲染累积的 `progressLines`。
+   * 行内的 URL 用 OSC 8 超链接序列包裹，使支持它的终端（iTerm2、Ghostty、kitty、
+   * 现代 Terminal.app、VS Code）使 URL 可通过 Cmd 点击并从上下文菜单暴露"复制链接"
+   * ——即使 pi-tui 将 URL 软换行到多行（pi-tui 的 wrapTextWithAnsi 在每个续行上
+   * 重新打开活动的 OSC 8 链接）。每个嵌入的 URL 单独设置样式，
+   * 使周围文本保持默认的暗淡色调。
    */
   private buildProgressBlock(): void {
     if (this.progressLines.length === 0) return;
@@ -1465,7 +1419,7 @@ export class ToolCallComponent extends Container {
       }
     }
 
-    // Result summary from subagent.completed.
+    // 来自 subagent.completed 的结果摘要。
     if (this.subagentPhase === 'done' && this.subagentResultSummary !== undefined) {
       const summaryLines = this.subagentResultSummary.split('\n').slice(0, 2);
       for (const line of summaryLines) {
@@ -1473,7 +1427,7 @@ export class ToolCallComponent extends Container {
       }
     }
 
-    // Full error text from subagent.failed; do not collapse it.
+    // 来自 subagent.failed 的完整错误文本；不折叠。
     if (this.subagentPhase === 'failed' && this.subagentError !== undefined) {
       const errLines = this.subagentError.split('\n');
       for (const line of errLines) {
@@ -1483,7 +1437,7 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Header phase/token chip. No chip is shown when phase is undefined.
+   * 头部阶段/token 芯片。阶段为 undefined 时不显示芯片。
    *   queued        -> queued
    *   spawning      -> starting
    *   running       -> running
@@ -1649,8 +1603,7 @@ export class ToolCallComponent extends Container {
       this.getDerivedSubagentPhase() !== 'done' &&
       this.subagentThinkingText.trim().length > 0
     ) {
-      // Scroll thinking within a fixed two-row window (width-aware), matching
-      // the main agent's live thinking instead of growing without bound.
+      // 在固定的两行窗口内滚动思考内容（宽度感知），匹配主代理的实时思考而非无限增长。
       this.addChild(
         new PrefixedWrappedLine(
           `  ${currentTheme.dim('◌')} `,
@@ -1674,14 +1627,12 @@ export class ToolCallComponent extends Container {
   private addSubToolOutputPreview(activity: SubToolActivity): void {
     const output = activity.output;
     if (output === undefined || output.trim().length === 0) return;
-    // Mirror the main agent: Bash and any tool without a dedicated renderer
-    // (every MCP tool included) get a truncated output preview. Recognized
-    // tools keep their compact activity row only.
+    // 与主代理保持一致：Bash 和任何没有专用渲染器的工具（包括每个 MCP 工具）
+    // 获得截断的输出预览。已识别的工具仅保留其紧凑的活动行。
     if (activity.name !== 'Bash' && !isGenericToolResult(activity.name)) return;
     this.addChild(
       new TruncatedOutputComponent(output, {
-        // Subagent output is always fixed-truncated; it does not take part in
-        // the ctrl+o expand toggle, so don't advertise it either.
+        // 子代理输出始终固定截断；不参与 ctrl+o 展开切换，因此也不提示展开。
         expanded: false,
         expandHint: false,
         isError: activity.phase === 'failed',
@@ -1732,10 +1683,9 @@ export class ToolCallComponent extends Container {
       const filePath = str(this.toolCall.args['file_path'] ?? this.toolCall.args['path']);
       const lang = langFromPath(filePath);
       const allLines = highlightLines(content, lang);
-      // Cap as soon as args finalize, not just when result lands. Otherwise the
-      // brief render tick between finalized args and result draws the full file,
-      // and the snap back to the collapsed cap triggers pi-tui's full-redraw
-      // path which wipes the terminal scrollback (pre-TUI history).
+      // 在参数确定后立即限制行数，而非等到结果到达。否则参数确定和结果到达之间
+      // 的短暂渲染刻度会绘制完整文件，而快速回到折叠上限会触发 pi-tui 的
+      // 全量重绘路径，清除终端回滚缓冲区（TUI 之前的历史记录）。
       const writeShouldCap = !this.expanded;
       const shown = writeShouldCap ? allLines.slice(0, COMMAND_PREVIEW_LINES) : allLines;
       const remaining = allLines.length - shown.length;
@@ -1770,14 +1720,12 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Live-rendering during the `tool.call.delta` streaming window.
+   * `tool.call.delta` 流式传输窗口期间的实时渲染。
    *
-   * For tools we recognise, we reach into the partial JSON (via
-   * `extractPartialStringField`) and render a stable high-signal
-   * preview: Write's `content` as highlighted code, Edit's argument
-   * receive progress, Bash's `$ command`, etc. While args are still
-   * streaming we render from a bounded preview buffer; once the result lands,
-   * the preview snaps to the collapsed cap unless the user has expanded.
+   * 对于已识别的工具，我们通过 `extractPartialStringField` 深入部分 JSON
+   * 并渲染稳定的高信号预览：Write 的 `content` 作为高亮代码、
+   * Edit 的参数接收进度、Bash 的 `$ command` 等。参数仍在流式传输时
+   * 从有界预览缓冲区渲染；结果到达后，预览切换到折叠上限，除非用户已展开。
    */
   private buildStreamingPreview(streamText: string): void {
     const name = this.toolCall.name;
@@ -1833,14 +1781,14 @@ export class ToolCallComponent extends Container {
         }),
       );
     }
-    // Unknown tools: nothing sensible to stream without a schema, so
-    // leave the body blank and let the header do the talking.
+    // 未知工具：没有 schema 无法进行有意义的流式传输，
+    // 因此留空主体，让头部来传达信息。
   }
 
   private buildPlanPreview(): void {
-    // Priority: inline `args.plan`, approved plan parsed from result, then
-    // asynchronously injected currentPlan used while approval is in flight.
-    // Once a plan is found, PlanBoxComponent renders it.
+    // 优先级：内联 `args.plan`、从结果解析的已批准计划，
+    // 然后是审批进行中时异步注入的 currentPlan。
+    // 找到计划后，PlanBoxComponent 进行渲染。
     const plan = this.resolvePlanForPreview();
     if (plan.length === 0) return;
     const path = this.resolvePlanPath();
@@ -1861,8 +1809,8 @@ export class ToolCallComponent extends Container {
     return this.currentPlan ?? '';
   }
 
-  // Priority: approved result.output with 'Plan saved to: <path>', then the
-  // planPath asynchronously injected by setPlanInfo while approval is in flight.
+  // 优先级：result.output 中包含 'Plan saved to: <path>' 的已批准结果，
+  // 然后是审批进行中时由 setPlanInfo 异步注入的 planPath。
   private resolvePlanPath(): string | undefined {
     if (this.result !== undefined && !this.result.is_error) {
       const fromResult = interpretExitPlanModeOutcome(this.result.output).path;
@@ -1895,17 +1843,15 @@ export class ToolCallComponent extends Container {
       return;
     }
 
-    // Outputs that start with a `<system…>` tag are harness-injected
-    // reminders piggy-backing on a tool result. They are noise for the
-    // user, so suppress the body while keeping the header chip intact.
+    // 以 `<system…>` 标签开头的输出是测试框架注入的提醒，搭载在工具结果上。
+    // 对用户来说是噪音，因此抑制主体内容同时保持头部芯片完整。
     if (result.output.trimStart().startsWith('<system')) {
       return;
     }
 
     if (this.toolCall.name === 'ExitPlanMode' && isExitPlanModeOutcomeOutput(result.output)) {
-      // Approved plans are already rendered by buildCallPreview via
-      // resolvePlanForPreview. Rejected or revise feedback uses a warning label
-      // plus normal body text so it remains visible in the transcript.
+      // 已批准的计划已由 buildCallPreview 通过 resolvePlanForPreview 渲染。
+      // 拒绝或修改反馈使用警告标签加上普通主体文本，使其在转录中保持可见。
       const outcome = interpretExitPlanModeOutcome(result.output);
       if (outcome.kind === 'rejected' && outcome.feedback !== undefined) {
         const trimmed = outcome.feedback.trim();
@@ -1920,9 +1866,8 @@ export class ToolCallComponent extends Container {
       return;
     }
 
-    // TodoList: the authoritative list is shown in the dedicated
-    // TodoPanel before the input area, so repeating the text dump here is
-    // pure clutter. Keep the headline, drop the body.
+    // TodoList：权威列表在输入区域前的专用 TodoPanel 中显示，
+    // 因此在此重复文本转储纯属冗余。保留标题，丢弃主体。
     if (this.toolCall.name === 'TodoList' && !result.is_error) {
       return;
     }
@@ -1986,9 +1931,9 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * Render AskUserQuestion's JSON payload as a friendly Q/A list.
-   * Returns true on success (caller skips the default JSON dump);
-   * false on parse failure (caller falls back to raw display).
+   * 将 AskUserQuestion 的 JSON 载荷渲染为友好的问答列表。
+   * 成功时返回 true（调用方跳过默认 JSON 转储）；
+   * 解析失败时返回 false（调用方回退到原始显示）。
    */
   private renderAskUserQuestionResult(output: string): boolean {
     let parsed: unknown;
@@ -2024,10 +1969,10 @@ export class ToolCallComponent extends Container {
 }
 
 /**
- * Computes the second-level "latest activity" line for group rows:
- *   1. latest ongoing sub-tool (`Using {name} ({keyArg})`)
- *   2. latest finished sub-tool (`Used {name} ({keyArg})`)
- *   3. last non-empty line from accumulated subagent text
+ * 计算组行的二级"最新活动"行：
+ *   1. 最近的进行中子工具 (`Using {name} ({keyArg})`)
+ *   2. 最近完成的子工具 (`Used {name} ({keyArg})`)
+ *   3. 累积子代理文本的最后一行非空行
  */
 function computeLatestActivity(
   ongoing: ReadonlyMap<string, OngoingSubCall>,

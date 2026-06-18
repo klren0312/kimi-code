@@ -1,16 +1,15 @@
 /**
- * Terminal background detection.
+ * 终端背景检测。
  *
- * Strategy, in priority order:
- *   1. Reject — non-TTY, NO_COLOR, FORCE_COLOR=0, CI → safe `'dark'`.
- *   2. OSC 11 — write `ESC ] 11 ; ? BEL`, parse `ESC ] 11 ; rgb:RR/GG/BB BEL`,
- *      compute relative luminance. Capped at `timeoutMs` so unsupported
- *      terminals don't hang.
- *   3. COLORFGBG — VT100 / xterm fallback exposing `"fg;bg"`.
- *   4. Default — `'dark'`.
+ * 策略，按优先级排列：
+ *   1. 拒绝——非 TTY、NO_COLOR、FORCE_COLOR=0、CI → 安全返回 `'dark'`。
+ *   2. OSC 11——写入 `ESC ] 11 ; ? BEL`，解析 `ESC ] 11 ; rgb:RR/GG/BB BEL`，
+ *      计算相对亮度。超时上限为 `timeoutMs`，防止不支持的终端挂起。
+ *   3. COLORFGBG——VT100 / xterm 回退方案，暴露 `"fg;bg"`。
+ *   4. 默认——`'dark'`。
  *
- * Must run before pi-tui enters raw mode; once the framework owns stdin
- * the OSC reply gets eaten by the input loop.
+ * 必须在 pi-tui 进入原始模式之前运行；一旦框架接管 stdin，
+ * OSC 回复就会被输入循环吞掉。
  */
 
 import { OSC11_QUERY, TERMINAL_THEME_DETECT_TIMEOUT_MS } from "#/tui/constant/terminal";
@@ -59,8 +58,8 @@ interface RawModeStdin {
 async function queryOsc11(opts: { timeoutMs: number }): Promise<ResolvedTheme | null> {
   const stdin = process.stdin as unknown as RawModeStdin;
   if (typeof stdin.setRawMode !== "function") return null;
-  // If something else is already listening on stdin (e.g. another raw-mode
-  // consumer), don't fight for it — punt to COLORFGBG instead.
+  // 如果已有其他程序在监听 stdin（例如另一个原始模式消费者），
+  // 不要与之争夺——改用 COLORFGBG。
   if (process.stdin.listenerCount("data") > 0) return null;
 
   const wasRaw = stdin.isRaw === true;
@@ -98,15 +97,15 @@ async function queryOsc11(opts: { timeoutMs: number }): Promise<ResolvedTheme | 
       try {
         stdin.setRawMode(false);
       } catch {
-        /* ignore — raw mode restoration best-effort */
+        /* 忽略——原始模式恢复为尽力而为 */
       }
     }
   }
 }
 
 /**
- * COLORFGBG is `"fg;bg"` (sometimes `"fg;default;bg"`). The last token is
- * the background ANSI 16-color index; 0–6 and 8 are dark, the rest light.
+ * COLORFGBG 格式为 `"fg;bg"`（有时为 `"fg;default;bg"`）。最后一个
+ * token 是背景的 ANSI 16 色索引；0-6 和 8 为暗色，其余为亮色。
  */
 export function parseColorFgBg(value: string | undefined): ResolvedTheme | null {
   if (value === undefined || value === "") return null;
@@ -115,7 +114,7 @@ export function parseColorFgBg(value: string | undefined): ResolvedTheme | null 
   if (bgRaw === undefined) return null;
   const bg = parseInt(bgRaw, 10);
   if (!Number.isInteger(bg)) return null;
-  // ANSI 0=black, 1=red, 2=green, 3=yellow, 4=blue, 5=magenta, 6=cyan, 8=bright black.
+  // ANSI 0=黑色, 1=红色, 2=绿色, 3=黄色, 4=蓝色, 5=品红, 6=青色, 8=亮黑。
   const darkBgs = new Set([0, 1, 2, 3, 4, 5, 6, 8]);
   return darkBgs.has(bg) ? "dark" : "light";
 }

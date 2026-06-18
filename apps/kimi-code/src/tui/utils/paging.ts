@@ -1,19 +1,19 @@
 /**
- * Pure paging math shared by list pickers (ChoicePicker, ModelSelector).
+ * 列表选择器（ChoicePicker、ModelSelector）共用的纯分页计算逻辑。
  *
- * The component owns a single `selectedIndex` into its (already filtered)
- * item list; the page is derived from it, so ↑↓ moves the cursor smoothly
- * across page boundaries while the view still shows an explicit page number.
+ * 组件维护一个指向其（已过滤的）项目列表的 `selectedIndex`；
+ * 页码由该索引推导而来，因此 ↑↓ 可以平滑地跨页移动光标，
+ * 同时视图仍然显示明确的页码。
  */
 
 export interface PageView {
-  /** Zero-based index of the page containing `selectedIndex`. */
+  /** 包含 `selectedIndex` 的页码（从零开始）。 */
   readonly page: number;
-  /** Total number of pages; always at least 1, even for an empty list. */
+  /** 总页数；即使列表为空也至少为 1。 */
   readonly pageCount: number;
-  /** Inclusive slice start of the current page. */
+  /** 当前页的切片起始索引（包含）。 */
   readonly start: number;
-  /** Exclusive slice end of the current page (clamped to `total`). */
+  /** 当前页的切片结束索引（不包含，上限为 `total`）。 */
   readonly end: number;
 }
 

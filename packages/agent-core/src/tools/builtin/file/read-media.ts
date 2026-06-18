@@ -1,18 +1,16 @@
 /**
- * ReadMediaFileTool — read image/video files as multi-modal content.
+ * ReadMediaFileTool — 以多模态内容形式读取图片/视频文件。
  *
- * Returns a 4-part wrap:
+ * 返回 4 部分包装：
  * `[TextPart('<system>…</system>'), TextPart('<image|video path="…">'),
  *   ImageContent|VideoContent, TextPart('</image|video>')]`
- * and gates on the model's `image_in` / `video_in` capability.
+ * 并根据模型的 `image_in` / `video_in` 能力进行门控。
  *
- * The leading `<system>` block summarizes mime type, byte size and (for
- * images) original pixel dimensions, guides the model to derive absolute
- * coordinates from that original size, and reminds it to re-read any media
- * it generates or edits.
+ * 开头的 `<system>` 块汇总 mime 类型、字节大小和（对图片）原始像素尺寸，
+ * 指导模型从该原始尺寸推导绝对坐标，并提醒模型重新读取其生成或编辑的
+ * 任何媒体。
  *
- * Path safety: goes through the shared path access resolver used by
- * Read/Write/Edit.
+ * 路径安全：使用 Read/Write/Edit 共享的路径访问解析器。
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
@@ -35,7 +33,7 @@ import { literalRulePattern, matchesPathRuleSubject } from '../../support/rule-m
 import type { WorkspaceConfig } from '../../support/workspace';
 import readMediaDescriptionHead from './read-media.md?raw';
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── 常量 ────────────────────────────────────────────────────────
 
 const MAX_MEDIA_MEGABYTES = 100;
 const MAX_MEDIA_BYTES = MAX_MEDIA_MEGABYTES * 1024 * 1024;
@@ -44,7 +42,7 @@ export type VideoUploadInput = ProviderVideoUploadInput;
 
 export type VideoUploader = (input: VideoUploadInput) => Promise<VideoURLPart>;
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const ReadMediaFileInputSchema = z.object({
   path: z
@@ -58,7 +56,7 @@ export const ReadMediaFileInputSchema = z.object({
 
 export type ReadMediaFileInput = z.Infer<typeof ReadMediaFileInputSchema>;
 
-// ── Tool description (capability-driven) ─────────────────────────────
+// ── 工具描述（基于能力）─────────────────────────────────────────────
 
 function buildDescription(capabilities: ModelCapability): string {
   const head = renderPrompt(readMediaDescriptionHead, { MAX_MEDIA_MEGABYTES });
@@ -83,15 +81,14 @@ function buildDescription(capabilities: ModelCapability): string {
   return lines.join('\n');
 }
 
-// ── System summary ───────────────────────────────────────────────────
+// ── 系统摘要 ───────────────────────────────────────────────────
 
 /**
- * Build the `<system>` summary that precedes the media content.
+ * 构建媒体内容之前的 `<system>` 摘要。
  *
- * Carries mime type, byte size and (for images) the original pixel
- * dimensions. When the dimensions are known it also guides the model to
- * derive absolute coordinates from that original size; it always reminds
- * the model to re-read any media it generates or edits.
+ * 携带 mime 类型、字节大小和（对图片）原始像素尺寸。当尺寸已知时，
+ * 还指导模型从该原始尺寸推导绝对坐标；始终提醒模型重新读取其
+ * 生成或编辑的任何媒体。
  */
 function buildSystemSummary(input: {
   readonly kind: 'image' | 'video';
@@ -104,9 +101,9 @@ function buildSystemSummary(input: {
     `Mime type: ${input.mimeType}.`,
     `Size: ${String(input.byteSize)} bytes.`,
   ];
-  // Coordinate guidance is only emitted when the original size is actually
-  // known — sniffing fails for some image formats (TIFF/ICO/HEIC/…), and
-  // telling the model to use a size that is not in the block would mislead it.
+  // 坐标指导仅在原始尺寸确实已知时才发出 — 对某些图片格式
+  // （TIFF/ICO/HEIC/…）嗅探会失败，告诉模型使用不在块中的尺寸
+  // 会误导它。
   if (input.kind === 'image' && input.dimensions) {
     parts.push(
       `Original dimensions: ${String(input.dimensions.width)}x${String(input.dimensions.height)} pixels.`,
@@ -121,7 +118,7 @@ function buildSystemSummary(input: {
   return `<system>${parts.join(' ')}</system>`;
 }
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class ReadMediaFileTool implements BuiltinTool<ReadMediaFileInput> {
   readonly name = 'ReadMediaFile' as const;
@@ -171,8 +168,8 @@ export class ReadMediaFileTool implements BuiltinTool<ReadMediaFileInput> {
     }
 
     try {
-      // For media input, the bytes are authoritative; the extension is only
-      // a fallback for formats that cannot be sniffed from the header.
+      // 对于媒体输入，字节是权威来源；扩展名仅作为无法从头部
+      // 嗅探的格式的后备。
       const header = await this.kaos.readBytes(safePath, MEDIA_SNIFF_BYTES);
       const fileType = detectFileType(safePath, header, 'media');
 

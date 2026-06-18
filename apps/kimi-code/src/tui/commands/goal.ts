@@ -68,13 +68,12 @@ export type ParsedGoalCommand =
 const CONTROL_SUBCOMMANDS = new Set(['pause', 'resume', 'cancel']);
 
 /**
- * Parses the deterministic `/goal` command grammar. Reserved subcommands
- * (`pause`/`resume`/`cancel`/`status`/`replace`) are only honored as the first
- * token; use `/goal -- <objective>` to start a goal whose text begins with one
- * of those words. (`cancel` is the single discard action — it removes the
- * current goal.) Stop conditions are expressed in the objective in natural
- * language (e.g. "…or stop after 20 turns"); the model honors them when it
- * self-audits each turn and reports `complete`/`blocked` via UpdateGoal.
+ * 解析确定性的 `/goal` 命令语法。保留子命令（`pause`/`resume`/`cancel`/
+ * `status`/`replace`）仅在作为第一个 token 时生效；如需创建以这些词开头的
+ * 目标文本，请使用 `/goal -- <objective>`。（`cancel` 是唯一的丢弃操作——
+ * 它会移除当前目标。）停止条件以自然语言写在目标描述中（例如"…or stop
+ * after 20 turns"）；模型在每轮自检时会遵循这些条件，并通过
+ * UpdateGoal 报告 `complete`/`blocked` 状态。
  */
 export function parseGoalCommand(rawArgs: string): ParsedGoalCommand {
   const args = rawArgs.trim();
@@ -95,16 +94,16 @@ export function parseGoalCommand(rawArgs: string): ParsedGoalCommand {
     replace = true;
     index += 1;
   }
-  // `--` ends subcommand parsing so an objective can begin with a reserved word
-  // (e.g. `/goal -- pause the rollout`).
+  // `--` 终止子命令解析，使目标文本可以以保留词开头
+  // （例如 `/goal -- pause the rollout`）。
   if (tokens[index] === '--') {
     index += 1;
   }
 
   const objective = tokens.slice(index).join(' ').trim();
   if (objective.length === 0) {
-    // A usage hint, not a failure — shown in the same calm style as the other
-    // "nothing to act on" messages (no goal to pause/resume/cancel).
+    // 这是用法提示，不是错误——以与其他"无操作对象"消息（无目标可暂停/恢复/取消）
+    // 相同的平和样式显示。
     return {
       kind: 'error',
       severity: 'hint',
@@ -322,7 +321,7 @@ export async function createGoal(
   rawArgs?: string,
   options: GoalStartOptions = {},
 ): Promise<boolean> {
-  // A goal must be able to start a model turn; refuse to create one otherwise.
+  // 目标必须能够启动模型轮次；否则拒绝创建。
   if (host.state.appState.model.trim().length === 0 || host.session === undefined) {
     host.showError(LLM_NOT_SET_MESSAGE);
     return false;

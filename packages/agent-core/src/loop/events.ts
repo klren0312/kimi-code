@@ -22,8 +22,8 @@ export interface LoopStepEndEvent {
   readonly llmFirstTokenLatencyMs?: number | undefined;
   readonly llmStreamDurationMs?: number | undefined;
   /**
-   * Provider diagnostics are optional and must not drive loop control.
-   * Use `finishReason` for normalized behavior.
+   * 提供者诊断信息是可选的，不得驱动循环控制。
+   * 使用 `finishReason` 获取标准化行为。
    */
   readonly providerFinishReason?: FinishReason | undefined;
   readonly rawFinishReason?: string | undefined;
@@ -178,7 +178,7 @@ function safeEmitLive(emit: LoopLiveEventEmitter | undefined, event: LoopEvent):
     typeof (maybePromise as { catch?: unknown }).catch === 'function'
   ) {
     (maybePromise as Promise<unknown>).catch(() => {
-      // Live listeners are best-effort; their failures must not affect the turn.
+      // 实时监听器为尽力而为；其失败不得影响轮次。
     });
   }
 }

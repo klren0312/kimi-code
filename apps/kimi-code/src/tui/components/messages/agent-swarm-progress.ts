@@ -206,7 +206,7 @@ export class AgentSwarmProgressComponent implements Component {
     this.members = [];
   }
 
-  /** Live palette, read on each render so a theme switch recolors the panel. */
+  /** 实时调色板，每次渲染时读取，以便主题切换时面板颜色随之更新。 */
   private get colors(): ColorPalette {
     return currentTheme.palette;
   }

@@ -20,26 +20,24 @@ export interface SseMcpClientOptions {
   readonly clientVersion?: string;
   readonly toolCallTimeoutMs?: number;
   /**
-   * Reads `process.env[name]` by default. Tests can inject a deterministic
-   * lookup function so they do not have to mutate global env.
+   * 默认读取 `process.env[name]`。测试可注入确定性查找函数，
+   * 以避免修改全局环境变量。
    */
   readonly envLookup?: (name: string) => string | undefined;
   /**
-   * Lets tests inject a fake `fetch` for the underlying transport.
+   * 允许测试为底层传输注入伪造的 `fetch`。
    */
   readonly fetch?: typeof fetch;
   /**
-   * OAuth client provider attached to the transport. Set only when the server
-   * has no static token configuration; the connection manager wires this in
-   * and surfaces `UnauthorizedError` as a `needs-auth` status.
+   * OAuth 客户端提供方，附加到传输层。仅在服务器未配置静态 token 时设置；
+   * 连接管理器注入此提供方，并将 `UnauthorizedError` 呈现为 `needs-auth` 状态。
    */
   readonly oauthProvider?: OAuthClientProvider;
 }
 
 /**
- * Wraps the SDK's deprecated HTTP+SSE transport as a kosong
- * {@link MCPClient}. This exists for compatibility with older MCP servers;
- * new remote servers should prefer streamable HTTP.
+ * 将 SDK 已弃用的 HTTP+SSE 传输封装为 kosong {@link MCPClient}。
+ * 此类存在是为了兼容旧版 MCP 服务器；新的远程服务器应优先使用可流式 HTTP。
  */
 export class SseMcpClient implements MCPClient {
   private readonly client: Client;
@@ -47,8 +45,8 @@ export class SseMcpClient implements MCPClient {
   private readonly toolCallTimeoutMs?: number;
   private started = false;
   private closed = false;
-  // Mirrors HttpMcpClient: handshake failures surface through connect(), while
-  // post-ready terminal transport errors become unexpected closes.
+  // 镜像 HttpMcpClient：握手失败通过 connect() 呈现，而就绪后的终端
+  // 传输错误变为非预期关闭。
   private ready = false;
   private hooksInstalled = false;
   private unexpectedCloseListener: UnexpectedCloseListener | undefined;
@@ -99,9 +97,8 @@ export class SseMcpClient implements MCPClient {
   }
 
   /**
-   * Register a listener for unsolicited terminal transport drops. Brief SSE
-   * stream flaps are left to EventSource's retry loop; terminal HTTP status
-   * errors after startup remove the tools from the agent.
+   * 为非预期的终端传输断开注册监听器。短暂的 SSE 流波动留给
+   * EventSource 的重试循环；启动后的终端 HTTP 状态错误将从代理中移除工具。
    */
   onUnexpectedClose(listener: UnexpectedCloseListener): void {
     this.unexpectedCloseListener = listener;

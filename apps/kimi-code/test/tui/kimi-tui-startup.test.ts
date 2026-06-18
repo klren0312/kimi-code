@@ -83,6 +83,7 @@ function makeStartupInput(
       outputFormat: undefined,
       prompt: undefined,
       skillsDirs: [],
+      logLlm: false,
       ...cliOptions,
     },
     tuiConfig: {

@@ -1,5 +1,5 @@
 /**
- * Background task management tools barrel.
+ * 后台任务管理工具桶文件。
  */
 
 export { TaskListTool, TaskListInputSchema } from './task-list';

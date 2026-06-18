@@ -11,6 +11,8 @@ export interface CLIOptions {
   outputFormat: PromptOutputFormat | undefined;
   prompt: string | undefined;
   skillsDirs: string[];
+  /** Enable LLM communication logging with web viewer */
+  logLlm: boolean;
 }
 
 export interface ValidatedOptions {

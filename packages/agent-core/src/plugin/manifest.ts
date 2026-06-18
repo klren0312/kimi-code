@@ -13,9 +13,9 @@ import {
 const KIMI_PLUGIN_ROOT_PATH = 'kimi.plugin.json';
 const KIMI_PLUGIN_DIR_PATH = '.kimi-plugin/plugin.json';
 
-// Fields that look like third-party runtime extensions (Claude / Codex / old
-// Kimi CLI). We do not run them; emit an info diagnostic so plugin authors and
-// users can see why a field is silently ignored.
+// 看起来像第三方运行时扩展（Claude / Codex / 旧版 Kimi CLI）的字段。
+// 我们不会运行它们；发出 info 诊断信息，以便插件作者和用户了解
+// 字段被静默忽略的原因。
 const UNSUPPORTED_RUNTIME_FIELDS = [
   'tools',
   'commands',

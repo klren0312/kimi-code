@@ -97,10 +97,10 @@ const INTERNAL_ORIGINS = new Set<PromptOrigin['kind']>([
   'system_trigger',
   'compaction_summary',
   'hook_result',
-  // Cron fires are stored as user-role records carrying a `<cron-fire ...>`
-  // XML envelope meant only for the model. Replay and the TUI projector
-  // already hide them; the markdown exporter must do the same or the raw
-  // protocol XML leaks into the user-facing export.
+  // Cron 触发记录存储为用户角色记录，携带仅供模型使用的
+  // `<cron-fire ...>` XML 信封。重放和 TUI 投影器已将其隐藏；
+  // Markdown 导出器也必须如此处理，否则原始协议 XML
+  // 会泄露到面向用户的导出中。
   'cron_job',
   'cron_missed',
 ]);

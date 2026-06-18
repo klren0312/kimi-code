@@ -3,7 +3,7 @@ import type { AutocompleteItem } from '@earendil-works/pi-tui';
 import { completeLeadingArg, type ArgCompletionSpec } from './complete-args';
 import type { KimiSlashCommand, SlashCommandAvailability } from './types';
 
-/** Subcommands offered when autocompleting `/goal <…>`. */
+/** 自动补全 `/goal <…>` 时提供的子命令。 */
 const GOAL_ARG_COMPLETIONS: readonly ArgCompletionSpec[] = [
   { value: 'status', description: 'Show the current goal' },
   { value: 'pause', description: 'Pause the active goal' },
@@ -22,7 +22,7 @@ const SWARM_ARG_COMPLETIONS: readonly ArgCompletionSpec[] = [
   { value: 'off', description: 'Turn swarm mode off' },
 ];
 
-/** Argument autocompletion for the `/goal` command (subcommands). */
+/** `/goal` 命令的参数自动补全（子命令）。 */
 export function goalArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
   const nextMatch = argumentPrefix.match(/^next\s+(\S*)$/i);
   if (nextMatch !== null) {
@@ -36,7 +36,7 @@ export function goalArgumentCompletions(argumentPrefix: string): AutocompleteIte
   return completeLeadingArg(GOAL_ARG_COMPLETIONS, argumentPrefix);
 }
 
-/** Argument autocompletion for the `/swarm` command (subcommands). */
+/** `/swarm` 命令的参数自动补全（子命令）。 */
 export function swarmArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
   return completeLeadingArg(SWARM_ARG_COMPLETIONS, argumentPrefix);
 }
@@ -178,13 +178,12 @@ export const BUILTIN_SLASH_COMMANDS = [
     aliases: [],
     description: 'Start or manage an autonomous goal',
     priority: 80,
-    // No argumentHint: the menu description stays as short as every other
-    // command's. The subcommands (status/pause/resume/cancel/replace) surface in
-    // the argument autocomplete list once the user types `/goal ` (see
-    // completeArgs), so they don't need to be spelled out inline.
+    // 不使用 argumentHint：菜单描述保持与其他命令一样简短。
+    // 子命令（status/pause/resume/cancel/replace）在用户输入 `/goal ` 后
+    // 会出现在参数自动补全列表中（见 completeArgs），因此无需在内联中列出。
     completeArgs: goalArgumentCompletions,
-    // status / pause / cancel are always available; creation, replacement, and
-    // resume start (or restart) a turn and so are idle-only.
+    // status / pause / cancel 始终可用；创建、替换和 resume 会启动（或重新启动）
+    // 一个回合，因此仅在空闲时可用。
     availability: (args) => {
       const trimmed = args.trim();
       if (trimmed === 'next' || trimmed.startsWith('next ')) return 'always';

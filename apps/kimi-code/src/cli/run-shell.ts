@@ -34,6 +34,11 @@ export async function runShell(
   version: string,
   runOptions: { readonly migrateOnly?: boolean } = {},
 ): Promise<void> {
+  // Enable LLM communication logging if --log-llm flag is set
+  if (opts.logLlm) {
+    process.env['KIMI_CODE_LOG_LLM'] = '1';
+  }
+
   const startedAt = Date.now();
   const configStartedAt = startedAt;
   let tuiConfig: TuiConfig;

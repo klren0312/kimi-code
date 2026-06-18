@@ -1,9 +1,8 @@
 /**
- * MoonshotWebSearchProvider — host-side `WebSearchProvider`.
+ * MoonshotWebSearchProvider — 宿主端 `WebSearchProvider`。
  *
- * Auth uses a narrow bearer token provider per request. Host-specific
- * default headers are supplied by runtime and request-level overrides
- * come from `customHeaders`.
+ * 认证使用每次请求的窄范围 Bearer 令牌提供者。宿主特定的
+ * 默认 headers 由运行时提供，请求级覆盖来自 `customHeaders`。
  */
 
 import type { WebSearchProvider, WebSearchResult } from '../builtin';

@@ -1,12 +1,12 @@
 /**
- * Base class for promise-based reverse RPC dialog controllers.
+ * 基于 Promise 的反向 RPC 对话控制器基类。
  *
- * Approval and question flows wait for a UI action before returning a response.
- * Subclasses only need to define the default cancellation response.
+ * 审批和问题流程在返回响应前等待用户操作。
+ * 子类只需定义默认的取消响应。
  *
- * When concurrent requests arrive (e.g. multiple parallel subagents each
- * needing approval), only one panel is shown at a time; additional requests
- * are queued in arrival order and advance after the current one resolves.
+ * 当并发请求到达时（例如多个并行子代理各自需要审批），
+ * 同一时间只显示一个面板；额外的请求按到达顺序排队，
+ * 在当前请求解决后依次推进。
  */
 
 export interface ReverseRpcUIHooks<TPayload> {
@@ -29,8 +29,8 @@ export abstract class ReverseRpcController<TPayload, TResponse> {
   }
 
   /**
-   * Called when a reverse RPC request arrives from core. The returned promise
-   * resolves after the user responds or `cancelAll` forces cancellation.
+   * 当核心发送反向 RPC 请求时调用。返回的 Promise 在用户响应
+   * 或 `cancelAll` 强制取消后解决。
    */
   show(payload: TPayload): Promise<TResponse> {
     return new Promise<TResponse>((resolve) => {
@@ -44,7 +44,7 @@ export abstract class ReverseRpcController<TPayload, TResponse> {
     });
   }
 
-  /** Called by the UI after the user makes a panel choice. */
+  /** 用户在面板做出选择后由 UI 调用。 */
   respond(data: TResponse): void {
     const pending = this.current;
     this.current = null;
@@ -55,7 +55,7 @@ export abstract class ReverseRpcController<TPayload, TResponse> {
     this.advanceOrHide();
   }
 
-  /** Cancels all pending requests during shutdown or session switches. */
+  /** 在关闭或会话切换时取消所有待处理请求。 */
   cancelAll(reason: string): void {
     const all = [...(this.current === null ? [] : [this.current]), ...this.queue];
     this.current = null;
@@ -94,10 +94,9 @@ export abstract class ReverseRpcController<TPayload, TResponse> {
   }
 
   /**
-   * Subclasses override to short-circuit queued requests when an answer to the
-   * just-resolved one (e.g. an approve-for-session) implies the same answer
-   * for matching queued requests. Return `undefined` to leave the queued
-   * request waiting for its own panel turn.
+   * 子类可重写此方法，当刚解决的请求的回答（例如会话级审批）
+   * 意味着匹配的排队请求也适用相同回答时，短路排队请求。
+   * 返回 `undefined` 可让排队请求继续等待自己的面板轮次。
    */
   protected autoResolveFor(
     _resolvedPayload: TPayload,

@@ -1,65 +1,60 @@
 /**
- * `IOAuthService` — daemon-facing device-code login orchestration.
+ * `IOAuthService` — 面向守护进程的设备码登录编排。
  *
- * Bridges the OAuth toolkit's `login({onDeviceCode})` callback shape to a
- * REST resource: the frontend POSTs to start, gets a `verification_uri`
- * synchronously, then polls a GET endpoint for status transitions while the
- * daemon polls the OAuth host in the background.
+ * 将 OAuth 工具包的 `login({onDeviceCode})` 回调形状桥接为 REST 资源：
+ * 前端 POST 启动、同步获取 `verification_uri`、然后轮询 GET 端点
+ * 获取状态转换，同时守护进程在后台轮询 OAuth 主机。
  *
- * **One in-flight flow per provider**. A second start cancels
- * the existing pending flow first (transitions it to `'cancelled'`) then
- * mints a fresh `flow_id`. Completed flows live in-memory for 5 min so the
- * frontend's last poll lands on the terminal status; after that, they GC
- * and `getFlow()` returns `undefined`.
+ * **每个 provider 一次进行中的流程**。第二次启动会先取消现有待处理流程
+ *（将其转为 `'cancelled'`），然后生成新的 `flow_id`。已完成的流程在内存中
+ * 保留 5 分钟，使前端最后一次轮询能到达终态；之后被 GC，`getFlow()`
+ * 返回 `undefined`。
  *
- * **No client coupling**. Daemon does NOT detect frontend exit
- * / WS disconnect. Cleanup paths:
- *   1. 15-min upstream timeout (DeviceCodeTimeoutError → 'expired')
- *   2. Explicit `cancelLogin()` (→ 'cancelled')
- *   3. Same-provider new flow superseding (→ 'cancelled')
+ * **无客户端耦合**。守护进程不检测前端退出/WS 断连。清理路径：
+ *   1. 15 分钟上游超时（DeviceCodeTimeoutError → 'expired'）
+ *   2. 显式 `cancelLogin()`（→ 'cancelled'）
+ *   3. 同 provider 新流程取代（→ 'cancelled'）
  *
- * **Token + config** land via the toolkit's provisioning path: on success,
- * the `managed:kimi-code` provider + models entry are written to
- * `config.toml`, and the cached token is saved to credentials. Frontend
- * follow-up: hit `GET /v1/auth` to confirm `ready: true`.
+ * **令牌 + 配置** 通过工具包的供应路径落地：成功时，`managed:kimi-code`
+ * provider + models 条目写入 `config.toml`，缓存的令牌保存到凭据。
+ * 前端后续：调用 `GET /v1/auth` 确认 `ready: true`。
  *
- * **Architecture**:
+ * **架构**：
  *
  *   POST /v1/oauth/login
  *     │
  *     ▼
  *   startLogin()  ──┐
- *                   │  managed auth facade login runs in BACKGROUND
+ *                   │  managed auth facade login 在后台运行
  *                   ▼                                  │
- *           ┌─ onDeviceCode(auth) ◄────────────────────┘  (fires once)
+ *           ┌─ onDeviceCode(auth) ◄────────────────────┘  （触发一次）
  *           │       │
- *           │       └─ resolves a deferred capturing the verification URLs
+ *           │       └─ resolve 一个捕获验证 URL 的 deferred
  *           │
  *           ▼
- *      REST handler returns OAuthFlowStart immediately
+ *      REST 处理器立即返回 OAuthFlowStart
  *
- *                   meanwhile, the background facade.login() polls...
+ *                   与此同时，后台 facade.login() 持续轮询...
  *
- *           ┌─ resolves with KimiAuthLoginResult  →  flow status = 'authenticated'
- *           │                                        +  config.toml provisioned
- *           │                                        +  token saved to credentials
+ *           ┌─ resolve KimiAuthLoginResult     →  flow status = 'authenticated'
+ *           │                                    +  config.toml 已供应
+ *           │                                    +  令牌已保存到凭据
  *           │
- *           └─ rejects with one of:
+ *           └─ reject 为以下之一：
  *                    DeviceCodeTimeoutError  →  'expired'
  *                    OAuthError("denied")    →  'denied'
  *                    OAuthError("aborted")   →  'cancelled'
- *                    other                   →  'denied' (generic failure)
+ *                    other                   →  'denied'（通用失败）
  *
- *   GET /v1/oauth/login  →  getFlow()  →  snapshot of in-memory state
+ *   GET /v1/oauth/login  →  getFlow()  →  内存状态快照
  *
- * **One in-flight per provider**: startLogin replaces an
- * existing pending flow by aborting its AbortController + flipping its
- * status to 'cancelled' BEFORE minting a new flow_id.
+ * **每个 provider 一次进行中的流程**：startLogin 通过中止 AbortController
+ * + 将状态翻转为 'cancelled' 来替换同 provider 的现有待处理流程，
+ * 然后生成新的 flow_id。
  *
- * **GC**: a 5-min timer fires after each terminal transition; the entry is
- * dropped on timer fire. Pending flows have no GC — they live until the
- * upstream 15-min device_code TTL expires + facade.login resolves with
- * `DeviceCodeTimeoutError`.
+ * **GC**：每次终态转换后触发 5 分钟定时器；定时器触发时删除条目。
+ * 待处理流程无 GC——它们存活到上游 15 分钟 device_code TTL 过期
+ * + facade.login 以 `DeviceCodeTimeoutError` resolve。
  */
 
 import { createDecorator } from '../../di';
@@ -74,31 +69,29 @@ export interface IOAuthService {
   readonly _serviceBrand: undefined;
 
   /**
-   * Kick off a device-code flow for `providerName` (default
-   * `'managed:kimi-code'`). Requests the device authorization synchronously
-   * (1-2 round-trips to the OAuth host), starts background polling, and
-   * returns the verification URLs + flow_id.
+   * 启动 `providerName`（默认 `'managed:kimi-code'`）的设备码流程。
+   * 同步请求设备授权（1-2 次 OAuth 主机往返），启动后台轮询，
+   * 返回验证 URL + flow_id。
    *
-   * Cancels any existing pending flow for the same provider before starting.
+   * 启动前取消同 provider 的任何现有待处理流程。
    */
   startLogin(providerName?: string): Promise<OAuthFlowStart>;
 
   /**
-   * Snapshot the current flow state for `providerName`. Returns `undefined`
-   * when no flow has been started (or was GC'd after 5 min in terminal state).
+   * 获取 `providerName` 当前流程状态的快照。未启动流程（或终态 5 分钟后被 GC）
+   * 时返回 `undefined`。
    */
   getFlow(providerName?: string): OAuthFlowSnapshot | undefined;
 
   /**
-   * Cancel a pending flow. Idempotent: cancelling a terminal flow returns
-   * `{cancelled: false, status: <current>}` instead of throwing.
+   * 取消待处理的流程。幂等：取消终态流程返回
+   * `{cancelled: false, status: <current>}` 而非抛出异常。
    */
   cancelLogin(providerName?: string): Promise<OAuthLoginCancelResponse>;
 
   /**
-   * Logout — delete the stored token + strip the managed provider's
-   * `apply` config entries (provider + models). After this, `GET /v1/auth`
-   * flips to `ready: false`.
+   * 登出——删除已存储的令牌 + 移除 managed provider 的 `apply` 配置条目
+  *（provider + models）。此后 `GET /v1/auth` 翻转为 `ready: false`。
    */
   logout(providerName?: string): Promise<OAuthLogoutResponse>;
 }

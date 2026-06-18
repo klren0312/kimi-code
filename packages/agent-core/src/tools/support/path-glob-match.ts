@@ -16,8 +16,8 @@ interface PathMatchSemantics {
 }
 
 /**
- * Match ordinary string fields, like command text or search patterns.
- * `*` and `**` work as wildcards, but the value is not treated as a file path.
+ * 匹配普通字符串字段，如命令文本或搜索模式。
+ * `*` 和 `**` 作为通配符使用，但值不被视为文件路径。
  */
 export function globMatch(value: string, pattern: string, options?: { nocase?: boolean }): boolean {
   if (picomatch.isMatch(value, pattern, options)) return true;
@@ -33,9 +33,9 @@ function stripLeadingDotSlash(value: string): string {
 }
 
 /**
- * Match file path fields, like Read/Write/Edit `path`.
- * Also compares normalized forms, so `./a`, `dir/../a`, and Windows
- * separator or case variants can match the same rule.
+ * 匹配文件路径字段，如 Read/Write/Edit 的 `path`。
+ * 同时比较规范化形式，使 `./a`、`dir/../a` 以及 Windows 分隔符
+ * 或大小写变体也能匹配同一规则。
  */
 export function pathGlobMatch(
   value: string,
@@ -56,13 +56,13 @@ export function pathGlobMatch(
 }
 
 /**
- * Build equivalent spellings for one path string before glob matching:
- * the original text, a leading `./` or `.\` form without that prefix,
- * the canonical absolute path when possible, and slash-form Windows paths.
+ * 在 glob 匹配前为一个路径字符串构建等价拼写：
+ * 原始文本、去除前导 `./` 或 `.\` 的形式、
+ * 可能的规范化绝对路径，以及斜杠形式的 Windows 路径。
  *
- * Example: with cwd `/repo`, `./src/../secret.txt` adds both
- * `src/../secret.txt` and `/repo/secret.txt`. On Windows,
- * `C:\repo\secret.txt` also adds `C:/repo/secret.txt`.
+ * 示例：cwd 为 `/repo` 时，`./src/../secret.txt` 同时添加
+ * `src/../secret.txt` 和 `/repo/secret.txt`。在 Windows 上，
+ * `C:\repo\secret.txt` 还会添加 `C:/repo/secret.txt`。
  */
 function pathVariants(
   value: string,
@@ -116,8 +116,8 @@ function pathMatchSemantics(
   pattern: string,
   pathOptions: PermissionPathMatchOptions | undefined,
 ): PathMatchSemantics {
-  // Production callers pass the active Kaos path class. The fallback keeps
-  // the pure matcher useful for tests and direct helper calls.
+  // 生产调用方传入当前活跃的 Kaos 路径类。回退逻辑使纯匹配器
+  // 对测试和直接辅助函数调用仍然可用。
   const pathClass =
     pathOptions?.pathClass ??
     ([value, pattern].some((candidate) => {
@@ -134,8 +134,8 @@ function pathMatchSemantics(
 
 function addPathVariant(variants: Set<string>, value: string, pathClass: PathClass): void {
   variants.add(value);
-  // Picomatch treats backslashes as escape syntax in some cases; add a
-  // slash-separated Win32 variant so nocase and globs behave predictably.
+  // Picomatch 在某些情况下将反斜杠视为转义语法；添加斜杠分隔的
+  // Win32 变体使 nocase 和 glob 行为可预测。
   if (pathClass === 'win32') variants.add(value.replaceAll('\\', '/'));
 }
 

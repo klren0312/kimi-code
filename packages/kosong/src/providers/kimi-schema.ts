@@ -1,19 +1,17 @@
 /**
- * Dereference all `$ref` references in a JSON Schema by inlining definitions
- * from local JSON pointers such as `$defs` and draft-7 `definitions`. Resolved
- * top-level definition buckets are removed from the result.
+ * 解引用 JSON Schema 中的所有 `$ref` 引用，将来自本地 JSON 指针（如 `$defs` 和
+ * draft-7 `definitions`）的定义内联展开。已解析的顶层定义桶会从结果中移除。
  *
- * Circular references are detected and left as `$ref` to avoid infinite
- * recursion; in that case the referenced definition bucket is preserved so the
- * remaining local `$ref` pointers stay resolvable to a JSON Schema validator.
+ * 循环引用会被检测到并保留为 `$ref` 以避免无限递归；在这种情况下，被引用的
+ * 定义桶会被保留，以便剩余的本地 `$ref` 指针仍然可被 JSON Schema 校验器解析。
  */
 export function derefJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
   const visited = new Set<string>();
   const result = resolveNode(schema, schema, visited) as Record<string, unknown>;
 
-  // Only delete definition buckets if no refs into them remain in the result.
-  // Cyclic refs are intentionally preserved by resolveNode() and still need
-  // their definition buckets; dropping them would leave dangling pointers.
+  // 仅在结果中没有指向这些桶的未解析引用时才删除定义桶。
+  // resolveNode() 会故意保留循环引用，这些引用仍然需要其定义桶；
+  // 删除它们会导致悬挂指针。
   if (!hasUnresolvedDefinitionRef(result, '$defs')) {
     delete result['$defs'];
   }
@@ -44,9 +42,8 @@ const TYPE_COMPLETION_SKIP_KEYS = new Set([
   'then',
 ]);
 
-// Child-schema positions that this Kimi normalizer knows how to walk. This is
-// also the source of truth for child-schema keywords that imply the parent
-// schema's type. It is not a list of keywords that Moonshot accepts on the wire.
+// 此 Kimi 规范化器已知如何遍历的子模式位置。这也是暗示父模式类型的子模式
+// 关键字的真实来源。它不是 Moonshot 在网络传输中接受的关键字列表。
 const CHILD_SCHEMA_SLOTS = [
   { key: '$defs', kind: 'map' },
   { key: 'definitions', kind: 'map' },
@@ -108,16 +105,14 @@ const NUMERIC_STRUCTURE_KEYS = new Set([
 ]);
 
 /**
- * Return a deep-cloned JSON Schema with missing `type` fields filled in for
- * Kimi tool compatibility.
+ * 返回一个深克隆的 JSON Schema，并为缺失的 `type` 字段填充类型值，
+ * 以兼容 Kimi 工具。
  *
- * Moonshot's tool validator rejects some valid JSON Schema shapes when nested
- * property schemas omit `type` (for example enum-only MCP properties). This is
- * a provider-compatibility normalizer, not a complete JSON Schema compiler:
- * it resolves local refs, preserves combinator nodes, infers obvious
- * scalar/object/array types, and falls back to `string` only for nested
- * typeless property schemas. The root schema object is treated as a container
- * and is not itself normalized.
+ * Moonshot 的工具校验器会在嵌套属性模式省略 `type` 时拒绝一些合法的
+ * JSON Schema 结构（例如仅有 enum 的 MCP 属性）。这是一个提供商兼容性
+ * 规范化器，不是完整的 JSON Schema 编译器：它解析本地引用、保留组合节点、
+ * 推断明显的标量/对象/数组类型，并仅在嵌套的无类型属性模式中回退到
+ * `string`。根模式对象被视为容器，自身不会被规范化。
  */
 export function normalizeKimiToolSchema(schema: Record<string, unknown>): Record<string, unknown> {
   return ensureKimiPropertyTypes(derefJsonSchema(schema));
@@ -143,8 +138,7 @@ function hasUnresolvedDefinitionRef(node: unknown, bucketKey: string): boolean {
       return true;
     }
     for (const [key, value] of Object.entries(obj)) {
-      // Skip the definition bucket itself when walking the result — we only
-      // care about `$ref` pointers living elsewhere in the schema.
+      // 遍历结果时跳过定义桶本身——我们只关心模式中其他位置的 `$ref` 指针。
       if (key === bucketKey) continue;
       if (hasUnresolvedDefinitionRef(value, bucketKey)) return true;
     }
@@ -161,12 +155,12 @@ function resolveNode(node: unknown, root: Record<string, unknown>, visited: Set<
   if (typeof node === 'object' && node !== null) {
     const obj = node as Record<string, unknown>;
 
-    // Handle $ref
+    // 处理 $ref
     if (typeof obj['$ref'] === 'string') {
       const ref = obj['$ref'];
       if (isLocalJsonPointerRef(ref)) {
         if (visited.has(ref)) {
-          // Circular reference — return the $ref as-is to avoid infinite recursion
+          // 循环引用——原样返回 $ref 以避免无限递归
           return obj;
         }
         const resolvedRef = resolveLocalJsonPointer(root, ref);
@@ -174,11 +168,11 @@ function resolveNode(node: unknown, root: Record<string, unknown>, visited: Set<
           visited.add(ref);
           const resolved = resolveNode(resolvedRef.value, root, visited);
           visited.delete(ref);
-          // Preserve sibling keywords (JSON Schema 2020-12 semantics):
-          // a node may contain `$ref` alongside other fields like
-          // `description`, `default`, or local constraints. Python's deref
-          // implementation merges these with the resolved definition;
-          // sibling keys on the local node take precedence.
+          // 保留兄弟关键字（JSON Schema 2020-12 语义）：
+          // 一个节点可能在 `$ref` 旁边包含其他字段，如
+          // `description`、`default` 或本地约束。Python 的 deref
+          // 实现会将这些与已解析的定义合并；
+          // 本地节点上的兄弟键优先。
           if (typeof resolved === 'object' && resolved !== null && !Array.isArray(resolved)) {
             const merged: Record<string, unknown> = { ...(resolved as Record<string, unknown>) };
             for (const [key, value] of Object.entries(obj)) {
@@ -190,7 +184,7 @@ function resolveNode(node: unknown, root: Record<string, unknown>, visited: Set<
           return resolved;
         }
       }
-      // Unknown $ref — return as-is
+      // 未知的 $ref——原样返回
       return obj;
     }
 
@@ -310,13 +304,12 @@ function normalizeProperty(node: unknown): void {
       node['type'] = inferTypeFromStructure(node);
     }
   } else if (!hasAnyKey(node, TYPE_COMPLETION_SKIP_KEYS) && typeof node['type'] === 'string') {
-    // Some MCP servers emit schemas where a $ref merge or a generator bug
-    // leaves an explicit type that contradicts the enum/const values (e.g.
-    // type: 'object' alongside string enum values). Moonshot rejects these
-    // as invalid, so repair the type when it disagrees with the values.
+    // 某些 MCP 服务器发出的模式中，$ref 合并或生成器缺陷会导致显式 type
+    // 与 enum/const 值矛盾（例如 type 为 'object' 但实际是字符串 enum 值）。
+    // Moonshot 会将这些视为无效并拒绝，因此在 type 与值不一致时修复 type。
     //
-    // Known trigger: Xcode MCP (xcrun mcpbridge) starting with
-    // Version 26.5 (17F42) generates this bug for String-backed Swift enums.
+    // 已知触发条件：Xcode MCP (xcrun mcpbridge) 从 Version 26.5 (17F42) 开始
+    // 会为 String 类型的 Swift enum 生成此缺陷。
     const enumValues = node['enum'];
     if (Array.isArray(enumValues) && enumValues.length > 0) {
       try {
@@ -326,8 +319,8 @@ function normalizeProperty(node: unknown): void {
           removeIrrelevantStructureKeys(node, inferred);
         }
       } catch {
-        // Mixed or uninferable enum types — leave the explicit type as-is
-        // and let the provider validator surface the error.
+        // 混合或无法推断的 enum 类型——保留显式 type 不变，
+        // 让提供商校验器上报错误。
       }
     } else if (hasOwn(node, 'const')) {
       try {
@@ -337,7 +330,7 @@ function normalizeProperty(node: unknown): void {
           removeIrrelevantStructureKeys(node, inferred);
         }
       } catch {
-        // Same as above.
+        // 同上。
       }
     }
   }

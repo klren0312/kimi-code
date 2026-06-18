@@ -126,14 +126,14 @@ export class SessionService extends Disposable implements ISessionService {
   }
 
   /**
-   * Compute the session lifecycle status from live daemon state.
+   * 根据实时守护进程状态计算会话生命周期状态。
    *
-   * Priority:
-   *   1. awaiting_approval — pending approvals exist
-   *   2. awaiting_question — pending questions exist
-   *   3. running           — active prompt or active turn
-   *   4. aborted           — last turn ended as cancelled/failed and no new work started
-   *   5. idle              — everything else
+   * 优先级：
+   *   1. awaiting_approval — 存在待处理的审批请求
+   *   2. awaiting_question — 存在待处理的用户提问
+   *   3. running           — 存在活跃的 prompt 或活跃的 turn
+   *   4. aborted           — 上一个 turn 以取消/失败结束且未启动新工作
+   *   5. idle              — 其他情况
    */
   private _computeStatus(sessionId: string): SessionStatus {
     if (this.approvalService.listPending(sessionId).length > 0) {
@@ -155,9 +155,8 @@ export class SessionService extends Disposable implements ISessionService {
   }
 
   /**
-   * Overwrite the placeholder status on a protocol Session with the live value,
-   * and remember the last status we returned so status-change events can be
-   * emitted only when the live state actually moves.
+   * 用实时计算的状态值覆盖协议 Session 上的占位状态，
+   * 并记录上次返回的状态，以便仅在状态真正变化时触发 status_changed 事件。
    */
   private _patchSessionStatus(session: Session): Session {
     const status = this._computeStatus(session.id);
@@ -167,9 +166,8 @@ export class SessionService extends Disposable implements ISessionService {
   }
 
   /**
-   * Publish `event.session.status_changed` when the computed status for a
-   * session differs from the last one we announced. Called after every relevant
-   * lifecycle event so the session list stays in sync.
+   * 当会话的计算状态与上次公布的状态不同时，发布 `event.session.status_changed`。
+   * 在每个相关生命周期事件后调用，以保持会话列表同步。
    */
   private _emitStatusChanged(sessionId: string): void {
     const previous = this._statusBySession.get(sessionId) ?? 'idle';
@@ -481,9 +479,9 @@ export class SessionService extends Disposable implements ISessionService {
       throw new SessionNotFoundError(id);
     }
 
-    // beginCompaction only sees sessions loaded in core memory — resume first
-    // (mirrors undo) so compacting a freshly-opened session doesn't throw
-    // SESSION_NOT_FOUND.
+    // beginCompaction 只能感知已加载到核心内存中的会话——因此先 resume
+    // （与 undo 逻辑一致），以避免对新打开的会话执行 compact 时抛出
+    // SESSION_NOT_FOUND 错误。
     await this.core.rpc.resumeSession({ sessionId: id });
 
     const instruction = normalizeOptionalString(input.instruction);

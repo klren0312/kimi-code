@@ -1,15 +1,14 @@
 /**
- * Transcript-side rendering of a pasted image.
+ * 在对话记录中渲染粘贴的图片。
  *
- * On terminals that speak the Kitty graphics protocol or iTerm2 inline
- * image protocol (detected by pi-tui's `getCapabilities()`), we show
- * the actual image. Everywhere else we fall back to a one-line text
- * marker matching the placeholder the user sees in the input box —
- * this keeps the transcript readable on Terminal.app / Linux default
- * terminals / `script` recordings without extra chrome.
+ * 在支持 Kitty 图形协议或 iTerm2 内联图片协议的终端上（由 pi-tui 的
+ * `getCapabilities()` 检测），我们会显示实际图片。其他终端则回退为
+ * 一行文本标记，与用户在输入框中看到的占位符一致——这样可以保证
+ * 对话记录在 Terminal.app / Linux 默认终端 / `script` 录制中仍然可读，
+ * 无需额外的 UI 装饰。
  *
- * Height is capped at ~12 rows so a single screenshot can't monopolize
- * the viewport; pi-tui handles proportional scaling internally.
+ * 高度上限为 ~12 行，防止单张截图占据过多视口；pi-tui 内部会自动
+ * 进行等比缩放。
  */
 
 import { Container, Image, Text, type ImageTheme, getCapabilities } from '@earendil-works/pi-tui';

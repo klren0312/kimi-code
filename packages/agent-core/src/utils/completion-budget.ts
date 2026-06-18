@@ -1,10 +1,10 @@
 import type { ChatProvider, ModelCapability } from '@moonshot-ai/kosong';
 
-/** Completion-token budget for the next LLM request. */
+/** 下一次 LLM 请求的补全 token 预算。 */
 export interface CompletionBudgetConfig {
-  /** Explicit user-configured maximum. */
+  /** 用户配置的显式上限。 */
   readonly hardCap?: number;
-  /** Conservative cap for providers/models whose context window is unknown. */
+  /** 上下文窗口未知的 provider/模型的保守上限。 */
   readonly fallback?: number;
 }
 
@@ -12,8 +12,8 @@ const MIN_FLOOR = 1;
 const DEFAULT_UNKNOWN_CONTEXT_FALLBACK = 32000;
 
 /**
- * Resolve configured completion budget. Env values are explicit hard caps;
- * non-positive env values disable clamping.
+ * 解析已配置的补全预算。环境变量值为显式硬上限；
+ * 非正的环境变量值禁用截断。
  */
 export function resolveCompletionBudget(args: {
   readonly maxOutputSize?: number;
@@ -49,16 +49,15 @@ function parseEnvBudget(raw: string | undefined): EnvBudget {
 }
 
 /**
- * Compute the effective `max_completion_tokens` cap.
+ * 计算有效的 `max_completion_tokens` 上限。
  */
 export function computeCompletionBudgetCap(args: {
   readonly budget: CompletionBudgetConfig;
   readonly capability: ModelCapability | undefined;
 }): number {
   const maxCtx = args.capability?.max_context_tokens ?? 0;
-  // The provider backend computes the safe request-specific value from the
-  // serialized prompt. Locally using the largest cap avoids cutting off
-  // thinking before the model produces a summary.
+  // Provider 后端根据序列化的提示词计算安全的请求特定值。
+  // 本地使用最大上限可以避免在模型生成摘要之前截断思考过程。
   const cap =
     args.budget.hardCap ??
     (maxCtx > 0 ? maxCtx : args.budget.fallback ?? DEFAULT_UNKNOWN_CONTEXT_FALLBACK);
@@ -66,14 +65,12 @@ export function computeCompletionBudgetCap(args: {
 }
 
 /**
- * Apply a completion budget to a provider via its optional
- * `withMaxCompletionTokens` capability. Returns the original provider
- * unchanged when no budget is configured or the provider opts out.
+ * 通过 provider 可选的 `withMaxCompletionTokens` 能力应用补全预算。
+ * 未配置预算或 provider 不支持时返回原始 provider。
  *
- * The returned provider is intentionally a shallow clone that shares the
- * original's HTTP client. Callers MUST treat it as a single-step value
- * and NOT persist it back to durable agent state — see the F3 discussion
- * in `KimiChatProvider._clone()`.
+ * 返回的 provider 故意是共享原始 HTTP 客户端的浅克隆。
+ * 调用方必须将其视为单步值，不要持久化回持久化 agent 状态
+ * ——详见 `KimiChatProvider._clone()` 中的 F3 讨论。
  */
 export function applyCompletionBudget(args: {
   readonly provider: ChatProvider;

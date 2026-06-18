@@ -1,30 +1,24 @@
 /**
- * `IAuthSummaryService` — daemon-facing readiness probe.
+ * `IAuthSummaryService` — daemon 面向的就绪探针。
  *
- * Single権威 readiness signal source:
- *   - `get()` produces the `AuthSummary` payload for `GET /v1/auth`.
- *   - `ensureReady(modelOverride?)` is the synchronous gate invoked by entry
- *     points that can't proceed without provider credentials — currently
- *     `PromptService.submit`. It throws one of the four sentinel error
- *     classes below; daemon route layers map them to envelope codes
- *     `40110 / 40111 / 40112 / 40113`.
+ * 单一权威就绪信号源：
+ *   - `get()` 为 `GET /v1/auth` 生成 `AuthSummary` 负载。
+ *   - `ensureReady(modelOverride?)` 是由无法在没有 provider 凭据时继续执行的
+ *     入口点调用的同步门控 — 当前为 `PromptService.submit`。抛出以下四个哨兵
+ *     错误类之一；daemon 路由层将其映射为信封码 40110 / 40111 / 40112 / 40113。
  *
- * Why centralized: the same "is there a usable provider + model + token?"
- * computation is needed by both the read probe and every write-side entry that
- * could surface 50001 "internal" today. Co-locating it keeps the
- * logic in one place + makes it cheap to add new gated entries (PATCH session
- * model, etc.).
+ * 为何集中管理：相同的"是否存在可用的 provider + model + token？"计算
+ * 同时被读探针和每个可能产生 50001 "internal" 错误的写侧入口所需。
+ * 集中管理使逻辑保持在一处 + 便于添加新的门控入口（PATCH session model 等）。
  *
- * Status mapping note: we only return `'authenticated'` (token cached) or
- * `'unauthenticated'` (no token). The `'expired' / 'revoked'` states require
- * runtime OAuth introspection; this gate intentionally does NOT try to
- * differentiate them.
+ * 状态映射说明：仅返回 `'authenticated'`（token 已缓存）或
+ * `'unauthenticated'`（无 token）。`'expired' / 'revoked'` 状态需要运行时
+ * OAuth 内省；此门控有意不尝试区分它们。
  *
- * **Implementation** (`AuthSummaryService`): Reads the live config via
- * `ICoreProcessService.rpc.getKimiConfig({})` and the managed-OAuth credential
- * state via a cached-token lookup. Both are cheap (in-process RPC +
- * a token-file existence probe), so we run them on every call instead of
- * caching — keeps the staleness window at zero.
+ * **实现**（`AuthSummaryService`）：通过 `ICoreProcessService.rpc.getKimiConfig({})`
+ * 读取实时配置，通过缓存 token 查找读取托管 OAuth 凭据状态。两者开销都较低
+ *（进程内 RPC + token 文件存在性探针），因此每次调用时执行而非缓存 —
+ * 将过期窗口保持为零。
  */
 
 import { createDecorator } from '../../di';
@@ -34,15 +28,14 @@ export interface IAuthSummaryService {
   readonly _serviceBrand: undefined;
 
   /**
-   * Compute the current readiness snapshot. Cheap (one config read + one
-   * cached-token lookup); safe to call on every `GET /v1/auth`.
+   * 计算当前就绪快照。开销低（一次配置读取 + 一次缓存 token 查找）；
+   * 可安全地在每次 `GET /v1/auth` 时调用。
    */
   get(): Promise<AuthSummary>;
 
   /**
-   * Throw a sentinel auth error if the daemon can NOT currently serve a
-   * prompt with `modelOverride` (or `config.defaultModel` if omitted).
-   * Returns void on success.
+   * 若 daemon 当前无法使用 `modelOverride`（省略时为 `config.defaultModel`）
+   * 处理 prompt，则抛出哨兵认证错误。成功时返回 void。
    */
   ensureReady(modelOverride?: string): Promise<void>;
 }
@@ -53,7 +46,7 @@ export const IAuthSummaryService = createDecorator<IAuthSummaryService>(
 );
 
 /**
- * `40110 auth.provisioning_required` — daemon has zero provider configs.
+ * `40110 auth.provisioning_required` — daemon 没有任何 provider 配置。
  */
 export class AuthProvisioningRequiredError extends Error {
   constructor() {
@@ -63,8 +56,8 @@ export class AuthProvisioningRequiredError extends Error {
 }
 
 /**
- * `40111 auth.token_missing` — provider exists in config but its credential
- * (api_key or cached OAuth token) is missing.
+ * `40111 auth.token_missing` — provider 存在于配置中，但其凭据
+ *（api_key 或缓存的 OAuth token）缺失。
  */
 export class AuthTokenMissingError extends Error {
   readonly providerId: string;
@@ -76,9 +69,8 @@ export class AuthTokenMissingError extends Error {
 }
 
 /**
- * `40112 auth.token_unauthorized` — OAuth refresh returned 401; user has
- * revoked the grant. Not produced by the static gate (would require a
- * round-trip to the OAuth host); reserved for the reactive-refresh path.
+ * `40112 auth.token_unauthorized` — OAuth 刷新返回 401；用户已撤销授权。
+ * 静态门控不会产生此错误（需要到 OAuth 主机的往返）；保留用于响应式刷新路径。
  */
 export class AuthTokenUnauthorizedError extends Error {
   readonly providerId: string;
@@ -90,10 +82,10 @@ export class AuthTokenUnauthorizedError extends Error {
 }
 
 /**
- * `40113 auth.model_not_resolved` — the (default or requested) model alias
- * does not resolve to a configured provider. Two sub-cases:
- *   - no default model set at all (`modelId === undefined`)
- *   - alias missing or points at a non-existent provider
+ * `40113 auth.model_not_resolved` —（默认或请求的）模型别名无法解析为
+ * 已配置的 provider。两种子情况：
+ *   - 未设置默认模型（`modelId === undefined`）
+ *   - 别名缺失或指向不存在的 provider
  */
 export class AuthModelNotResolvedError extends Error {
   readonly modelId: string | undefined;

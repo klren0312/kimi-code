@@ -24,15 +24,15 @@ export interface OpenAIContentPart {
 }
 
 /**
- * Convert a kosong `ContentPart` to OpenAI-compatible content part.
- * Returns `null` for think parts (handled separately as reasoning_content).
+ * 将 kosong 的 `ContentPart` 转换为 OpenAI 兼容的内容部件。
+ * 对于 think 部件返回 `null`（作为 reasoning_content 单独处理）。
  */
 export function convertContentPart(part: ContentPart): OpenAIContentPart | null {
   switch (part.type) {
     case 'text':
       return { type: 'text', text: part.text };
     case 'think':
-      // Think parts are handled separately as reasoning_content — skip them here.
+      // think 部件作为 reasoning_content 单独处理——此处跳过。
       return null;
     case 'image_url':
       return {
@@ -72,7 +72,7 @@ export interface OpenAIToolParam {
 }
 
 /**
- * Convert a kosong `Tool` to OpenAI tool format.
+ * 将 kosong 的 `Tool` 转换为 OpenAI 工具格式。
  */
 export function toolToOpenAI(tool: Tool): OpenAIToolParam {
   return {
@@ -84,10 +84,9 @@ export function toolToOpenAI(tool: Tool): OpenAIToolParam {
     },
   };
 }
-// `terminated` is the undici signature for an SSE/HTTP body stream that is
-// dropped mid-flight (common with Node's native fetch on long reasoning
-// streams). It surfaces as a raw `TypeError: terminated`, so it must be
-// recognized here as a transport-layer connection failure.
+// `terminated` 是 undici 用于标识 SSE/HTTP 响应体流在中途断开的签名
+// （在 Node 原生 fetch 处理长推理流时常见）。它表现为原始的 `TypeError: terminated`，
+// 因此必须在此处将其识别为传输层连接失败。
 const NETWORK_RE = /network|connection|connect|disconnect|terminated/i;
 const TIMEOUT_RE = /timed?\s*out|timeout|deadline/i;
 
@@ -102,27 +101,27 @@ function classifyBaseApiError(message: string): ChatProviderError {
 }
 
 /**
- * Convert an OpenAI SDK error (or raw Error) to a kosong `ChatProviderError`.
+ * 将 OpenAI SDK 错误（或原始 Error）转换为 kosong 的 `ChatProviderError`。
  */
 export function convertOpenAIError(error: unknown): ChatProviderError {
   if (error instanceof ChatProviderError) {
     return error;
   }
-  // v6: APIConnectionTimeoutError extends APIConnectionError, check timeout first
+  // v6: APIConnectionTimeoutError 继承自 APIConnectionError，先检查超时
   if (error instanceof OpenAITimeoutError) {
     return new APITimeoutError(error.message);
   }
   if (error instanceof OpenAIConnectionError) {
     return new APIConnectionError(error.message);
   }
-  // APIError with a status code => status error
+  // 带有状态码的 APIError => 状态错误
   if (error instanceof OpenAIAPIError && typeof error.status === 'number') {
     const reqId = error.requestID ?? null;
     return normalizeAPIStatusError(error.status, error.message, reqId);
   }
-  // Base APIError with no status and no body => transport-layer failure.
-  // When the error has a body (e.g. SSE error events from the server),
-  // skip the heuristic to avoid misclassifying server-side errors.
+  // 没有状态码且没有 body 的基础 APIError => 传输层失败。
+  // 当错误有 body 时（例如来自服务器的 SSE 错误事件），
+  // 跳过启发式判断以避免误分类服务端错误。
   if (
     error instanceof OpenAIAPIError &&
     error.constructor === OpenAIAPIError &&
@@ -133,17 +132,16 @@ export function convertOpenAIError(error: unknown): ChatProviderError {
   if (error instanceof OpenAIError) {
     return new ChatProviderError(`Error: ${error.message}`);
   }
-  // Raw, non-SDK errors (e.g. undici's `TypeError: terminated` raised when a
-  // streaming response body is dropped mid-flight) never get wrapped by the
-  // OpenAI SDK during stream iteration. Route them through the same
-  // transport-layer heuristic so genuine connection failures become
-  // retryable instead of fatal generic errors.
+  // 原始的非 SDK 错误（例如当流式响应体在中途断开时 undici 抛出的
+  // `TypeError: terminated`）在流迭代期间不会被 OpenAI SDK 包装。
+  // 将其通过相同的传输层启发式路由，使真正的连接失败变为可重试，
+  // 而非致命的通用错误。
   if (error instanceof Error) {
     return classifyBaseApiError(error.message);
   }
   return new ChatProviderError(`Error: ${String(error)}`);
 }
-/** Shape of a function-type tool call (subset used by the guard). */
+/** 函数类型工具调用的形状（守卫函数使用的子集）。 */
 export interface FunctionToolCallShape {
   type: 'function';
   id: string;
@@ -151,9 +149,9 @@ export interface FunctionToolCallShape {
 }
 
 /**
- * Type guard: narrow a tool call union to the function-type variant.
- * Works with OpenAI SDK's `ChatCompletionMessageToolCall` as well as
- * any object carrying `{ type: string }`.
+ * 类型守卫：将工具调用联合类型收窄为函数类型变体。
+ * 适用于 OpenAI SDK 的 `ChatCompletionMessageToolCall` 以及
+ * 任何携带 `{ type: string }` 的对象。
  */
 export function isFunctionToolCall<T extends { type: string }>(
   tc: T,
@@ -161,7 +159,7 @@ export function isFunctionToolCall<T extends { type: string }>(
   return tc.type === 'function';
 }
 /**
- * Map kosong `ThinkingEffort` to OpenAI `reasoning_effort` string.
+ * 将 kosong 的 `ThinkingEffort` 映射为 OpenAI 的 `reasoning_effort` 字符串。
  */
 export function thinkingEffortToReasoningEffort(effort: ThinkingEffort): string | undefined {
   switch (effort) {
@@ -182,7 +180,7 @@ export function thinkingEffortToReasoningEffort(effort: ThinkingEffort): string 
 }
 
 /**
- * Map OpenAI `reasoning_effort` string back to kosong `ThinkingEffort`.
+ * 将 OpenAI 的 `reasoning_effort` 字符串反向映射为 kosong 的 `ThinkingEffort`。
  */
 export function reasoningEffortToThinkingEffort(
   reasoning: string | undefined,
@@ -208,7 +206,7 @@ export function reasoningEffortToThinkingEffort(
   }
 }
 /**
- * Extract `TokenUsage` from an OpenAI-compatible usage object.
+ * 从 OpenAI 兼容的 usage 对象中提取 `TokenUsage`。
  */
 export function extractUsage(usage: unknown): TokenUsage | null {
   if (usage === null || usage === undefined || typeof usage !== 'object') {
@@ -219,7 +217,7 @@ export function extractUsage(usage: unknown): TokenUsage | null {
   const completionTokens = typeof u['completion_tokens'] === 'number' ? u['completion_tokens'] : 0;
 
   let cached = 0;
-  // Moonshot proprietary: top-level cached_tokens
+  // Moonshot 私有字段：顶层 cached_tokens
   if (typeof u['cached_tokens'] === 'number') {
     cached = u['cached_tokens'];
   } else if (
@@ -240,21 +238,20 @@ export function extractUsage(usage: unknown): TokenUsage | null {
   };
 }
 /**
- * Normalize an OpenAI Chat Completions–style `finish_reason` string to the
- * unified {@link FinishReason} enum.
+ * 将 OpenAI Chat Completions 风格的 `finish_reason` 字符串标准化为
+ * 统一的 {@link FinishReason} 枚举。
  *
- * Used by both the Kimi and OpenAI Legacy adapters because they share the
- * Chat Completions wire format. Returns `{ finishReason: null,
- * rawFinishReason: null }` when the upstream value is missing or `null` so
- * callers can treat "no signal" uniformly.
+ * 由 Kimi 和 OpenAI Legacy 适配器共同使用，因为它们共享 Chat Completions 线路格式。
+ * 当上游值缺失或为 `null` 时返回 `{ finishReason: null, rawFinishReason: null }`，
+ * 以便调用方统一处理"无信号"情况。
  *
- * Mapping:
+ * 映射关系：
  * - `'stop'` → `'completed'`
  * - `'tool_calls'` → `'tool_calls'`
- * - `'function_call'` → `'tool_calls'` (legacy alias)
+ * - `'function_call'` → `'tool_calls'`（旧版别名）
  * - `'length'` → `'truncated'`
  * - `'content_filter'` → `'filtered'`
- * - any other non-null string → `'other'`
+ * - 其他非 null 字符串 → `'other'`
  */
 export function normalizeOpenAIFinishReason(raw: string | null | undefined): {
   finishReason: FinishReason | null;
@@ -278,28 +275,28 @@ export function normalizeOpenAIFinishReason(raw: string | null | undefined): {
   }
 }
 /**
- * Strategy for converting tool-role message content.
+ * 工具角色消息内容的转换策略。
  *
- * - `'extract_text'`: flatten all content parts into a single text string
- *   (some providers require tool results as plain text).
- * - `null`: convert content parts to the standard OpenAI content-part array.
+ * - `'extract_text'`：将所有内容部件展平为单个文本字符串
+ *   （某些提供商要求工具结果为纯文本）。
+ * - `null`：将内容部件转换为标准 OpenAI 内容部件数组。
  */
 export type ToolMessageConversion = 'extract_text' | null;
 
 /**
- * Shared wording for tool-result media that cannot live inside the tool
- * message itself and is reattached as a follow-up user message instead.
+ * 用于工具结果中无法放入工具消息本身、而作为后续用户消息重新附加的
+ * 媒体内容的共享文案。
  */
 export const TOOL_RESULT_MEDIA_PROMPT = 'Attached media from tool result:';
 export const TOOL_RESULT_MEDIA_PLACEHOLDER = '(see attached media)';
 
-/** A content part that is neither plain text nor reasoning. */
+/** 既非纯文本也非推理内容的内容部件。 */
 export function isMediaPart(part: ContentPart): boolean {
   return part.type !== 'text' && part.type !== 'think';
 }
 
 /**
- * Convert tool-role message content according to the chosen strategy.
+ * 根据选定的策略转换工具角色消息内容。
  */
 export function convertToolMessageContent(
   message: Message,

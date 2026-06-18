@@ -1,18 +1,16 @@
 /**
- * Registry for media pasted into the input box.
+ * 粘贴到输入框中的媒体资源注册表。
  *
- * Each paste produces an `ImageAttachment` with an auto-incrementing id
- * or `VideoAttachment` with a human-readable placeholder (`[image #1
- * (640×480)]` / `[video #2 sample.mov]`). The placeholder is what the
- * user sees in the input field; on submit, `extractMediaAttachments`
- * walks the text and expands image placeholders to image content parts
- * and video placeholders to file-path tags for `ReadMediaFile`.
+ * 每次粘贴会生成一个带自增 id 的 `ImageAttachment`，或一个带可读占位符的
+ * `VideoAttachment`（如 `[image #1 (640×480)]` / `[video #2 sample.mov]`）。
+ * 占位符是用户在输入框中看到的内容；提交时，`extractMediaAttachments` 会
+ * 遍历文本，将图片占位符展开为图片内容部分，将视频占位符展开为 `ReadMediaFile`
+ * 所需的文件路径标签。
  *
- * Scope is per-`KimiTUI` instance. Reloads (`/new`, `/clear`,
- * session switch) call `clear()` so ids restart from 1 and stale
- * prompt attachments are dropped. We intentionally do NOT persist
- * attachments across sessions — coding-agent doesn't either, and
- * `--resume` wouldn't know how to materialize the files anyway.
+ * 作用域为每个 `KimiTUI` 实例。重新加载（`/new`、`/clear`、切换会话）时
+ * 会调用 `clear()`，使 id 从 1 重新开始，并丢弃过期的提示附件。我们有意
+ * 不在会话之间持久化附件——coding-agent 也是如此，而且 `--resume` 也无法
+ * 知道如何物化这些文件。
  */
 
 export interface ImageAttachment {
@@ -22,7 +20,7 @@ export interface ImageAttachment {
   readonly mime: string;
   readonly width: number;
   readonly height: number;
-  /** Rendered placeholder string, e.g. `[image #1 (640×480)]`. */
+  /** 渲染后的占位符字符串，例如 `[image #1 (640×480)]`。 */
   readonly placeholder: string;
 }
 
@@ -33,7 +31,7 @@ export interface VideoAttachment {
   readonly filename: string;
   readonly sourcePath: string;
   readonly label: string;
-  /** Rendered placeholder string, e.g. `[video #1 sample.mov]`. */
+  /** 渲染后的占位符字符串，例如 `[video #1 sample.mov]`。 */
   readonly placeholder: string;
 }
 

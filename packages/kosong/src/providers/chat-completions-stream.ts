@@ -18,13 +18,13 @@ export interface BufferedChatCompletionToolCall {
 }
 
 /**
- * Convert an OpenAI Chat Completions-style streamed tool-call delta into the
- * normalized kosong stream part protocol.
+ * 将 OpenAI Chat Completions 风格的流式工具调用增量转换为
+ * 标准化的 kosong 流式消息部件协议。
  *
- * OpenAI-compatible providers may emit argument chunks before the function name
- * for a stream index. Buffer those early argument chunks until the first named
- * header arrives, then emit subsequent chunks as indexed `tool_call_part`s so
- * the shared generate loop can route interleaved parallel calls.
+ * OpenAI 兼容的提供商可能会在某个流索引的函数名之前先发送参数片段。
+ * 将这些早期参数片段缓存起来，直到第一个带有名称的头部到达，
+ * 然后将后续片段作为带索引的 `tool_call_part` 发出，
+ * 以便共享的生成循环能够路由交错的并行调用。
  */
 export function convertChatCompletionStreamToolCall(
   toolCall: ChatCompletionStreamToolCallDelta,

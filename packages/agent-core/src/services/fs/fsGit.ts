@@ -76,9 +76,9 @@ export function parsePorcelain(
 }
 
 /**
- * Sum added/deleted line counts from `git diff --numstat` output. Each line is
- * `<added>\t<deleted>\t<path>`; a binary file reports `-` for both counts, which
- * we treat as 0. Returns the aggregate across all files.
+ * 汇总 `git diff --numstat` 输出中每个文件的新增/删除行数。每行格式为
+ * `<added>\t<deleted>\t<path>`；二进制文件两个计数均报告为 `-`，按 0 处理。
+ * 返回所有文件的合计值。
  */
 export function parseNumstat(stdout: string): {
   additions: number;

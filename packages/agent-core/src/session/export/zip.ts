@@ -21,14 +21,14 @@ export async function collectFilesRecursive(root: string): Promise<string[]> {
 
 export type ExtraZipEntry =
   | {
-      /** Absolute path on disk. */
+      /** 磁盘上的绝对路径。 */
       readonly source: string;
-      /** zip-relative target path. */
+      /** zip 内相对目标路径。 */
       readonly target: string;
     }
   | {
       readonly data: Buffer;
-      /** zip-relative target path. */
+      /** zip 内相对目标路径。 */
       readonly target: string;
     };
 
@@ -58,8 +58,8 @@ export async function writeExportZip(args: {
       zip.addBuffer(data, extra.target);
       entries.push(extra.target);
     } catch {
-      // missing source is not fatal — caller decided it should be opt-in;
-      // do not abort the whole export.
+      // 源文件缺失不是致命错误——调用方已决定将其作为可选项；
+      // 不应中止整个导出过程。
     }
   }
 

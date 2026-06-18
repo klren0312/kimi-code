@@ -1,6 +1,6 @@
 /**
- * Marker-based git work-tree detection. Never spawns `git`; failures return
- * null so callers can fall back to their safer path.
+ * 基于标记的 git 工作树检测。不启动 `git` 进程；失败返回 null，
+ * 使调用方可以回退到更安全的路径。
  */
 
 import * as pathe from 'pathe';
@@ -64,7 +64,7 @@ function isMode(stMode: number, mode: number): boolean {
   return (stMode & S_IFMT) === mode;
 }
 
-/** Drop UTF-8 BOM and any leading whitespace (incl. `\r\n`) before content checks. */
+/** 移除 UTF-8 BOM 和所有前导空白（包括 `\r\n`），以便进行内容检查。 */
 function stripLeadingNoise(content: string): string {
   let s = content;
   if (s.codePointAt(0) === 0xfeff) s = s.slice(1);

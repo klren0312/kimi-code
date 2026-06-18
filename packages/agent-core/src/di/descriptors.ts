@@ -1,17 +1,15 @@
 /**
- * Service descriptors: a `SyncDescriptor` packages a constructor + static
- * args for later instantiation by the container. Modelled after VSCode's
- * `SyncDescriptor`.
+ * 服务描述符：`SyncDescriptor` 将构造函数和静态参数打包，供容器延迟实例化。
+ * 模仿自 VSCode 的 `SyncDescriptor`。
  */
 
 /**
- * Wraps a constructor plus optional static arguments. The container picks up
- * a `SyncDescriptor` from the `ServiceCollection` (rather than an already-
- * built instance) and constructs it on first `get`.
+ * 包装一个构造函数及可选的静态参数。容器从 `ServiceCollection` 中获取
+ * `SyncDescriptor`（而非已构建的实例），在首次 `get` 时进行构造。
  */
 export class SyncDescriptor<T> {
-  // Match VSCode: the constructor argument is typed for callers, while the
-  // stored ctor is runtime metadata-bearing and consumed by DI internals.
+  // 与 VSCode 一致：构造函数参数为调用者提供类型，而存储的 ctor 是
+  // 运行时元数据，由 DI 内部消费。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public readonly ctor: any;
 

@@ -45,9 +45,8 @@ export const ModelAliasSchema = z.object({
   capabilities: z.array(z.string()).optional(),
   displayName: z.string().optional(),
   reasoningKey: z.string().optional(),
-  // Explicitly declare adaptive-thinking support, overriding the kosong
-  // model-name version inference. Needed for custom-named Anthropic endpoints
-  // whose model name does not encode a parseable Claude version.
+  // 显式声明 adaptive-thinking 支持，覆盖 kosong 模型名称版本推断。
+  // 适用于自定义命名的 Anthropic 端点，其模型名称不编码可解析的 Claude 版本。
   adaptiveThinking: z.boolean().optional(),
 });
 
@@ -149,8 +148,8 @@ export const McpServerStdioConfigSchema = z.object({
   args: z.array(z.string()).optional(),
   env: StringRecordSchema.optional(),
   cwd: z.string().optional(),
-  // Reserved for future kaos-backed stdio launchers. `undefined` and `'local'`
-  // both mean direct child_process spawn for now.
+  // 预留给未来的 kaos 支持的 stdio 启动器。`undefined` 和 `'local'`
+  // 目前都表示直接使用 child_process 生成。
   executor: z.enum(['local', 'kaos']).optional(),
   ...McpServerCommonFields,
 });
@@ -161,8 +160,8 @@ export const McpServerHttpConfigSchema = z.object({
   transport: z.literal('http'),
   url: z.string().url(),
   headers: StringRecordSchema.optional(),
-  // Indirect secret reference: the bearer token is looked up from
-  // `process.env[bearerTokenEnvVar]` at connection time, never committed.
+  // 间接密钥引用：bearer token 在连接时从 `process.env[bearerTokenEnvVar]`
+  // 查找，永远不会被提交。
   bearerTokenEnvVar: z.string().min(1).optional(),
   ...McpServerCommonFields,
 });
@@ -173,8 +172,8 @@ export const McpServerSseConfigSchema = z.object({
   transport: z.literal('sse'),
   url: z.string().url(),
   headers: StringRecordSchema.optional(),
-  // Indirect secret reference: the bearer token is looked up from
-  // `process.env[bearerTokenEnvVar]` at connection time, never committed.
+  // 间接密钥引用：bearer token 在连接时从 `process.env[bearerTokenEnvVar]`
+  // 查找，永远不会被提交。
   bearerTokenEnvVar: z.string().min(1).optional(),
   ...McpServerCommonFields,
 });

@@ -58,7 +58,7 @@ import {
 import { handleUndoCommand } from './undo';
 
 // ---------------------------------------------------------------------------
-// Re-exports — keep existing consumers working
+// 重新导出 — 保持现有使用者正常工作
 // ---------------------------------------------------------------------------
 
 export {
@@ -99,7 +99,7 @@ export {
 export { handleUndoCommand } from './undo';
 
 // ---------------------------------------------------------------------------
-// Host interface
+// 宿主接口
 // ---------------------------------------------------------------------------
 
 export interface SlashCommandHost {
@@ -121,7 +121,7 @@ export interface SlashCommandHost {
   restoreInputText(text: string): void;
   refreshSlashCommandAutocomplete(): void;
 
-  // Session
+  // 会话
   requireSession(): Session;
   switchToSession(session: Session, message: string): Promise<void>;
   reloadCurrentSessionView(session: Session, message: string): Promise<void>;
@@ -130,16 +130,16 @@ export interface SlashCommandHost {
   sendQueuedMessage(session: Session, item: QueuedMessage): void;
   requestQueuedGoalPromotion?(): void;
 
-  // UI
+  // 用户界面
   showLoginProgressSpinner(label: string): LoginProgressSpinnerHandle;
   showLoginAuthorizationPrompt(auth: DeviceAuthorization): LoginProgressSpinnerHandle;
   showProgressSpinner(label: string): LoginProgressSpinnerHandle;
 
-  // Theme
+  // 主题
   applyTheme(theme: ThemeName, resolved?: ResolvedTheme): Promise<void>;
   refreshTerminalThemeTracking(): void;
 
-  // Dispatch
+  // 调度
   stop(exitCode?: number): Promise<void>;
   showHelpPanel(): void;
   createNewSession(): Promise<void>;
@@ -148,7 +148,7 @@ export interface SlashCommandHost {
   sendSkillActivation(session: Session, skillName: string, skillArgs: string): void;
   readonly skillCommandMap: Map<string, string>;
 
-  // Controller refs
+  // 控制器引用
   readonly streamingUI: StreamingUIController;
   readonly btwPanelController: BtwPanelController;
   readonly tasksBrowserController: TasksBrowserController;
@@ -156,7 +156,7 @@ export interface SlashCommandHost {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch — entry point from handleUserInput
+// 调度 — handleUserInput 的入口点
 // ---------------------------------------------------------------------------
 
 export function dispatchInput(host: SlashCommandHost, text: string): void {
@@ -204,9 +204,8 @@ async function executeSlashCommand(host: SlashCommandHost, input: string): Promi
       return;
     }
     case 'message':
-      // Unknown slash command: let /dance claim it before it falls through to
-      // the model as a normal message. This runs *after* builtin and skill
-      // resolution, so a real command or a same-named skill always wins.
+      // 未知斜杠命令：让 /dance 在其作为普通消息传递到模型之前捕获它。
+      // 此处运行在内置命令和技能解析*之后*，因此真正的命令或同名技能始终优先。
       if (parsedCommand !== null && tryHandleDanceCommand(host, parsedCommand)) {
         return;
       }

@@ -1,11 +1,11 @@
 /**
- * Theme class + global singleton.
+ * Theme 类 + 全局单例。
  *
- * Components import `currentTheme` and call methods like
- * `currentTheme.fg('primary', text)` at render time.  When the user switches
- * themes we call `currentTheme.setPalette(newPalette)` — the same singleton
- * instance stays alive, so every component (including already-rendered
- * transcript entries) sees the new colours on the next render frame.
+ * 组件导入 `currentTheme` 并在渲染时调用如
+ * `currentTheme.fg('primary', text)` 的方法。当用户切换主题时，
+ * 我们调用 `currentTheme.setPalette(newPalette)`——同一个单例实例
+ * 保持存活，因此每个组件（包括已渲染的对话条目）在下一个渲染帧
+ * 都会看到新的颜色。
  */
 
 import chalk from 'chalk';
@@ -34,7 +34,7 @@ export class Theme {
     return this._palette[token];
   }
 
-  /* ── Foreground helpers ── */
+  /* ── 前景辅助方法 ── */
 
   fg(token: ColorToken, text: string): string {
     return chalk.hex(this._palette[token])(text);
@@ -60,13 +60,13 @@ export class Theme {
     return chalk.hex(this._palette[token]).strikethrough(text);
   }
 
-  /* ── Background helpers ── */
+  /* ── 背景辅助方法 ── */
 
   bg(token: ColorToken, text: string): string {
     return chalk.bgHex(this._palette[token])(text);
   }
 
-  /* ── Standalone style helpers ── */
+  /* ── 独立样式辅助方法 ── */
 
   bold(text: string): string {
     return chalk.bold(text);
@@ -89,5 +89,5 @@ export class Theme {
   }
 }
 
-/** Global singleton.  Initialise with dark palette; switch via `setPalette`. */
+/** 全局单例。使用暗色调色板初始化；通过 `setPalette` 切换。 */
 export const currentTheme = new Theme(darkColors);

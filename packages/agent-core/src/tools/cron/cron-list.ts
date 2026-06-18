@@ -1,43 +1,33 @@
 /**
- * CronListTool — enumerate the cron tasks currently scheduled in this
- * session.
+ * CronListTool — 枚举当前会话中已调度的 cron 任务。
  *
- * Read-only and side-effect-free. The output mirrors the
- * `key: value\n---\n` shape used by `tools/background/task-list.ts` so
- * the LLM sees a consistent record layout across the "list scheduled
- * work" tools.
+ * 只读且无副作用。输出镜像 `tools/background/task-list.ts` 使用的
+ * `key: value\n---\n` 形状，以便 LLM 在"列出已调度工作"工具中
+ * 看到一致的记录布局。
  *
- * What each record carries:
+ * 每条记录包含：
  *
- *   - `id`            — the 8-hex task id (also accepted by CronDelete).
- *   - `cron`          — verbatim 5-field expression as scheduled.
- *   - `humanSchedule` — best-effort plain-English rendering via
- *                       `cronToHuman`; falls back to the raw `cron`
- *                       string if the expression can't be parsed.
- *   - `nextFireAt`    — post-jitter local ISO timestamp with offset,
- *                       or the literal
- *                       string `null` when there is no fire in the
- *                       5-year window (or the expression is malformed).
- *                       This is the same jittered value `CronCreate`
- *                       reports, so the LLM can reason about herd-
- *                       avoidance offsets without surprise.
- *   - `recurring`     — `true` unless the task was explicitly created
- *                       with `recurring: false`.
- *   - `ageDays`       — `(wallNow - createdAt) / day`, formatted to two
- *                       decimal places. Useful context for the `stale`
- *                       flag and for the LLM's "should I still be
- *                       running?" judgement.
- *   - `stale`         — mirrors `CronManager.isStale(task)`; see that
- *                       method for the precise rules
- *                       (`recurring && age >= 7 days`, gated by
- *                       `KIMI_CRON_NO_STALE`).
+ *   - `id`            — 8 位十六进制任务 id（CronDelete 也接受）。
+ *   - `cron`          — 调度时的原始 5 字段表达式。
+ *   - `humanSchedule` — 通过 `cronToHuman` 尽力生成的纯英文渲染；
+ *                       表达式无法解析时回退到原始 `cron` 字符串。
+ *   - `nextFireAt`    — 抖动后的本地 ISO 时间戳（带偏移），
+ *                       或当 5 年窗口内无触发（或表达式畸形）时
+ *                       为字面字符串 `null`。这与 `CronCreate` 报告的
+ *                       抖动值相同，以便 LLM 无意外地推理防群聚偏移。
+ *   - `recurring`     — 除非任务显式创建为 `recurring: false`，
+ *                       否则为 `true`。
+ *   - `ageDays`       — `(wallNow - createdAt) / day`，格式化为两位小数。
+ *                       为 `stale` 标志和 LLM 的"是否还应运行？"
+ *                       判断提供有用上下文。
+ *   - `stale`         — 镜像 `CronManager.isStale(task)`；精确规则
+ *                       见该方法（`recurring && age >= 7 天`，
+ *                       受 `KIMI_CRON_NO_STALE` 控制）。
  *
- * The tool never throws on malformed cron strings. A defensive
- * try/catch around the parse path lets the record render with the raw
- * `cron`, a `humanSchedule` fallback equal to `cron`, and
- * `nextFireAt: null` — that should never happen for tasks that went
- * through `CronCreate` (which validates), but guards against future
- * direct `store.add(...)` inserts.
+ * 工具对畸形 cron 字符串永不抛异常。解析路径周围的防御性 try/catch
+ * 使记录能以原始 `cron` 渲染，`humanSchedule` 回退等于 `cron`，
+ * `nextFireAt: null` — 这对通过 `CronCreate`（有验证）的任务
+ * 永远不会发生，但防御未来直接的 `store.add(...)` 插入。
  */
 
 import { z } from 'zod';
@@ -54,36 +44,34 @@ import { formatLocalIsoWithOffset } from './time-format';
 import type { CronTask } from './types';
 import CRON_LIST_DESCRIPTION from './cron-list.md?raw';
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 /**
- * No arguments. Strict so the loop's AJV validator rejects accidental
- * extras (e.g. an `active_only` borrowed from `TaskList`) instead of
- * silently ignoring them.
+ * 无参数。严格模式使循环的 AJV 验证器拒绝意外的额外字段
+ * （例如从 `TaskList` 借用的 `active_only`）而非静默忽略。
  */
 export const CronListInputSchema = z.object({}).strict();
 export type CronListInput = z.infer<typeof CronListInputSchema>;
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── 常量 ────────────────────────────────────────────────────────
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-// Cap each rendered prompt at 200 UTF-8 bytes so a 50-task list with
-// kilobyte-scale prompts can't blow up the context window.
+// 将每个渲染的 prompt 限制在 200 UTF-8 字节，防止 50 个任务的列表
+// 带有千字节级 prompt 时撑爆上下文窗口。
 const PROMPT_PREVIEW_BYTES = 200;
 
 function previewPrompt(prompt: string): string {
   const buf = Buffer.from(prompt, 'utf8');
   if (buf.byteLength <= PROMPT_PREVIEW_BYTES) return prompt;
-  // Slice to PROMPT_PREVIEW_BYTES. If that lands inside a multi-byte
-  // sequence, walk back to the nearest UTF-8 char boundary (continuation
-  // bytes start with 10xxxxxx).
+  // 截取到 PROMPT_PREVIEW_BYTES。如果落在多字节序列内部，
+  // 回退到最近的 UTF-8 字符边界（续字节以 10xxxxxx 开头）。
   let end = PROMPT_PREVIEW_BYTES;
   while (end > 0 && (buf[end]! & 0b1100_0000) === 0b1000_0000) end--;
   return `${buf.subarray(0, end).toString('utf8')}…(truncated)`;
 }
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class CronListTool implements BuiltinTool<CronListInput> {
   readonly name = 'CronList' as const;
@@ -99,11 +87,10 @@ export class CronListTool implements BuiltinTool<CronListInput> {
       description: 'Listing scheduled cron jobs',
       approvalRule: this.name,
       execute: async () => {
-        // Snapshot the store once and pin "now" from the manager's
-        // clock — keeping both reads inside the same execute() call
-        // guarantees the `ageDays` and `nextFireAt` columns are
-        // computed against the same instant even if the bench-injected
-        // clock advances between the two.
+        // 一次性快照存储并从管理器的时钟固定"当前时间" —
+        // 将两次读取保持在同一个 execute() 调用内，保证 `ageDays`
+        // 和 `nextFireAt` 列基于同一时刻计算，即使基准注入的
+        // 时钟在两者之间前进。
         const tasks = this.manager.store.list();
         const nowMs = this.manager.clocks.wallNow();
         const records = tasks.map((t) => this.renderRecord(t, nowMs));
@@ -123,14 +110,12 @@ export class CronListTool implements BuiltinTool<CronListInput> {
   }
 
   private renderRecord(task: CronTask, nowMs: number): string {
-    // `recurring: undefined` is the canonical "repeat by default"
-    // shape across the cron stack; only an explicit `false` opts out.
+    // `recurring: undefined` 是 cron 栈中规范的"默认重复"形状；
+    // 只有显式的 `false` 才选择退出。
     const recurring = task.recurring !== false;
 
-    // `ageDays` is purely informational — a non-finite age (e.g.
-    // wallNow returned NaN from a misconfigured bench clock) is
-    // reported as 0.00 so the column stays parseable rather than
-    // emitting the string "NaN".
+    // `ageDays` 纯为信息展示 — 非有限的年龄（例如配置错误的基准时钟
+    // wallNow 返回 NaN）报告为 0.00，使该列保持可解析而非输出 "NaN"。
     const ageMs = nowMs - task.createdAt;
     const ageDays = Number.isFinite(ageMs) ? ageMs / MS_PER_DAY : 0;
 
@@ -141,27 +126,24 @@ export class CronListTool implements BuiltinTool<CronListInput> {
     try {
       const parsed = parseCronExpression(task.cron);
       humanSchedule = cronToHuman(parsed);
-      // Delegate to the scheduler so the rendered ISO matches what the
-      // scheduler will actually deliver — including a pending jittered
-      // slot in the current period.
+      // 委托给调度器，使渲染的 ISO 匹配调度器实际将要递送的内容
+      // — 包括当前周期中待处理的抖动时隙。
       const nextFireMs = this.manager.getNextFireForTask(task.id);
       if (nextFireMs !== null) {
         nextFireAtIso = formatLocalIsoWithOffset(nextFireMs);
       }
     } catch {
-      // Malformed cron string — leave humanSchedule as the raw
-      // expression and nextFireAt as `null`. Should never happen for
-      // tasks that went through CronCreate (which validates), but
-      // defends against direct store inserts (tests).
+      // 畸形 cron 字符串 — humanSchedule 保留原始表达式，nextFireAt 为 `null`。
+      // 对通过 CronCreate（有验证）的任务永远不会发生，
+      // 但防御直接存储插入（测试）。
     }
 
     return [
       `id: ${task.id}`,
       `cron: ${task.cron}`,
       `humanSchedule: ${humanSchedule}`,
-      // JSON-stringify so embedded newlines become `\n` escapes and
-      // the record stays one `key: value` per line — otherwise a
-      // multi-line prompt would corrupt the per-record parser.
+      // JSON 序列化使嵌入的换行符变为 `\n` 转义，保持每条记录
+      // 每行一个 `key: value` — 否则多行 prompt 会破坏逐记录解析器。
       `prompt: ${JSON.stringify(previewPrompt(task.prompt))}`,
       `nextFireAt: ${nextFireAtIso}`,
       `recurring: ${String(recurring)}`,

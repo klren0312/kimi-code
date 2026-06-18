@@ -19,9 +19,9 @@ export class ApprovalController extends ReverseRpcController<
     if (response.decision !== 'approved') return undefined;
     if (response.scope !== 'session') return undefined;
     if (resolvedPayload.action !== queuedPayload.action) return undefined;
-    // Inherit the session-scoped approval. Drop `feedback` and
-    // `selectedLabel` — those described the user's interaction with the
-    // first request only and would be misleading on auto-resolved ones.
+    // 继承会话级审批。丢弃 `feedback` 和 `selectedLabel` ——
+    // 它们仅描述用户与第一个请求的交互，
+    // 用于自动解决的请求会产生误导。
     return { decision: 'approved', scope: 'session' };
   }
 }

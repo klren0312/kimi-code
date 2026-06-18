@@ -23,7 +23,7 @@ import { promptFeedbackInput } from './prompts';
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// Feedback
+// 反馈
 // ---------------------------------------------------------------------------
 
 export async function handleFeedbackCommand(host: SlashCommandHost): Promise<void> {
@@ -66,7 +66,7 @@ export async function handleFeedbackCommand(host: SlashCommandHost): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// Info commands
+// 信息命令
 // ---------------------------------------------------------------------------
 
 interface SessionUsageResult {

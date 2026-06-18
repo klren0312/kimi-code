@@ -1,8 +1,8 @@
 /**
- * Client-owned preferences.
+ * 客户端偏好设置。
  *
- * Agent/runtime settings live in core's `config.toml`; this file owns
- * kimi-code client preferences such as terminal UI and update behavior.
+ * Agent/运行时设置位于 core 的 `config.toml` 中；本文件管理
+ * kimi-code 客户端偏好，如终端 UI 和更新行为。
  */
 
 import { existsSync } from 'node:fs';
@@ -79,10 +79,9 @@ export const DEFAULT_TUI_CONFIG: TuiConfig = TuiConfigSchema.parse({
 });
 
 /**
- * Thrown by `loadTuiConfig` when the on-disk TOML cannot be parsed.
- * Carries `fallback` so the caller can recover without re-running the
- * I/O, and use `message` (== `INVALID_TUI_CONFIG_MESSAGE`) as a
- * user-facing notice.
+ * 当磁盘上的 TOML 无法解析时由 `loadTuiConfig` 抛出。
+ * 携带 `fallback` 以便调用方无需重新执行 I/O 即可恢复，
+ * 并将 `message`（== `INVALID_TUI_CONFIG_MESSAGE`）作为面向用户的提示。
  */
 export class TuiConfigParseError extends Error {
   override readonly name = 'TuiConfigParseError';
@@ -146,13 +145,13 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
 
 export function renderTuiConfig(config: TuiConfig): string {
   return `# ~/.kimi-code/tui.toml
-# Client preferences for kimi-code.
-# Agent/runtime settings stay in ~/.kimi-code/config.toml.
+# kimi-code 客户端偏好设置。
+# Agent/运行时设置位于 ~/.kimi-code/config.toml。
 
-theme = "${escapeTomlBasicString(config.theme)}" # "auto" | "dark" | "light" | custom theme name
+theme = "${escapeTomlBasicString(config.theme)}" # "auto" | "dark" | "light" | 自定义主题名称
 
 [editor]
-command = "${escapeTomlBasicString(config.editorCommand ?? '')}" # Empty uses $VISUAL / $EDITOR
+command = "${escapeTomlBasicString(config.editorCommand ?? '')}" # 留空则使用 $VISUAL / $EDITOR
 
 [notifications]
 enabled = ${String(config.notifications.enabled)} # true | false

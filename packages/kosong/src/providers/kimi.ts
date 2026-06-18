@@ -51,12 +51,11 @@ export interface KimiOptions {
 
 export interface GenerationKwargs {
   /**
-   * Legacy completion-budget alias. The Moonshot Kimi API still accepts
-   * `max_tokens`, but for reasoning models it shares the budget with
-   * `reasoning_content` and a small value can cause a 200 response with no
-   * `content`. Prefer `max_completion_tokens`. When both are set
-   * `max_completion_tokens` wins; this provider normalizes by sending only
-   * `max_completion_tokens` on the wire.
+   * 旧版补全预算别名。Moonshot Kimi API 仍然接受 `max_tokens`，
+   * 但对于推理模型，它与 `reasoning_content` 共享预算，较小的值
+   * 可能导致返回 200 响应但没有 `content`。推荐使用
+   * `max_completion_tokens`。当两者同时设置时 `max_completion_tokens`
+   * 优先；此提供商通过仅在传输中发送 `max_completion_tokens` 来规范化。
    */
   max_tokens?: number | undefined;
   max_completion_tokens?: number | undefined;
@@ -121,14 +120,14 @@ function convertMessage(message: Message): OpenAIMessage {
     }
   }
 
-  // Build the OpenAI message.
+  // 构建 OpenAI 消息。
   const result: OpenAIMessage = { role: message.role };
   const hasToolCalls = message.toolCalls.length > 0;
   const shouldOmitContent =
     message.role === 'assistant' && hasToolCalls && isEffectivelyEmptyContent(nonThinkParts);
 
   if (!shouldOmitContent) {
-    // content: serialize to string if single text, array otherwise
+    // content：如果只有单个文本部分则序列化为字符串，否则为数组
     const firstPart = nonThinkParts[0];
     if (nonThinkParts.length === 1 && firstPart?.type === 'text') {
       result.content = firstPart.text;
@@ -169,7 +168,7 @@ function convertMessage(message: Message): OpenAIMessage {
 }
 function convertTool(tool: Tool): OpenAIToolParam {
   if (tool.name.startsWith('$')) {
-    // Kimi builtin functions start with `$`
+    // Kimi 内置函数以 `$` 开头
     return {
       type: 'builtin_function',
       function: { name: tool.name },
@@ -185,13 +184,13 @@ function convertTool(tool: Tool): OpenAIToolParam {
   };
 }
 /**
- * Extract usage from a streaming chunk. Moonshot may place usage in
- * `choices[0].usage` in addition to the top-level `usage` field.
+ * 从流式传输的数据块中提取用量信息。Moonshot 可能会在 `choices[0].usage`
+ * 中放置用量数据，作为顶层 `usage` 字段的补充。
  */
 export function extractUsageFromChunk(
   chunk: Record<string, unknown>,
 ): Record<string, unknown> | null {
-  // Top-level usage
+  // 顶层 usage
   if (
     chunk['usage'] !== null &&
     chunk['usage'] !== undefined &&
@@ -199,7 +198,7 @@ export function extractUsageFromChunk(
   ) {
     return chunk['usage'] as Record<string, unknown>;
   }
-  // choices[0].usage (Moonshot proprietary)
+  // choices[0].usage（Moonshot 私有字段）
   const choices = chunk['choices'];
   if (!Array.isArray(choices) || choices.length === 0) {
     return null;
@@ -273,7 +272,7 @@ class KimiStreamedMessage implements StreamedMessage {
     const message = response.choices[0]?.message;
     if (!message) return;
 
-    // reasoning_content (Moonshot proprietary)
+    // reasoning_content（Moonshot 私有字段）
     const rc = (message as unknown as Record<string, unknown>)['reasoning_content'];
     if (typeof rc === 'string' && rc) {
       yield { type: 'think', think: rc } satisfies StreamedMessagePart;
@@ -307,7 +306,7 @@ class KimiStreamedMessage implements StreamedMessage {
           this._id = chunk.id;
         }
 
-        // Extract usage from chunk (supports top-level and choices[0].usage)
+        // 从数据块中提取用量信息（支持顶层和 choices[0].usage 两种位置）
         const rawChunk = chunk as unknown as Record<string, unknown>;
         const rawUsage = extractUsageFromChunk(rawChunk);
         if (rawUsage) {
@@ -321,29 +320,28 @@ class KimiStreamedMessage implements StreamedMessage {
         const choice = chunk.choices[0];
         if (!choice) continue;
 
-        // Capture finish_reason whenever the chunk carries one. The Chat
-        // Completions API only sets it on the final chunk for a given
-        // choice, but defensively re-capturing on every non-null value
-        // keeps the latest signal available even if upstream re-emits.
+        // 当数据块携带 finish_reason 时捕获它。Chat Completions API 仅在
+        // 给定选项的最终数据块中设置它，但防御性地在每个非空值上重新捕获
+        // 可确保即使上游重新发出也能获取最新信号。
         if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
           this._captureFinishReason(choice.finish_reason);
         }
 
         const delta = choice.delta;
 
-        // reasoning_content (Moonshot proprietary)
+        // reasoning_content（Moonshot 私有字段）
         const rc = (delta as unknown as Record<string, unknown>)['reasoning_content'];
         if (typeof rc === 'string' && rc) {
           yield { type: 'think', think: rc } satisfies StreamedMessagePart;
         }
 
-        // text content
+        // 文本内容
         if (delta.content) {
           yield { type: 'text', text: delta.content } satisfies StreamedMessagePart;
         }
 
-        // tool calls — preserve `index` on every yielded part so the generate
-        // loop can route interleaved argument deltas from parallel tool calls.
+        // 工具调用——在每个 yield 的部分上保留 `index`，以便生成循环可以
+        // 路由来自并行工具调用的交错参数增量。
         for (const toolCall of delta.tool_calls ?? []) {
           for (const part of convertChatCompletionStreamToolCall(toolCall, bufferedToolCalls)) {
             yield part;
@@ -392,11 +390,10 @@ export class KimiChatProvider implements ChatProvider {
   }
 
   /**
-   * File upload client for Kimi/Moonshot.
+   * Kimi/Moonshot 的文件上传客户端。
    *
-   * Use this to upload videos (and other media in the future) to the file
-   * service and receive a content part that can be embedded in chat
-   * messages.
+   * 使用此接口上传视频（将来支持其他媒体类型）到文件服务，
+   * 并获取可嵌入聊天消息的内容部分。
    */
   get files(): KimiFiles {
     this._files ??= new KimiFiles({
@@ -443,7 +440,7 @@ export class KimiChatProvider implements ChatProvider {
       ...this._generationKwargs,
     };
 
-    // Remove undefined values from kwargs
+    // 从 kwargs 中移除 undefined 值
     for (const key of Object.keys(kwargs)) {
       if (kwargs[key] === undefined) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -451,11 +448,10 @@ export class KimiChatProvider implements ChatProvider {
       }
     }
 
-    // Normalize the legacy `max_tokens` alias to Kimi's preferred
-    // `max_completion_tokens`. When both are set, `max_completion_tokens`
-    // wins (confirmed against the live Moonshot API). When neither is
-    // set, send no cap — the upstream loop is responsible for clamping
-    // against the current input size and model context window.
+    // 将旧版 `max_tokens` 别名规范化为 Kimi 首选的 `max_completion_tokens`。
+    // 当两者同时设置时，`max_completion_tokens` 优先（已在 Moonshot 线上
+    // API 确认）。当两者都未设置时，不发送上限——上游循环负责根据当前输入
+    // 大小和模型上下文窗口进行钳制。
     if (
       kwargs['max_completion_tokens'] === undefined &&
       kwargs['max_tokens'] !== undefined
@@ -485,8 +481,8 @@ export class KimiChatProvider implements ChatProvider {
 
     try {
       const client = this._createClient(options?.auth);
-      // Use type assertion via unknown because we pass Moonshot-proprietary fields
-      // (reasoning_effort, thinking) that don't exist in the OpenAI type definitions.
+      // 使用 unknown 进行类型断言，因为我们传入了 Moonshot 私有字段
+      // （reasoning_effort、thinking），这些在 OpenAI 类型定义中不存在。
       const response = (await client.chat.completions.create(
         createParams as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
         options?.signal ? { signal: options.signal } : undefined,
@@ -569,17 +565,13 @@ export class KimiChatProvider implements ChatProvider {
       this,
     );
     clone._generationKwargs = { ...this._generationKwargs };
-    // Do not share the memoized KimiFiles instance with the clone; let it be
-    // lazily re-created on first access.
+    // 不与克隆实例共享已缓存的 KimiFiles 实例；让其在首次访问时惰性重建。
     clone._files = undefined;
-    // `_client` is intentionally shared with the original instance. Per-step
-    // budget clamping (see KosongLLM.chatOnce) relies on this clone being
-    // cheap. If a future change introduces a retry path that REPLACES
-    // `clone._client` with a freshly built client (and closes the old one),
-    // the original instance's `_client` would become a dangling reference to
-    // a closed socket. Keep `_client` shared and never mutate it after
-    // construction; instead build a new KimiChatProvider when a real new
-    // client is required.
+    // `_client` 故意与原始实例共享。每步预算钳制（参见 KosongLLM.chatOnce）
+    // 依赖于此克隆操作的轻量性。如果未来变更引入了用全新构建的客户端替换
+    // `clone._client`（并关闭旧客户端）的重试路径，原始实例的 `_client` 将
+    // 变成指向已关闭 socket 的悬挂引用。保持 `_client` 共享且构造后永不变更；
+    // 需要真正的新客户端时应构建新的 KimiChatProvider。
     return clone;
   }
 }

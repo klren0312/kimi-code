@@ -1,8 +1,7 @@
 /**
- * QuestionDialog — pi-tui version of the structured question prompt.
+ * QuestionDialog — 结构化问题提示的 pi-tui 版本。
  *
- * Each question collects an answer locally, and a final Submit tab
- * reviews everything before the answers are emitted upstream.
+ * 每个问题在本地收集答案，最终的提交标签页会在答案发送上游之前进行审核。
  */
 
 import {
@@ -40,12 +39,10 @@ interface DisplayOption {
 }
 
 /**
- * Push `content` to `lines`, wrapping it to fit `width` with a hanging
- * indent. The first physical line starts with `firstPrefix`; continuation
- * lines get `continuationPrefix`. Pass `tone` to wrap every emitted line
- * in a single ANSI span (cleaner for selection highlights and matches the
- * pre-wrap rendering tests expect); leave it undefined when the prefixes
- * already carry their own mixed styling.
+ * 将 `content` 追加到 `lines`，按照 `width` 进行换行并使用悬挂缩进。
+ * 第一行以 `firstPrefix` 开头；续行使用 `continuationPrefix`。
+ * 传入 `tone` 可将每行包裹在单个 ANSI 跨度中（对选中高亮更简洁，
+ * 且符合换行前渲染测试的预期）；当已有的前缀自带混合样式时保持 undefined。
  */
 function appendWrapped(
   lines: string[],
@@ -83,17 +80,17 @@ export class QuestionDialogComponent extends Container implements Focusable {
   private reviewMessage: string | undefined;
   private lastAnswerMethod: QuestionSubmissionMethod | undefined;
 
-  /** Per-question cursor position. */
+  /** 每个问题的光标位置。 */
   private readonly cursors: number[];
-  /** Per-question single-select choice. */
+  /** 每个问题的单选选择。 */
   private readonly singleSelections: (number | undefined)[];
-  /** Per-question multi-select choices. */
+  /** 每个问题的多选选择。 */
   private readonly multiSelections: Set<number>[];
-  /** Per-question free-text drafts for the synthetic Other option. */
+  /** 每个问题的自由文本草稿，用于合成的"其他"选项。 */
   private readonly otherDrafts: string[];
-  /** Per-question committed Other values. */
+  /** 每个问题已提交的"其他"值。 */
   private readonly committedOtherValues: (string | undefined)[];
-  /** Per-question derived answers used by tabs + review. */
+  /** 每个问题的派生答案，用于标签页和审核。 */
   private readonly answers: (string | undefined)[];
 
   private readonly onToggleToolOutput: (() => void) | undefined;
@@ -122,7 +119,7 @@ export class QuestionDialogComponent extends Container implements Focusable {
     this.answers = Array.from({ length: total }, (): string | undefined => undefined);
   }
 
-  // ── Input ─────────────────────────────────────────────────────────
+  // ── 输入 ─────────────────────────────────────────────────────────
 
   handleInput(data: string): void {
     if (matchesKey(data, Key.escape)) {
@@ -261,7 +258,7 @@ export class QuestionDialogComponent extends Container implements Focusable {
     }
   }
 
-  // ── State mutation ────────────────────────────────────────────────
+  // ── 状态变更 ────────────────────────────────────────────────
 
   private gotoTab(target: number): void {
     const total = this.totalTabs();
@@ -427,7 +424,7 @@ export class QuestionDialogComponent extends Container implements Focusable {
     this.onAnswer({ answers: out, method: this.lastAnswerMethod ?? method });
   }
 
-  // ── Render ────────────────────────────────────────────────────────
+  // ── 渲染 ────────────────────────────────────────────────────────
 
   override render(width: number): string[] {
     this.otherInput.focused = this.focused && this.isEditingOther();
@@ -665,7 +662,7 @@ export class QuestionDialogComponent extends Container implements Focusable {
     return Math.max(0, Math.min(cursor - half, max));
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────
+  // ── 辅助方法 ───────────────────────────────────────────────────────
 
   private totalTabs(): number {
     return this.request.data.questions.length + 1;

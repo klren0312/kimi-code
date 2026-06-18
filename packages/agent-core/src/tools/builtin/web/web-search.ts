@@ -1,9 +1,8 @@
 /**
- * WebSearchTool — host-injected web search.
+ * WebSearchTool — 宿主注入的网页搜索。
  *
- * kimi-core defines the interface; the host provides the real search
- * implementation via `WebSearchProvider`. If no provider is supplied,
- * the tool should not be registered (not exposed to the LLM).
+ * kimi-core 定义接口；宿主通过 `WebSearchProvider` 提供实际的搜索实现。
+ * 若未提供 provider，不应注册此工具（不暴露给 LLM）。
  */
 
 import { z } from 'zod';
@@ -16,7 +15,7 @@ import { literalRulePattern, matchesGlobRuleSubject } from '../../support/rule-m
 import { ToolResultBuilder } from '../../support/result-builder';
 import DESCRIPTION from './web-search.md?raw';
 
-// ── Provider interface (host-injected) ───────────────────────────────
+// ── 提供者接口（宿主注入） ───────────────────────────────
 
 export interface WebSearchResult {
   title: string;
@@ -33,7 +32,7 @@ export interface WebSearchProvider {
   ): Promise<WebSearchResult[]>;
 }
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const WebSearchInputSchema = z.object({
   query: z.string().describe('The query text to search for.'),
@@ -58,7 +57,7 @@ export const WebSearchInputSchema = z.object({
 
 export type WebSearchInput = z.Infer<typeof WebSearchInputSchema>;
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class WebSearchTool implements BuiltinTool<WebSearchInput> {
   readonly name = 'WebSearch' as const;
@@ -121,14 +120,13 @@ export class WebSearchTool implements BuiltinTool<WebSearchInput> {
 
 }
 
-// ── Error classification ─────────────────────────────────────────────
+// ── 错误分类 ─────────────────────────────────────────────
 
 /**
- * Maps a thrown search error to a categorised, human-readable message.
+ * 将抛出的搜索错误映射为分类化的、人类可读的消息。
  *
- * The original error text is always preserved so the model can still see the
- * underlying detail; the prefix only adds a category so failures are easier to
- * reason about (e.g. retry vs. surface to the user).
+ * 原始错误文本始终保留，以便模型仍能看到底层细节；
+ * 前缀仅添加分类，便于对失败进行推理（例如重试还是向用户展示）。
  */
 function classifySearchError(error: unknown): string {
   const name = error instanceof Error ? error.name : '';

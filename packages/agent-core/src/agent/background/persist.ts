@@ -1,15 +1,13 @@
 /**
- * Background task persistence helpers.
+ * 后台任务持久化辅助工具。
  *
- * Each task lives at `<sessionDir>/tasks/<taskId>.json` so a CLI
- * restart can list previously-running tasks (now lost) and emit terminal
- * notifications.
+ * 每个任务存储在 `<sessionDir>/tasks/<taskId>.json`，以便 CLI 重启时
+ * 可以列出之前运行中的任务（现已丢失）并发出终态通知。
  *
- * The per-id JSON layer (write / read / list) is delegated to
- * `createPerIdJsonStore`, which centralises atomic-write +
- * path-traversal-guarded readdir for cron / background / anything else
- * that needs session-scoped per-id JSON. This class keeps the
- * background-specific shape and the output.log helpers together.
+ * 基于 ID 的 JSON 层（写入 / 读取 / 列表）委托给 `createPerIdJsonStore`，
+ * 该工具集中了原子写入 + 路径遍历保护的 readdir，供 cron / background 以及
+ * 任何需要会话范围基于 ID 的 JSON 存储的场景使用。本类将后台特定的数据结构
+ * 和 output.log 辅助方法组合在一起。
  */
 
 import { appendFile, mkdir, open, stat } from 'node:fs/promises';
@@ -19,12 +17,10 @@ import { createPerIdJsonStore, type PerIdJsonStore } from '../../utils/per-id-js
 import type { BackgroundTaskInfo, BackgroundTaskStatus } from './task';
 
 /**
- * Task id format: `{prefix}-{8 chars of [0-9a-z]}`.
+ * 任务 ID 格式：`{prefix}-{8 位 [0-9a-z] 字符}`。
  *
- * Strictly enforced before deriving task paths so neither path-traversal
- * (`../`) nor a legacy `bg_<hex>` format can escape through the
- * persistence layer. The prefix is intentionally open-ended so new task
- * kinds do not need persistence-layer changes.
+ * 在派生任务路径之前严格验证，以防止路径遍历（`../`）或旧版 `bg_<hex>` 格式
+ * 通过持久化层逃逸。前缀故意保持开放，以便新增任务类型时无需修改持久化层。
  */
 const VALID_TASK_ID: RegExp = /^[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-z]{8}$/;
 
@@ -47,9 +43,21 @@ function taskOutputFile(sessionDir: string, taskId: string): string {
   return join(taskOutputDir(sessionDir, taskId), 'output.log');
 }
 
+/**
+ * 处理后台任务的磁盘持久化。
+ *
+ * 每个任务的元数据存储为 JSON 文件，位于 `<sessionDir>/tasks/<taskId>.json`，
+ * 输出日志位于 `<sessionDir>/tasks/<taskId>/output.log`。JSON 层委托给
+ * {@link createPerIdJsonStore} 进行原子写入和路径遍历安全的读取。
+ * 本类在此基础上添加了后台特定的 output.log 辅助方法和旧版格式迁移功能。
+ */
 export class BackgroundTaskPersistence {
   private readonly store: PerIdJsonStore<DiskPersistedTask>;
 
+  /**
+   * 创建一个作用于会话目录的持久化实例。
+   * `tasks/` 子目录同时用于 JSON 元数据和输出日志。
+   */
   constructor(private readonly sessionDir: string) {
     this.store = createPerIdJsonStore<DiskPersistedTask>({
       rootDir: sessionDir,
@@ -60,21 +68,26 @@ export class BackgroundTaskPersistence {
     });
   }
 
+  /** 返回任务 `output.log` 文件的绝对路径。 */
   taskOutputFile(taskId: string): string {
     return taskOutputFile(this.sessionDir, taskId);
   }
 
-  /** Atomically write a task's persisted state. Creates dirs as needed. */
+  /** 原子写入任务的持久化状态。按需创建目录。 */
   async writeTask(task: PersistedTask): Promise<void> {
     await this.store.write(task.taskId, task);
   }
 
-  /** Read a single task file. Returns undefined when missing/corrupt/unrecognized. */
+  /** 读取单个任务文件。缺失/损坏/无法识别时返回 undefined。 */
   async readTask(taskId: string): Promise<PersistedTask | undefined> {
     const task = await this.store.read(taskId);
     return task === undefined ? undefined : normalizePersistedTask(task);
   }
 
+  /**
+   * 向任务的 `output.log` 文件追加一块输出。
+   * 如果任务目录尚不存在，则创建该目录。
+   */
   async appendTaskOutput(taskId: string, chunk: string): Promise<void> {
     const path = this.taskOutputFile(taskId);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -82,12 +95,11 @@ export class BackgroundTaskPersistence {
   }
 
   /**
-   * Total byte size of a task's `output.log`. Returns 0 when the log does
-   * not exist yet (the task has produced no output, or is unknown).
+   * 任务 `output.log` 的总字节大小。当日志尚不存在时返回 0
+   * （任务未产生任何输出，或任务未知）。
    *
-   * This is the authoritative full-output size — unlike the in-memory ring
-   * buffer it is never truncated, so callers can report how much output a
-   * task has actually produced.
+   * 这是权威的完整输出大小——与内存中的环形缓冲区不同，它永远不会被截断，
+   * 因此调用者可以报告任务实际产生了多少输出。
    */
   async taskOutputSizeBytes(taskId: string): Promise<number> {
     try {
@@ -98,6 +110,7 @@ export class BackgroundTaskPersistence {
     }
   }
 
+  /** 检查任务的 `output.log` 文件是否存在于磁盘上。 */
   async taskOutputExists(taskId: string): Promise<boolean> {
     try {
       return (await stat(this.taskOutputFile(taskId))).isFile();
@@ -107,15 +120,13 @@ export class BackgroundTaskPersistence {
   }
 
   /**
-   * Read a byte window of a task's `output.log`.
+   * 读取任务 `output.log` 的一个字节窗口。
    *
-   * Reads at most `maxBytes` bytes starting at byte `offset`. A window that
-   * runs past EOF is clamped to whatever remains; an `offset` at/after EOF
-   * yields an empty string. Returns an empty string when the log is absent.
+   * 从字节 `offset` 开始读取最多 `maxBytes` 字节。超出 EOF 的窗口会截断到
+   * 剩余内容；在 EOF 处或之后的 `offset` 返回空字符串。日志不存在时返回空字符串。
    *
-   * Byte-level (not line-level) paging mirrors how the full log is stored
-   * on disk, so callers can page arbitrarily large logs without loading the
-   * whole file into memory.
+   * 基于字节级别（而非行级别）的分页方式与完整日志在磁盘上的存储方式一致，
+   * 因此调用者可以分页读取任意大小的日志，而无需将整个文件加载到内存中。
    */
   async readTaskOutputBytes(taskId: string, offset: number, maxBytes: number): Promise<string> {
     const start = Math.max(0, Math.trunc(offset));
@@ -142,23 +153,20 @@ export class BackgroundTaskPersistence {
   }
 
   /**
-   * Enumerate all persisted tasks for a session.
+   * 枚举会话的所有已持久化任务。
    *
-   * Skips, silently:
-   *   - basenames that don't match `VALID_TASK_ID` (stray files, legacy
-   *     `bg_*` leftovers, partially-written temp files);
-   *   - files that fail to read / parse;
-   *   - records that are neither identifiable as the current camelCase
-   *     shape nor the previous snake_case task shape.
+   * 静默跳过以下情况：
+   *   - 不匹配 `VALID_TASK_ID` 的文件名（杂散文件、旧版 `bg_*` 残留、部分写入的临时文件）；
+   *   - 读取/解析失败的文件；
+   *   - 既无法识别为当前 camelCase 格式也无法识别为旧版 snake_case 任务格式的记录。
    *
-   * Legacy snake_case records are normalized to current `BackgroundTaskInfo`
-   * in memory. The next lifecycle/reconcile write stores them back in the
-   * current format, so compatibility is read-only and opportunistically
-   * migrates without a separate migration step.
+   * 旧版 snake_case 记录会在内存中被规范化为当前的 `BackgroundTaskInfo`。
+   * 下一次生命周期/协调写入会将其以当前格式存储回来，因此兼容性是只读的，
+   * 并且会趁机迁移，无需单独的迁移步骤。
    *
-   * `writeTask` uses atomic temp+rename so a genuinely truncated file in
-   * production is rare; if it happens we accept the loss rather than
-   * emit a ghost with no recoverable metadata beyond the filename.
+   * `writeTask` 使用原子临时文件+重命名，因此生产环境中真正的截断文件
+   * 很少发生；如果确实发生，我们接受数据丢失，而不是发出一个除了文件名
+   * 之外没有可恢复元数据的幽灵记录。
    */
   async listTasks(): Promise<readonly PersistedTask[]> {
     const tasks = await this.store.list();

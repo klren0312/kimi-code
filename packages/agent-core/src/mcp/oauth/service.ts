@@ -1,25 +1,20 @@
 /**
- * Per-process OAuth orchestrator for MCP HTTP servers.
+ * MCP HTTP 服务器的进程级 OAuth 编排器。
  *
- * The service owns one {@link McpOAuthClientProvider} per server/resource and
- * mediates the synthetic `mcp__<server>__authenticate` tool flow:
+ * 服务为每个服务器/资源拥有一个 {@link McpOAuthClientProvider}，
+ * 并调解合成的 `mcp__<server>__authenticate` 工具流程：
  *
- *  1. `getProvider(serverName, serverUrl)` returns the cached provider.
- *     `HttpMcpClient` hands this to `StreamableHTTPClientTransport.authProvider`
- *     only when the server has no static bearer token configured **and** the
- *     provider has stored tokens for that same server URL — first-time
- *     connections that lack tokens skip the provider entirely so a 401 surfaces
- *     as `UnauthorizedError` from the transport instead of being swallowed by an
- *     in-flight `auth()` attempt.
- *  2. `beginAuthorization(serverName, serverUrl)` spins up a one-shot
- *     localhost callback listener, sets the redirect URL on the provider,
- *     and drives the SDK `auth()` orchestrator forward until it surfaces an
- *     authorization URL. It returns that URL plus a `complete()` callback
- *     that finishes the code exchange once the user finishes the browser
- *     flow.
- *  3. After `complete()` resolves successfully the provider has tokens on
- *     disk; the caller (the synthetic tool) drives a manager-level
- *     `reconnect` to swap the synthetic tool out for the real MCP tools.
+ *  1. `getProvider(serverName, serverUrl)` 返回缓存的提供方。
+ *     `HttpMcpClient` 将此传递给 `StreamableHTTPClientTransport.authProvider`，
+ *     仅在服务器未配置静态 bearer token **且**提供方已存储该服务器 URL 的
+ *     token 时——首次连接缺乏 token 时完全跳过提供方，使 401 作为
+ *     `UnauthorizedError` 从传输层呈现，而非被进行中的 `auth()` 尝试吞没。
+ *  2. `beginAuthorization(serverName, serverUrl)` 启动一次性本地回调监听器，
+ *     在提供方上设置重定向 URL，并驱动 SDK `auth()` 编排器向前直到呈现
+ *     授权 URL。返回该 URL 加一个 `complete()` 回调，该回调在用户完成
+ *     浏览器流程后完成代码交换。
+ *  3. `complete()` 成功解析后，提供方已在磁盘上有 token；调用方（合成工具）
+ *     驱动管理器级别的 `reconnect` 以将合成工具替换为真实的 MCP 工具。
  */
 
 import { auth, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
@@ -29,31 +24,30 @@ import { McpOAuthClientProvider } from './provider';
 import { JsonFileStore, mcpCredentialsDir, mcpOAuthStoreKey } from './store';
 
 export interface McpOAuthServiceOptions {
-  /** Storage backend; overrides `kimiHomeDir` when supplied. */
+  /** 存储后端；提供时覆盖 `kimiHomeDir`。 */
   readonly store?: JsonFileStore;
-  /** Resolved Kimi home; credentials default to `<kimiHomeDir>/credentials/mcp/`. */
+  /** 解析后的 Kimi home；凭据默认为 `<kimiHomeDir>/credentials/mcp/`。 */
   readonly kimiHomeDir?: string;
-  /** Override for the label embedded in DCR `client_name`. */
+  /** 覆盖 DCR `client_name` 中嵌入的标签。 */
   readonly clientLabel?: string;
 }
 
 export interface BeginAuthorizationOptions {
-  /** Override the `client_name` embedded in the DCR registration request. */
+  /** 覆盖 DCR 注册请求中嵌入的 `client_name`。 */
   readonly clientLabel?: string;
 }
 
 export interface BeginAuthorizationResult {
-  /** The authorization URL the user must open in their browser. */
+  /** 用户必须在浏览器中打开的授权 URL。 */
   readonly authorizationUrl: URL;
   /**
-   * Awaits the OAuth callback, validates `state`, exchanges the code for
-   * tokens, and persists them via the provider. Resolves on success;
-   * rejects on abort, timeout, or auth-server error.
+   * 等待 OAuth 回调，验证 `state`，用代码交换 token，并通过提供方持久化。
+   * 成功时解析；在中止、超时或认证服务器错误时拒绝。
    */
   complete(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<void>;
   /**
-   * Tears down the callback listener without finishing the flow. Safe to
-   * call repeatedly; called automatically by `complete()`.
+   * 拆除回调监听器而不完成流程。可安全重复调用；
+   * 由 `complete()` 自动调用。
    */
   cancel(): Promise<void>;
 }
@@ -72,7 +66,7 @@ export class McpOAuthService {
     this.clientLabel = options.clientLabel;
   }
 
-  /** Returns the cached provider for `serverName` + `serverUrl`, constructing it on first use. */
+  /** 返回 `serverName` + `serverUrl` 的缓存提供方，首次使用时构造。 */
   getProvider(serverName: string, serverUrl: string | URL): McpOAuthClientProvider {
     const storeKey = mcpOAuthStoreKey(serverName, serverUrl);
     let provider = this.providers.get(storeKey);
@@ -88,16 +82,14 @@ export class McpOAuthService {
     return provider;
   }
 
-  /** True once the provider has persisted tokens for this server/resource identity. */
+  /** 当提供方已为此服务器/资源标识持久化 token 时返回 true。 */
   hasTokens(serverName: string, serverUrl: string | URL): boolean {
     return this.getProvider(serverName, serverUrl).tokens() !== undefined;
   }
 
   /**
-   * Drive the SDK `auth()` orchestrator far enough to surface an
-   * authorization URL. The caller is responsible for displaying the URL
-   * (typically via the synthetic authenticate tool) and then awaiting
-   * `complete()` to finish the code exchange.
+   * 驱动 SDK `auth()` 编排器足够远以呈现授权 URL。调用方负责显示该 URL
+   *（通常通过合成认证工具），然后等待 `complete()` 完成代码交换。
    */
   async beginAuthorization(
     serverName: string,
@@ -131,7 +123,7 @@ export class McpOAuthService {
     try {
       const result = await auth(provider as OAuthClientProvider, { serverUrl });
       if (result !== 'REDIRECT') {
-        // Tokens already valid (e.g. unexpired refresh). Nothing to do.
+        // Token 已经有效（如未过期的刷新）。无需操作。
         await callbackServer.close();
         throw new AlreadyAuthorizedError(serverName);
       }
@@ -187,9 +179,8 @@ export class McpOAuthService {
   }
 
   /**
-   * Clear stored credentials for a server. Use `'all'` after the user
-   * explicitly signs out; use `'tokens'` to force a re-auth while keeping
-   * the registered DCR client.
+   * 清除服务器的已存储凭据。使用 `'all'` 在用户显式退出登录后；
+   * 使用 `'tokens'` 强制重新认证同时保留注册的 DCR 客户端。
    */
   invalidate(
     serverName: string,
@@ -200,7 +191,7 @@ export class McpOAuthService {
   }
 }
 
-/** Thrown by `beginAuthorization` when stored tokens already satisfy the server. */
+/** 当已存储的 token 已满足服务器要求时由 `beginAuthorization` 抛出。 */
 export class AlreadyAuthorizedError extends Error {
   constructor(serverName: string) {
     super(`"${serverName}" is already authorized; no browser flow needed`);

@@ -1,5 +1,5 @@
-// Raw-string imports for prompt sources. Vite/Vitest handles `?raw` natively;
-// tsdown uses the shared `raw-text-plugin` for the same import shape.
+// prompt 源的原始字符串导入。Vite/Vitest 原生支持 `?raw`；
+// tsdown 使用共享的 `raw-text-plugin` 实现相同的导入形式。
 
 declare module '*?raw' {
   const content: string;

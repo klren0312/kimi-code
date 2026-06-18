@@ -1,16 +1,15 @@
 /**
- * TodoListTool — structured TODO list management tool.
+ * TodoListTool — 结构化 TODO 列表管理工具。
  *
- * The LLM uses this tool to maintain a visible plan of sub-tasks during
- * plan-mode workflows and multi-step operations. A single tool serves
- * both reads and writes:
+ * LLM 使用此工具在 plan-mode 工作流和多步骤操作中维护一个可见的
+ * 子任务计划。单个工具同时支持读取和写入：
  *
- *   - `resolveExecution({ todos: [...] })` — replace the full list
- *   - `resolveExecution({ todos: [] })`    — clear the list
- *   - `resolveExecution({})`               — query current list (no mutation)
+ *   - `resolveExecution({ todos: [...] })` — 替换完整列表
+ *   - `resolveExecution({ todos: [] })`    — 清空列表
+ *   - `resolveExecution({})`               — 查询当前列表（不修改）
  *
- * Storage: todos live in the agent-level tool store. Writes go through
- * `tools.update_store`, so the store update is visible on wire replay.
+ * 存储：todos 保存在 agent 级别的工具存储中。写入通过
+ * `tools.update_store` 进行，因此存储更新在 wire replay 中可见。
  */
 
 import { z } from 'zod';
@@ -21,7 +20,7 @@ import { toInputJsonSchema } from '../../support/input-schema';
 import type { ToolStore } from '../../store';
 import DESCRIPTION from './todo-list.md?raw';
 
-// ── TODO state shape ─────────────────────────────────────────────────
+// ── TODO 状态结构 ─────────────────────────────────────────────────
 
 export const TODO_LIST_TOOL_NAME = 'TodoList' as const;
 export const TODO_STORE_KEY = 'todo';
@@ -41,7 +40,7 @@ declare module '../../store' {
   }
 }
 
-// ── Schema ───────────────────────────────────────────────────────────
+// ── Schema 定义 ───────────────────────────────────────────────────────────
 
 const TodoItemSchema = z.object({
   title: z.string().min(1).describe('Short, actionable title for the todo.'),
@@ -61,7 +60,7 @@ export const TodoListInputSchema: z.ZodType<TodoListInput> = z.object({
     ),
 });
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export function renderTodoList(todos: readonly TodoItem[], title = 'Current todo list:'): string {
   if (todos.length === 0) {
@@ -107,13 +106,13 @@ export class TodoListTool implements BuiltinTool<TodoListInput> {
       description,
       approvalRule: this.name,
       execute: async () => {
-        // Query mode — return the current list without mutation.
+        // 查询模式 — 返回当前列表，不修改。
         if (args.todos === undefined) {
           const current = this.getTodos();
           return { isError: false, output: renderTodoList(current) };
         }
 
-        // Write mode — replace the full list and return the new state.
+        // 写入模式 — 替换完整列表并返回新状态。
         this.setTodos(args.todos);
         const stored = this.getTodos();
         const output =

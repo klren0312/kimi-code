@@ -1,10 +1,9 @@
 /**
- * Low-profile transcript markers for the autonomous goal loop.
+ * 自主目标循环的低调对话记录标记。
  *
- * Lifecycle changes (paused / resumed / cancelled) and `no_progress` verdicts
- * render as a single dim line — `◦ Goal paused` — that expands (ctrl+o, shared
- * with tool output) to show the reason when there is one. Terminal outcomes use
- * the richer completion card (the `/goal` box), not this marker.
+ * 生命周期变更（暂停 / 恢复 / 取消）和 `no_progress` 判定渲染为一行
+ * 暗淡文字——`◦ Goal paused`——可通过 ctrl+o（与工具输出共享）展开
+ * 查看原因。终止结果使用更丰富的完成卡片（即 `/goal` 框），而非此标记。
  */
 
 import { truncateToWidth, type Component } from '@earendil-works/pi-tui';
@@ -89,9 +88,9 @@ export class GoalMarkerComponent implements Component {
 }
 
 /**
- * Builds a marker for a lifecycle change (paused / resumed / blocked), or `null`
- * when the change should be silent (a `completion` change posts its own message,
- * not a marker). `expanded` seeds the initial ctrl+o state.
+ * 为生命周期变更（暂停 / 恢复 / 阻塞）构建标记，或在变更应当静默时
+ * 返回 `null`（`completion` 变更会发布自己的消息，而非标记）。
+ * `expanded` 设定初始 ctrl+o 展开状态。
  */
 export function buildGoalMarker(
   change: GoalChange,
@@ -126,13 +125,13 @@ function markerSpec(
       case 'active':
         return prominentMarker(resumedHeadline(actor), 'primary');
       case 'blocked':
-        // The system stopped pursuing the goal; resumable via `/goal resume`.
+        // 系统已停止追求该目标；可通过 `/goal resume` 恢复。
         return { headline: 'Goal blocked', accentToken: 'warning' };
       default:
         return null;
     }
   }
-  return null; // completion -> posts its own message, not a marker
+  return null; // completion -> 发布自己的消息，而非标记
 }
 
 function prominentMarker(headline: string, accentToken: ColorToken) {

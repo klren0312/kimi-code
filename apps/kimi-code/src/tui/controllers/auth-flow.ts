@@ -141,10 +141,8 @@ export class AuthFlowController {
   }
 
   /**
-   * Re-fetch model lists from every provider whose upstream supports it
-   * (managed OAuth, open platforms, custom registries) and update local
-   * config.  Runs best-effort: individual provider failures are collected
-   * and returned instead of thrown.
+   * 从每个上游支持的 provider（托管 OAuth、开放平台、自定义注册表）重新获取模型列表并更新本地配置。
+   * 以尽力而为的方式运行：单个 provider 的失败会被收集并返回，而不是直接抛出。
    */
   async refreshProviderModels(): Promise<RefreshResult> {
     return this.refreshProviderModelsWithScope('all');

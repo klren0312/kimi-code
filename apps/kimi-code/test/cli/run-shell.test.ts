@@ -181,6 +181,7 @@ describe('runShell', () => {
       outputFormat: undefined,
       prompt: undefined,
       skillsDirs: [],
+      logLlm: false,
     };
 
     await runShell(cliOptions, '1.2.3-test');
@@ -269,6 +270,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -309,6 +311,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -347,6 +350,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -385,6 +389,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -418,6 +423,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -469,6 +475,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -507,6 +514,7 @@ describe('runShell', () => {
         outputFormat: undefined,
         prompt: undefined,
         skillsDirs: [],
+      logLlm: false,
       },
       '1.2.3-test',
     );
@@ -537,6 +545,7 @@ describe('runShell', () => {
           outputFormat: undefined,
           prompt: undefined,
           skillsDirs: [],
+      logLlm: false,
         },
         '1.2.3-test',
       ),
@@ -563,20 +572,21 @@ describe('runShell', () => {
     const exitSpy = mockProcessExit();
 
     try {
-      await runShell(
-        {
-          session: undefined,
-          continue: false,
-          yolo: false,
+    await runShell(
+      {
+        session: undefined,
+        continue: false,
+        yolo: false,
         auto: false,
-          plan: false,
-          model: undefined,
-          outputFormat: undefined,
-          prompt: undefined,
-          skillsDirs: [],
-        },
-        '1.2.3-test',
-      );
+        plan: false,
+        model: undefined,
+        outputFormat: undefined,
+        prompt: undefined,
+        skillsDirs: [],
+        logLlm: false,
+      },
+      '1.2.3-test',
+    );
       const [tui] = mocks.kimiTuiConstructor.mock.calls[0]!;
       mocks.harnessTrack.mockClear();
       mocks.lifecycleTrack.mockClear();
@@ -627,6 +637,7 @@ describe('runShell', () => {
           outputFormat: undefined,
           prompt: undefined,
           skillsDirs: [],
+      logLlm: false,
         },
         '1.2.3-test',
         { migrateOnly: true },

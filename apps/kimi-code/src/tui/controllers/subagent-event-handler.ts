@@ -632,7 +632,7 @@ function isSubagentLifecycleEvent(event: Event): event is SubagentLifecycleEvent
 }
 
 function isUserCancelledSubagentError(error: string): boolean {
-  // Structured AgentSwarm results use outcome="aborted" and are parsed separately.
+  // 结构化的 AgentSwarm 结果使用 outcome="aborted"，会单独解析。
   switch (error.trim()) {
     case 'Aborted by the user':
     case 'The user manually interrupted this subagent batch.':

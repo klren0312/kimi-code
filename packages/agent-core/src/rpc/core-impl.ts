@@ -169,10 +169,10 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     this.telemetry = options.telemetry ?? noopTelemetryClient;
     this.appVersion = options.appVersion;
     ensureKimiHome(this.homeDir);
-    // Schema errors degrade (invalid sections are dropped with warnings) so a
-    // typo cannot prevent startup, but a file that cannot be used at all —
-    // TOML syntax error, unreadable — fails fast: defaults-only would start
-    // the app looking logged out, which is worse than the parse error.
+    // Schema 错误会降级处理（无效段被丢弃并发出警告），因此拼写错误
+    // 不会阻止启动，但完全无法使用的文件——TOML 语法错误、不可读——
+    // 会快速失败：仅使用默认值启动会让应用看起来已登出，
+    // 这比解析错误更糟糕。
     const loaded = loadRuntimeConfigSafe(this.configPath);
     if (loaded.fileError !== undefined) {
       throw loaded.fileError;
@@ -189,10 +189,10 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     );
     this.sessionStore = new SessionStore(this.homeDir);
     this.plugins = new PluginManager({ kimiHomeDir: this.homeDir });
-    // Capture the error rather than swallow it: mutators and explicit /plugins
-    // reads rethrow so the user sees what's wrong; createSession/resumeSession
-    // degrade silently (no plugin skills, no sessionStart injections) so the harness still
-    // starts. Reload clears the error on success.
+    // 捕获错误而非吞掉它：变更操作和显式 /plugins 读取会重新抛出
+    // 以便用户看到错误；createSession/resumeSession 静默降级
+    // （无插件技能、无 sessionStart 注入）以确保框架仍能启动。
+    // 重新加载在成功时清除错误。
     this.pluginsReady = this.plugins.load().catch((error: unknown) => {
       this.pluginsLoadError = error instanceof Error ? error : new Error(String(error));
     });
@@ -239,8 +239,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     const pluginSessionStarts = this.plugins.enabledSessionStarts();
     const mcpConfig = this.mergePluginMcpConfig(withCallerMcp);
 
-    // Session ctor attaches its own log sink. If anything in the setup-after-
-    // ctor block throws, `session.close()` releases the sink (and mcp).
+    // Session 构造函数附加自己的日志接收器。如果构造后设置块中的
+    // 任何内容抛出异常，`session.close()` 会释放接收器（和 mcp）。
     const runtime = await this.resolveRuntime(config);
     const parentKaos = overrides.kaos ?? (await this.getKaos());
     const persistenceKaos = overrides.persistenceKaos ?? parentKaos;
@@ -285,8 +285,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
       if (permissionMode !== undefined) {
         mainAgent.permission.setMode(permissionMode);
       }
-      // Honor config.defaultPlanMode for fresh sessions. Resumed sessions
-      // restore their own plan state from records and never re-apply this.
+      // 对新会话使用 config.defaultPlanMode。恢复的会话
+      // 从记录中恢复自身的计划状态，不会重新应用此设置。
       if (config.defaultPlanMode === true) {
         await mainAgent.planMode.enter();
       }
@@ -453,8 +453,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   async exportSession(input: ExportSessionPayload): Promise<ExportSessionResult> {
     const summary = await this.sessionStore.get(input.sessionId);
     const active = this.sessions.get(input.sessionId);
-    // Closed sessions have no `Session.log`; create an ad-hoc child bound to
-    // their id so the entries still route to the session log file.
+    // 已关闭的会话没有 `Session.log`；创建一个绑定到其 ID 的临时子日志，
+    // 以便日志条目仍能路由到会话日志文件。
     const exportLog =
       active?.log ?? log.createChild({ sessionId: input.sessionId });
     if (active !== undefined) {
@@ -910,8 +910,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   private reloadRuntimeConfig(): KimiConfig {
     const loaded = loadRuntimeConfigSafe(this.configPath);
     if (loaded.fileWarnings.length > 0) {
-      // Keep the last good config: adopting a salvaged config mid-run could
-      // silently drop providers or models a live session depends on.
+      // 保留最后一个有效配置：在运行中采用已修复的配置可能会
+      // 静默丢失活动会话所依赖的提供者或模型。
       this.configWarnings = [
         ...loaded.fileWarnings,
         ...loaded.envWarnings,
@@ -942,10 +942,9 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     config: KimiConfig,
   ): Promise<void> {
     const api = new SessionAPIImpl(session);
-    // A session migrated from an external tool carries no model, and any
-    // session may reference a model alias that no longer exists in config.toml.
-    // Try the session's own model first, then fall back to the configured
-    // default, so resume degrades gracefully instead of hard-failing.
+    // 从外部工具迁移的会话不携带模型，任何会话可能引用
+    // config.toml 中已不存在的模型别名。先尝试会话自身的模型，
+    // 然后回退到配置的默认值，使恢复优雅降级而非硬性失败。
     const requested = (await api.getModel({ agentId: 'main' })).trim();
     const fallback = config.defaultModel?.trim() ?? '';
     const candidates = [...new Set([requested, fallback].filter((model) => model.length > 0))];
@@ -955,11 +954,10 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
         await session.flushMetadata();
         return;
       } catch (error) {
-        // Skip a candidate only when the alias is genuinely absent from
-        // config (a stale or migrated model) — that is the graceful-degrade
-        // case. A *configured* alias that fails to resolve (missing provider,
-        // no credentials, bad max_context_size) is an actionable config error
-        // the user must see; surface it instead of silently swapping models.
+        // 仅当别名确实不在配置中（过时或迁移的模型）时才跳过候选——
+        // 这是优雅降级的情况。已配置但解析失败的别名（缺少提供者、
+        // 无凭据、错误的 max_context_size）是用户必须看到的可操作配置错误；
+        // 将其浮出而非静默替换模型。
         const aliasMissing = config.models?.[model] === undefined;
         if (
           aliasMissing &&

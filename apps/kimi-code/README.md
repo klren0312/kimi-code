@@ -71,6 +71,9 @@ Take a look at this project and explain the main directories.
 - **Video input.** Drop a screen recording or demo clip into the chat — let the agent watch instead of typing out what's hard to describe in words.
 - **AI-native MCP configuration.** Add, edit, and authenticate Model Context Protocol servers conversationally via `/mcp-config` — no hand-editing JSON.
 - **Subagents for focused, parallel work.** Dispatch built-in `coder`, `explore`, and `plan` subagents in isolated context windows; the main conversation stays clean.
+- **Agent swarms.** Run large-scale parallel tasks with `/swarm` — the agent fans out work across multiple subagents with live progress and rate-limit-aware retries.
+- **Session visualizer.** Run `kimi vis` to open an interactive browser-based replay of your sessions, with deep-link support and local session browsing.
+- **Custom color themes.** Define your own palette as a JSON file in `~/.kimi-code/themes/`, or generate one with the built-in `/custom-theme` skill command.
 - **Lifecycle hooks.** Run local commands at key points — gate risky tool calls, audit decisions, fire desktop notifications, wire into your own automation.
 
 ## Documentation

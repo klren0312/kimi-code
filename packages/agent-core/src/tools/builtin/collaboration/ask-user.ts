@@ -1,14 +1,11 @@
 /**
- * AskUserQuestionTool — structured user question tool.
+ * AskUserQuestionTool — 结构化用户提问工具。
  *
- * The LLM calls this tool when it needs structured input from the user
- * (multiple-choice, preference selection, disambiguation). The tool
- * delegates to the SDK reverse-RPC question handler, which owns the
- * actual UI interaction.
+ * 当 LLM 需要从用户获取结构化输入（多选、偏好选择、消歧义）时调用此工具。
+ * 该工具委托给 SDK 反向-RPC 问题处理器，由其负责实际的 UI 交互。
  *
- * Permission policy decides whether this tool is available for the
- * current mode. Once executed, it dispatches through `requestQuestion`
- * and awaits the user's answer.
+ * 权限策略决定此工具在当前模式下是否可用。执行后，它通过 `requestQuestion`
+ * 分发并等待用户的回答。
  */
 
 import { z } from 'zod';
@@ -29,7 +26,7 @@ import type { TelemetryPropertyValue } from '../../../telemetry';
 import { toInputJsonSchema } from '../../support/input-schema';
 import DESCRIPTION from './ask-user.md?raw';
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 const QuestionOptionSchema = z.object({
   label: z
@@ -92,7 +89,7 @@ const QUESTION_DISMISSED_MESSAGE = 'User dismissed the question without answerin
 const QUESTION_UNSUPPORTED_FAILURE_MESSAGE =
   'The connected client does not support interactive questions. Do NOT call this tool again. Ask the user directly in your text response instead.';
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class AskUserQuestionTool implements BuiltinTool<AskUserQuestionInput> {
   readonly name = 'AskUserQuestion' as const;

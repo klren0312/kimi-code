@@ -1,11 +1,10 @@
 /**
- * Cursor + fuzzy-search + paging state machine shared by list pickers
- * (ChoicePicker, ModelSelector). Pure logic, no rendering.
+ * 列表选择器（ChoicePicker、ModelSelector）共享的光标 + 模糊搜索 + 分页状态机。
+ * 纯逻辑，不含渲染。
  *
- * The component owns presentation and the keys that carry component-specific
- * meaning — Enter (submit), Esc (cancel), and ←/→ (paging in one picker, a
- * thinking toggle in another). This unit owns the keys that behave identically
- * everywhere: ↑/↓, PgUp/PgDn, and search editing.
+ * 组件负责呈现和具有组件特定含义的按键——Enter（提交）、Esc（取消）、
+ * 以及 ←/→（在一个选择器中用于分页，在另一个中用于切换思考模式）。
+ * 本模块负责在所有地方行为一致的按键：↑/↓、PgUp/PgDn，以及搜索编辑。
  */
 
 import { fuzzyFilter, Key, matchesKey } from '@earendil-works/pi-tui';
@@ -17,22 +16,22 @@ const DEFAULT_PAGE_SIZE = 8;
 
 export interface SearchableListOptions<T> {
   readonly items: readonly T[];
-  /** Text a list item is fuzzy-matched against. */
+  /** 列表项用于模糊匹配的文本。 */
   readonly toSearchText: (item: T) => string;
-  /** Items per page; defaults to 8. */
+  /** 每页项目数；默认为 8。 */
   readonly pageSize?: number;
-  /** Initial cursor position (clamped to >= 0). */
+  /** 初始光标位置（限制为 >= 0）。 */
   readonly initialIndex?: number;
-  /** When false, typed characters are ignored. Defaults to false. */
+  /** 为 false 时忽略输入的字符。默认为 false。 */
   readonly searchable?: boolean;
 }
 
 export interface SearchableListView<T> {
-  /** Items after the active query filter. */
+  /** 经过当前查询过滤后的项目。 */
   readonly items: readonly T[];
-  /** Page math for the current cursor over {@link items}. */
+  /** 当前光标在 {@link items} 上的分页计算结果。 */
   readonly page: PageView;
-  /** Cursor clamped into the current {@link items} range. */
+  /** 限制在当前 {@link items} 范围内的光标位置。 */
   readonly selectedIndex: number;
   readonly query: string;
 }
@@ -58,7 +57,7 @@ export class SearchableList<T> {
     return fuzzyFilter([...this.items], this.query, this.toSearchText);
   }
 
-  /** The item under the cursor, clamped into the filtered range. */
+  /** 光标所在的项目，限制在过滤后的范围内。 */
   selected(): T | undefined {
     const items = this.filtered();
     if (items.length === 0) return undefined;
@@ -91,7 +90,7 @@ export class SearchableList<T> {
     this.cursor = Math.min(Math.max(0, this.filtered().length - 1), this.cursor + this.pageSize);
   }
 
-  /** Clears the active query and resets the cursor. Returns whether a query was cleared. */
+  /** 清除当前查询并重置光标。返回是否清除了查询。 */
   clearQuery(): boolean {
     if (this.query.length === 0) return false;
     this.query = '';
@@ -100,9 +99,9 @@ export class SearchableList<T> {
   }
 
   /**
-   * Handles the keys every picker shares: ↑/↓, PgUp/PgDn, and — when searchable —
-   * Backspace and printable characters. Returns true when the key was consumed.
-   * Enter, Esc, and ←/→ are intentionally left to the component.
+   * 处理所有选择器共享的按键：↑/↓、PgUp/PgDn，以及在可搜索模式下的
+   * Backspace 和可打印字符。按键被消费时返回 true。
+   * Enter、Esc 和 ←/→ 有意留给组件处理。
    */
   handleKey(data: string): boolean {
     if (matchesKey(data, Key.up)) {

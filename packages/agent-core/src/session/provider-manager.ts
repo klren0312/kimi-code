@@ -17,7 +17,7 @@ export interface ResolvedRuntimeProvider {
   readonly providerName: string;
   readonly provider: KosongProviderConfig;
   readonly modelCapabilities: ModelCapability;
-  /** Declared 'always_thinking' capability — the model cannot disable thinking. */
+  /** 声明的 'always_thinking' 能力——模型无法禁用思考。 */
   readonly alwaysThinking?: boolean;
   readonly maxOutputSize?: number;
 }
@@ -134,9 +134,9 @@ export class ProviderManager implements ModelProvider {
     if (providerConfig?.oauth === undefined) return undefined;
 
     if (providerApiKey(providerConfig) !== undefined) {
-      // oauth + apiKey on the same provider makes request auth ambiguous:
-      // provider construction would prefer apiKey while runtime auth resolves
-      // OAuth. Reject it so misconfiguration surfaces at model resolution.
+      // 同一 provider 同时配置 oauth 和 apiKey 会使请求鉴权产生歧义：
+      // provider 构造会优先使用 apiKey，而运行时鉴权解析 OAuth。
+      // 拒绝此配置，以便在模型解析阶段暴露配置错误。
       throw new KimiError(
         ErrorCodes.CONFIG_INVALID,
         `Provider "${providerName}" has both apiKey and oauth set in config.toml — they are mutually exclusive. Remove one.`,
@@ -163,9 +163,8 @@ export class ProviderManager implements ModelProvider {
       try {
         apiKey = await tokenProvider.getAccessToken(force ? { force: true } : undefined);
       } catch (error) {
-        // login-required is an expected state (the user must /login); don't
-        // warn. Other failures (connection errors, etc.) are logged once for
-        // diagnosis and then propagated — chatWithRetry does not retry them.
+        // login-required 是预期状态（用户必须执行 /login）；不要发出警告。
+        // 其他失败（连接错误等）仅记录一次用于诊断，然后传播——chatWithRetry 不会重试它们。
         if (!isKimiError(error) || error.code !== ErrorCodes.AUTH_LOGIN_REQUIRED) {
           log?.warn('oauth token fetch failed', { providerName, error });
         }
@@ -289,9 +288,9 @@ function toKosongProviderConfig(
   }
 }
 
-// Returns a fresh `defaultHeaders` field for a kosong provider config so
-// resolved instances never share a header object. Omits the key entirely when
-// there are no headers — callers and tests rely on `'defaultHeaders' in provider`.
+// 返回一个全新的 `defaultHeaders` 字段，确保已解析的 kosong provider 配置实例
+// 永远不会共享同一个 header 对象。没有 header 时省略该键——调用方和测试依赖
+// `'defaultHeaders' in provider` 进行判断。
 function defaultHeadersField(
   headers: Record<string, string> | undefined,
 ): { defaultHeaders?: Record<string, string> } {

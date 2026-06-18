@@ -1,19 +1,16 @@
 /**
- * AgentTool — collaboration tool for spawning task subagents.
+ * AgentTool — 用于生成任务子代理的协作工具。
  *
- * Unlike the built-in tools (Read/Write/Edit/Bash/Grep/Glob), this is a
- * "collaboration tool". It uses `SessionSubagentHost` (injected via the
- * constructor rather than through the Runtime) to create in-process subagent
- * loop instances.
+ * 与内置工具（Read/Write/Edit/Bash/Grep/Glob）不同，这是一个"协作工具"。
+ * 它使用 `SessionSubagentHost`（通过构造函数注入而非通过 Runtime）来创建
+ * 进程内的子代理循环实例。
  *
- * Two modes:
- *   - **Foreground** (default): blocks the parent turn, `await handle.completion`
- *   - **Background**: returns the agent id immediately; the result is delivered
- *     via a notification.
+ * 两种模式：
+ *   - **前台**（默认）：阻塞父轮次，`await handle.completion`
+ *   - **后台**：立即返回 agent id；结果通过通知传递。
  *
- * `ToolResult.content` is textual; the structured output exposed by
- * `AgentToolOutputSchema` is only used for drift-guard and is not consumed at
- * runtime.
+ * `ToolResult.content` 是文本形式的；由 `AgentToolOutputSchema` 暴露的结构化输出
+ * 仅用于漂移保护，运行时不消费。
  */
 
 import { z } from 'zod';
@@ -42,7 +39,7 @@ import AGENT_BACKGROUND_DISABLED_DESCRIPTION from './agent-background-disabled.m
 import AGENT_BACKGROUND_DESCRIPTION from './agent-background-enabled.md?raw';
 import AGENT_DESCRIPTION_BASE from './agent.md?raw';
 
-// ── AgentTool input ──────────────────────────────────────────────────
+// ── AgentTool 输入 ──────────────────────────────────────────────────
 
 export const AgentToolInputSchema = z.preprocess(
   (input) => {
@@ -86,7 +83,7 @@ export const AgentToolInputSchema = z.preprocess(
 
 export type AgentToolInput = z.infer<typeof AgentToolInputSchema>;
 
-// ── AgentTool output ─────────────────────────────────────────────────
+// ── AgentTool 输出 ─────────────────────────────────────────────────
 
 export const AgentToolOutputSchema = z.object({
   result: z.string().describe('Aggregated text output from the subagent'),
@@ -105,7 +102,7 @@ export type AgentToolOutput = z.infer<typeof AgentToolOutputSchema>;
 const BACKGROUND_AGENT_UNAVAILABLE =
   'Background agent execution is not available for this agent because TaskList, TaskOutput, and TaskStop are not enabled.';
 
-// ── AgentTool class ──────────────────────────────────────────────────
+// ── AgentTool 类 ──────────────────────────────────────────────────
 
 export class AgentTool implements BuiltinTool<AgentToolInput> {
   readonly name: string = 'Agent';

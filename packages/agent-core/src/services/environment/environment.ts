@@ -1,20 +1,18 @@
 /**
- * `IEnvironmentService` — canonical source for resolved filesystem paths
- * (home directory, config file, etc.) used by the daemon and in-process
- * services.
+ * `IEnvironmentService` — daemon 和进程内服务使用的文件系统路径解析的权威来源
+ *（home 目录、配置文件等）。
  *
- * VSCode-style: injected via `@IEnvironmentService` rather than passed as
- * a static options prefix. This eliminates the "options bag as first ctor
- * arg" pattern in services that only need path resolution.
+ * VSCode 风格：通过 `@IEnvironmentService` 注入，而非作为静态 options 前缀传入。
+ * 这消除了仅需要路径解析的服务中"options bag 作为构造函数第一个参数"的模式。
  */
 
 import { createDecorator } from '../../di';
 
 export interface IEnvironmentService {
   readonly _serviceBrand: undefined;
-  /** Resolved kimi home directory (e.g. `~/.kimi-code`). */
+  /** 已解析的 kimi home 目录（例如 `~/.kimi-code`）。 */
   readonly homeDir: string;
-  /** Resolved absolute path to `config.toml`. */
+  /** 已解析的 `config.toml` 绝对路径。 */
   readonly configPath: string;
 }
 

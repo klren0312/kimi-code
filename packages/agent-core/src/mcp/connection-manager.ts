@@ -43,30 +43,29 @@ type RuntimeMcpClient = StdioMcpClient | HttpMcpClient | SseMcpClient;
 export interface McpConnectionManagerOptions {
   readonly envLookup?: (name: string) => string | undefined;
   /**
-   * Optional OAuth orchestrator. When provided, remote servers without a
-   * static bearer token participate in the OAuth-via-synthetic-tool flow:
-   *  - If `oauthService.hasTokens(name, url)` is true, the provider is
-   *    attached to the transport so the SDK can refresh tokens on 401.
-   *  - Connection failures that look like 401 / `UnauthorizedError` flip
-   *    the entry into `needs-auth` instead of `failed`; `/mcp-config`
-   *    drives the browser flow through the synthetic auth tool.
+   * 可选的 OAuth 编排器。提供后，没有静态 bearer token 的远程服务器
+   * 参与通过合成工具的 OAuth 流程：
+   *  - 如果 `oauthService.hasTokens(name, url)` 为 true，则将提供方
+   *    附加到传输层，以便 SDK 在收到 401 时刷新 token。
+   *  - 看起来像 401 / `UnauthorizedError` 的连接失败会将条目翻转为
+   *    `needs-auth` 而非 `failed`；`/mcp-config` 通过合成认证工具
+   *    驱动浏览器流程。
    */
   readonly oauthService?: McpOAuthService;
   /**
-   * Parent logger. Defaults to the global `log`; Session passes its own
-   * `session.log` so MCP events land in the session log too.
+   * 父级日志记录器。默认为全局 `log`；Session 传入其自身的 `session.log`
+   * 使 MCP 事件也出现在会话日志中。
    */
   readonly log?: Logger;
 }
 
 /**
- * Owns the lifecycle of every configured MCP server for a Session.
+ * 拥有 Session 中每个已配置 MCP 服务器的生命周期。
  *
- * Servers are connected in parallel; per-server failures are isolated so a
- * crashed or misconfigured entry never blocks Session startup. State
- * transitions are surfaced through {@link onStatusChange} so callers (the
- * Session) can react — registering tools onto the main agent, emitting
- * wire events, or updating the TUI.
+ * 服务器并行连接；每个服务器的失败被隔离，因此崩溃或配置错误的条目
+ * 不会阻塞 Session 启动。状态转换通过 {@link onStatusChange} 呈现，
+ * 以便调用方（Session）做出响应——将工具注册到主代理、发出 wire 事件
+ * 或更新 TUI。
  */
 export class McpConnectionManager {
   private readonly entries = new Map<string, InternalEntry>();
@@ -77,9 +76,8 @@ export class McpConnectionManager {
   private initialLoadFinishedAt: number | undefined;
 
   /**
-   * OAuth orchestrator injected at construction time. Consumed by the
-   * {@link ToolManager} `needs-auth` branch to build the synthetic
-   * `authenticate` tool.
+   * 构造时注入的 OAuth 编排器。由 {@link ToolManager} 的 `needs-auth` 分支
+   * 消费，以构建合成的 `authenticate` 工具。
    */
   readonly oauthService: McpOAuthService | undefined;
   private readonly log: Logger;
@@ -90,9 +88,9 @@ export class McpConnectionManager {
   }
 
   /**
-   * Returns the URL of a remote MCP server by name, or `undefined` for
-   * unknown / non-remote / disabled entries. Used by the synthetic auth tool
-   * to drive OAuth discovery against the right base URL.
+   * 按名称返回远程 MCP 服务器的 URL，对于未知/非远程/已禁用的条目
+   * 返回 `undefined`。合成认证工具使用它来针对正确的基础 URL
+   * 驱动 OAuth 发现。
    */
   getRemoteServerUrl(name: string): string | undefined {
     const entry = this.entries.get(name);
@@ -102,8 +100,8 @@ export class McpConnectionManager {
   }
 
   /**
-   * @deprecated Use {@link getRemoteServerUrl}. Kept for in-repo callers that
-   * were written before legacy SSE support shared the same OAuth path.
+   * @deprecated 使用 {@link getRemoteServerUrl}。保留此方法是为了兼容
+   * 在旧版 SSE 支持共享同一 OAuth 路径之前编写的仓库内调用方。
    */
   getHttpServerUrl(name: string): string | undefined {
     return this.getRemoteServerUrl(name);
@@ -126,11 +124,9 @@ export class McpConnectionManager {
   }
 
   /**
-   * Returns the MCP client, the discovered tools, and the allow-list of tool
-   * names for a given connected server, or `undefined` if the server is not
-   * currently connected. The allow-list combines the server's `enabledTools`
-   * and `disabledTools` filters; callers should only register names in the
-   * set.
+   * 返回给定已连接服务器的 MCP 客户端、发现的工具和工具名称允许列表，
+   * 如果服务器当前未连接则返回 `undefined`。允许列表结合服务器的
+   * `enabledTools` 和 `disabledTools` 过滤器；调用方应仅注册集合中的名称。
    */
   resolved(
     name: string,
@@ -266,7 +262,7 @@ export class McpConnectionManager {
         this.connectAndDiscoverTools(startupClient),
         timeoutMs,
         () => {
-          // Best-effort cleanup if the startup promise is still racing.
+          // 尽力清理，如果启动承诺仍在竞争中。
           void this.closeRuntimeClient(startupClient);
         },
       );
@@ -294,7 +290,7 @@ export class McpConnectionManager {
       }
       entry.tools = undefined;
       entry.enabledNames = undefined;
-      // Drop the client reference so a later reconnect builds a fresh one.
+      // 清除客户端引用，以便稍后的重连构建新的客户端。
       await this.closeClient(entry);
     }
     if (!this.isCurrent(entry, attemptId)) return;
@@ -307,8 +303,8 @@ export class McpConnectionManager {
     attemptId: number,
   ): void {
     client.onUnexpectedClose((reason) => {
-      // The client may have outlived its entry (shutdown / reconnect already
-      // moved on). Drop the event if so — the new attempt owns the state.
+      // 客户端可能已超出其条目的生命周期（shutdown / reconnect 已继续）。
+      // 如果是这样则丢弃事件——新的尝试拥有状态。
       if (!this.isCurrent(entry, attemptId)) return;
       if (entry.client !== client) return;
       entry.status = 'failed';
@@ -316,8 +312,7 @@ export class McpConnectionManager {
       entry.tools = undefined;
       entry.enabledNames = undefined;
       entry.client = undefined;
-      // Best-effort close; the transport is already gone, but this lets the
-      // SDK release timers and pending request handlers.
+      // 尽力关闭；传输层已消失，但这让 SDK 释放计时器和待处理的请求处理器。
       void this.closeRuntimeClient(client);
       this.emit(entry);
     });
@@ -355,10 +350,9 @@ export class McpConnectionManager {
     if (oauthService === undefined) return undefined;
     if (!isRemoteMcpConfig(config)) return undefined;
     if (config.bearerTokenEnvVar !== undefined) return undefined;
-    // Only attach the provider once tokens have been minted; before that,
-    // the transport should propagate a clean 401 so we can flip the entry
-    // into `needs-auth` rather than getting tangled in the SDK's auth()
-    // flow (which would try DCR before we have an active redirect URL).
+    // 仅在 token 已生成后附加提供方；在此之前，传输应传播干净的 401，
+    // 以便我们可以将条目翻转为 `needs-auth`，而不是陷入 SDK 的 auth()
+    // 流程（它会在我们有活跃的重定向 URL 之前尝试 DCR）。
     if (!oauthService.hasTokens(name, config.url)) return undefined;
     return oauthService.getProvider(name, config.url);
   }
@@ -367,10 +361,9 @@ export class McpConnectionManager {
     if (this.oauthService === undefined) return false;
     if (!isRemoteMcpConfig(entry.config)) return false;
     if (entry.config.bearerTokenEnvVar !== undefined) return false;
-    // If the user pinned a static `headers` block, treat 401s as a bad header
-    // rather than hijacking them into the OAuth flow — the real error is more
-    // actionable than "run /mcp-config login" for a server that doesn't speak
-    // OAuth.
+    // 如果用户固定了静态 `headers` 块，则将 401 视为错误的头部而非
+    // 将其劫持到 OAuth 流程中——对于不支持 OAuth 的服务器，真正的错误
+    // 比"运行 /mcp-config login"更具可操作性。
     if (entry.config.headers !== undefined) return false;
     return isUnauthorizedLikeError(error);
   }
@@ -396,8 +389,7 @@ export class McpConnectionManager {
     try {
       await client.close();
     } catch {
-      // Suppress close errors — the server is going away regardless and we
-      // don't want them masking the original startup failure.
+      // 抑制关闭错误——服务器无论如何都在退出，我们不希望它们掩盖原始的启动失败。
     }
   }
 
@@ -419,7 +411,7 @@ export class McpConnectionManager {
       try {
         listener(view);
       } catch {
-        // Listener faults must not break the connection manager.
+        // 监听器故障不得破坏连接管理器。
       }
     }
   }
@@ -456,12 +448,11 @@ function computeEnabledNames(config: McpServerConfig, tools: readonly Tool[]): S
 function isUnauthorizedLikeError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === 'UnauthorizedError') return true;
-  // SDK transport errors typically expose the HTTP status as `.code`.
+  // SDK 传输错误通常将 HTTP 状态暴露为 `.code`。
   const code = (error as { code?: unknown }).code;
   if (typeof code === 'number' && code === 401) return true;
   if (typeof code === 'string' && code === '401') return true;
-  // Fall back to a message sniff so server-specific error shapes still flip
-  // us into needs-auth instead of failed.
+  // 回退到消息嗅探，以便服务器特定的错误形状仍将我们翻转为 needs-auth 而非 failed。
   return /\b401\b/.test(error.message) || /unauthorized/i.test(error.message);
 }
 

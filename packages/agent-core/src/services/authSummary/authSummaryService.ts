@@ -1,6 +1,4 @@
-/**
- * `AuthSummaryService` — implementation of `IAuthSummaryService`.
- */
+/** `AuthSummaryService` — `IAuthSummaryService` 的实现。 */
 
 import { Disposable, InstantiationType, registerSingleton } from '../../di';
 import type { KimiConfig } from '../../config';
@@ -15,7 +13,7 @@ import {
   AuthModelNotResolvedError,
 } from './authSummary';
 
-/** Wire name of the OAuth-managed provider (`@moonshot-ai/kimi-code-oauth`'s `KIMI_CODE_PROVIDER_NAME`). */
+/** OAuth 托管 provider 的线路名称（`@moonshot-ai/kimi-code-oauth` 的 `KIMI_CODE_PROVIDER_NAME`）。 */
 const MANAGED_PROVIDER_NAME = 'managed:kimi-code';
 
 export class AuthSummaryService
@@ -83,9 +81,8 @@ export class AuthSummaryService
       throw new AuthModelNotResolvedError(modelId, providerName);
     }
 
-    // Credential presence: api_key (config or env), OR a cached OAuth token.
-    // We deliberately don't probe live OAuth refresh here — that path is
-    // reactive. Static gate only.
+    // 凭据存在性检查：api_key（配置或环境变量），或缓存的 OAuth token。
+    // 此处有意不探测实时 OAuth 刷新 — 该路径是响应式的。仅做静态门控。
     const hasInlineKey = nonEmpty(providerConfig.apiKey) !== null;
     if (hasInlineKey) return;
 
@@ -95,10 +92,10 @@ export class AuthSummaryService
       throw new AuthTokenMissingError(providerName);
     }
 
-    // No inline key, no oauth ref. Could still be an env-supplied key — for
-    // minimum viable we conservatively gate; env-key callers can set
-    // apiKey="${VAR}" in config to bypass. The acceptance test fixture for
-    // 40111 uses "manual provider with no api_key" which lands here.
+    // 没有内联 key，没有 oauth 引用。仍可能是通过环境变量提供的 key —
+    // 在最小可用版本中做保守门控；使用环境变量 key 的调用方可在配置中设置
+    // apiKey="${VAR}" 来绕过。40111 的验收测试 fixture 使用"无 api_key 的
+    // 手动 provider"，会走到此处。
     throw new AuthTokenMissingError(providerName);
   }
 
@@ -107,16 +104,15 @@ export class AuthSummaryService
     super.dispose();
   }
 
-  /* ----------------------------- internals ---------------------------- */
+  /* ----------------------------- 内部方法 ---------------------------- */
 
   private async _readConfig(): Promise<KimiConfig> {
-    // `reload: true` forces KimiCore to re-read `config.toml` from disk
-    // before returning. Critical for the auth probe path: writes from
-    // `OAuthService` (toolkit's provisioning) and `IProviderService`
-    // future RW endpoints land on disk via `writeConfigFile`, but
-    // KimiCore's `this.config` only refreshes when something explicitly
-    // asks for `reload`. Without this flag, `GET /v1/auth` would stay
-    // `ready:false` for the entire daemon lifetime after first login.
+    // `reload: true` 强制 KimiCore 在返回前重新从磁盘读取 `config.toml`。
+    // 对认证探针路径至关重要：`OAuthService`（工具包的 provisioning）和
+    // `IProviderService` 未来的 RW 端点通过 `writeConfigFile` 写入磁盘，
+    // 但 KimiCore 的 `this.config` 仅在有东西明确请求 `reload` 时才刷新。
+    // 若无此标志，`GET /v1/auth` 在首次登录后的整个 daemon 生命周期内
+    // 都会保持 `ready:false`。
     return this.core.rpc.getKimiConfig({ reload: true });
   }
 
@@ -125,9 +121,8 @@ export class AuthSummaryService
       const token = await this._authFacade.getCachedAccessToken(providerName);
       return typeof token === 'string' && token.trim().length > 0;
     } catch {
-      // FileTokenStorage throws if the credential dir or file is unreadable;
-      // treat any failure as "no token" so callers don't block on transient
-      // filesystem errors.
+      // FileTokenStorage 在凭据目录或文件不可读时抛出异常；
+      // 将任何失败视为"无 token"，使调用方不会因临时文件系统错误而阻塞。
       return false;
     }
   }
@@ -139,8 +134,8 @@ function nonEmpty(value: string | undefined): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-// Self-register under the global singleton registry. All ctor deps are
-// `@I…`-injected (@IEnvironmentService / @ICoreProcessService);
-// `staticArguments = []`. `supportsDelayedInstantiation = false` preserves
-// current reverse-dispose semantics.
+// 在全局单例注册表中自注册。所有构造函数依赖通过
+// `@I…` 注入（@IEnvironmentService / @ICoreProcessService）；
+// `staticArguments = []`。`supportsDelayedInstantiation = false` 保留
+// 当前反向释放语义。
 registerSingleton(IAuthSummaryService, AuthSummaryService, InstantiationType.Delayed);

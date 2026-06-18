@@ -1,12 +1,11 @@
 /**
- * Doubly-linked list with O(1) `push` and removal via the disposer returned
- * from `push`. Used by `InstantiationService` to park `onDid*`/`onWill*`
- * event subscriptions made against a Proxy before the real service is
- * materialised — when the real instance is built, the list is drained and
- * each parked listener is rebound to the real event.
+ * 双向链表，支持 O(1) 的 `push` 以及通过 `push` 返回的 disposer 进行移除。
+ * 用于 `InstantiationService` 暂存对 Proxy 做出的 `onDid*`/`onWill*`
+ * 事件订阅（在真实服务实例化之前）— 当真实实例构建完成后，链表被排空，
+ * 每个暂存的监听器重新绑定到真实事件上。
  *
- * Vendored verbatim from krow `packages/core/src/base/linkedList.ts`
- * (in turn the VSCode original).
+ * 逐字移植自 krow `packages/core/src/base/linkedList.ts`
+ * （即 VSCode 原始版本）。
  */
 
 class Node<E> {

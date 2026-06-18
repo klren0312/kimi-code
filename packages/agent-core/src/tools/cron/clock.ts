@@ -1,45 +1,39 @@
 /**
- * Clock sources for the cron scheduler.
+ * 定时任务调度器的时钟源。
  *
- * Two distinct notions of time are kept apart on purpose:
+ * 故意将两种不同的时间概念分开：
  *
- *   1. wall-clock — what the user perceives as "the current time". Used
- *      for cron expression matching, `createdAt`, and the 7-day stale
- *      judgment. May be overridden in tests / multi-process benches so
- *      that scenarios can run in simulated time without `setTimeout`.
+ *   1. 墙钟时间 — 用户感知的"当前时间"。用于 cron 表达式匹配、
+ *      `createdAt` 和 7 天过期判断。可在测试/多进程基准测试中覆盖，
+ *      以便场景在模拟时间中运行而无需 `setTimeout`。
  *
- *   2. monotonic ms — a strictly non-decreasing counter that never
- *      jumps backwards across NTP adjustments, suspend/resume, or
- *      simulated-clock injection. Used for the poll cadence and the
- *      lock heartbeat — anything where "did 5 seconds elapse since we
- *      last looked" must hold even when the wall clock is frozen.
+ *   2. 单调递增毫秒 — 严格不递减的计数器，在 NTP 调整、挂起/恢复
+ *      或模拟时钟注入时不会回退。用于轮询频率和锁心跳 — 任何需要
+ *      "距上次检查是否已过 5 秒"的场景，即使墙钟时间被冻结也必须成立。
  *
- * Mixing the two pollutes test reproducibility: a heartbeat tied to
- * `wallNow()` will appear stuck when the test clock is frozen; a cron
- * fire tied to `monoNowMs()` will not advance when the bench rewinds
- * the simulated day. Every component in `tools/cron/` MUST take a
- * `ClockSources` and route every time read through it.
+ * 混合两者会污染测试可复现性：绑定到 `wallNow()` 的心跳在测试时钟
+ * 冻结时会卡住；绑定到 `monoNowMs()` 的 cron 触发在基准测试回退
+ * 模拟日期时不会前进。`tools/cron/` 中的每个组件都必须接受
+ * `ClockSources` 并通过它路由所有时间读取。
  *
- * `monoNowMs` is ALWAYS `process.hrtime.bigint()` (converted to ms).
- * It is not overridable — accepting an external monotonic clock would
- * defeat the safety net the lock heartbeat depends on.
+ * `monoNowMs` 始终是 `process.hrtime.bigint()`（转换为毫秒）。
+ * 不可覆盖 — 接受外部单调时钟会破坏锁心跳依赖的安全网。
  *
- * `wallNow` resolution is driven by the `KIMI_CRON_CLOCK` env var; see
- * `resolveClockSources` below. Defaults to `Date.now()`.
+ * `wallNow` 的解析由 `KIMI_CRON_CLOCK` 环境变量驱动；见下方
+ * `resolveClockSources`。默认为 `Date.now()`。
  */
 import { closeSync, openSync, readSync } from 'node:fs';
 
 export interface ClockSources {
   /**
-   * Wall-clock epoch milliseconds. May be overridden in tests / bench
-   * via `KIMI_CRON_CLOCK`. Used for cron matching, `createdAt`, stale
-   * judgment.
+   * 墙钟时间 epoch 毫秒。可在测试/基准测试中通过 `KIMI_CRON_CLOCK` 覆盖。
+   * 用于 cron 匹配、`createdAt`、过期判断。
    */
   wallNow(): number;
 
   /**
-   * Strictly monotonic millisecond counter. Never overridden. Used for
-   * the 1-second poll cadence and the lock-heartbeat liveness window.
+   * 严格单调递增的毫秒计数器。不可覆盖。用于 1 秒轮询频率和
+   * 锁心跳存活窗口。
    */
   monoNowMs(): number;
 }
@@ -47,9 +41,8 @@ export interface ClockSources {
 const systemMonoNowMs = (): number => Number(process.hrtime.bigint() / 1_000_000n);
 
 /**
- * Production default — `Date.now()` + `process.hrtime.bigint()`. Used
- * whenever `KIMI_CRON_CLOCK` is unset, set to `"system"`, or set to a
- * spec that fails to parse.
+ * 生产默认值 — `Date.now()` + `process.hrtime.bigint()`。
+ * 当 `KIMI_CRON_CLOCK` 未设置、设为 `"system"` 或解析失败时使用。
  */
 export const SYSTEM_CLOCKS: ClockSources = {
   wallNow: () => Date.now(),
@@ -57,29 +50,25 @@ export const SYSTEM_CLOCKS: ClockSources = {
 };
 
 /**
- * Resolve a `ClockSources` implementation from a spec string (typically
- * `process.env.KIMI_CRON_CLOCK`).
+ * 从规格字符串（通常为 `process.env.KIMI_CRON_CLOCK`）解析
+ * `ClockSources` 实现。
  *
- *   unset / `"system"`   → {@link SYSTEM_CLOCKS}
- *   `"file:<path>"`      → `wallNow` reads the first line of `<path>`
- *                          on every call (sync — the tick path is not
- *                          async) and parses it as `Number(...)`. A
- *                          missing file or bad parse falls back to
- *                          `Date.now()` for that call. Used so a
- *                          multi-process bench can share a single
- *                          file-backed simulated clock.
+ *   未设置 / `"system"` → {@link SYSTEM_CLOCKS}
+ *   `"file:<path>"`     → `wallNow` 每次调用时同步读取 `<path>` 的
+ *                         第一行并解析为 `Number(...)`。文件缺失或
+ *                         解析错误时该次调用回退到 `Date.now()`。
+ *                         用于多进程基准测试共享单一基于文件的
+ *                         模拟时钟。
  *
- * `monoNowMs` ALWAYS uses `process.hrtime.bigint()`. No spec overrides
- * it — see file header.
+ * `monoNowMs` 始终使用 `process.hrtime.bigint()`。没有任何规格
+ * 覆盖它 — 见文件头。
  *
- * Each `wallNow()` call re-reads its source. We deliberately do NOT
- * cache, because a multi-process bench tick mutating the file must be
- * picked up by every reader immediately; a cache would silently lock
- * each process to its first observation.
+ * 每次 `wallNow()` 调用都会重新读取数据源。故意不缓存，因为
+ * 多进程基准测试修改文件时必须被每个读取器立即感知；缓存会
+ * 静默地将每个进程锁定到其首次观察值。
  *
- * Unrecognised specs fall back to {@link SYSTEM_CLOCKS} (with a
- * debug-log on stderr). This is deliberate — bricking the agent on a
- * typoed bench env var would be worse than running with system time.
+ * 无法识别的规格回退到 {@link SYSTEM_CLOCKS}（在 stderr 输出调试日志）。
+ * 这是有意的 — 拼错基准测试环境变量导致 agent 不可用比使用系统时间更糟。
  */
 export function resolveClockSources(spec?: string): ClockSources {
   if (spec === undefined || spec === '' || spec === 'system') {
@@ -102,9 +91,8 @@ export function resolveClockSources(spec?: string): ClockSources {
   return SYSTEM_CLOCKS;
 }
 
-// Epoch-ms is always under 20 characters in practice; 64 bytes leaves
-// slack for a leading newline / `\r` and prevents OOM on a hostile or
-// accidentally-huge clock file (e.g. a `/dev/zero` redirect).
+// Epoch 毫秒实际上不超过 20 个字符；64 字节为前导换行符 / `\r` 留出
+// 余量，并防止恶意或意外巨大的时钟文件导致 OOM（例如 `/dev/zero` 重定向）。
 const MAX_CLOCK_FILE_BYTES = 64;
 
 function readFileWall(filePath: string): number {
@@ -124,7 +112,7 @@ function readFileWall(filePath: string): number {
     try {
       closeSync(fd);
     } catch {
-      /* swallow close errors */
+      /* 忽略关闭错误 */
     }
   }
   const raw = buf.subarray(0, bytesRead).toString('utf8');
@@ -136,10 +124,9 @@ function readFileWall(filePath: string): number {
 }
 
 function debugInvalidSpec(spec: string, reason: string): void {
-  // We do not pull in a logger here — `clock.ts` is the lowest layer of
-  // the cron module and must stay dependency-free so it can be imported
-  // from anywhere (including lint rules, type files). A stderr write
-  // gated on KIMI_CRON_DEBUG is enough — production is silent.
+  // 这里不引入 logger — `clock.ts` 是 cron 模块的最底层，必须保持
+  // 无依赖以便从任何位置导入（包括 lint 规则、类型文件）。通过
+  // KIMI_CRON_DEBUG 控制的 stderr 写入足够 — 生产环境静默。
   if (process.env['KIMI_CRON_DEBUG'] === '1') {
     process.stderr.write(
       `[cron/clock] invalid KIMI_CRON_CLOCK spec ${JSON.stringify(spec)}: ${reason} — falling back to system clock\n`,

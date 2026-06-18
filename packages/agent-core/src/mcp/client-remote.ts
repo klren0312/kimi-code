@@ -14,9 +14,9 @@ export function buildMcpRemoteHeaders(
         `MCP ${config.transport.toUpperCase()} bearer token env var "${config.bearerTokenEnvVar}" is not set or is empty`,
       );
     }
-    // Strip any case-variant 'authorization' static header before injecting the
-    // bearer; Fetch Headers folds duplicate keys into a comma-joined value,
-    // which produces an invalid auth header rather than letting the bearer win.
+    // 在注入 bearer 前，先删除任何大小写变体的 'authorization' 静态头部；
+    // Fetch Headers 会将重复键折叠为逗号拼接的值，产生无效的认证头部
+    // 而非让 bearer 覆盖。
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === 'authorization') {
         delete headers[key];

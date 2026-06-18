@@ -3,9 +3,9 @@ import type { LogLevel, LoggingConfig } from './types';
 
 export const DEFAULT_LOG_LEVEL: LogLevel = 'info';
 export const DEFAULT_GLOBAL_MAX_BYTES = 6 * 1024 * 1024; // 6 MB
-export const DEFAULT_GLOBAL_FILES = 5; // 6 MB x 5 = 30 MB
+export const DEFAULT_GLOBAL_FILES = 5; // 6 MB × 5 = 30 MB
 export const DEFAULT_SESSION_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
-export const DEFAULT_SESSION_FILES = 3; // 5 MB x 3 = 15 MB
+export const DEFAULT_SESSION_FILES = 3; // 5 MB × 3 = 15 MB
 
 export interface ResolveLoggingInput {
   readonly homeDir: string;
@@ -13,11 +13,10 @@ export interface ResolveLoggingInput {
 }
 
 /**
- * Build the runtime `LoggingConfig` from env vars + defaults.
+ * 从环境变量 + 默认值构建运行时 `LoggingConfig`。
  *
- * v1 deliberately does not read `config.toml [logging]` — the schema is in
- * flux and reading it adds a startup-time failure surface. Users who need to
- * override the defaults set env vars:
+ * v1 版本刻意不读取 `config.toml [logging]`——schema 仍在变动，
+ * 读取它会增加启动时的故障面。需要覆盖默认值的用户设置环境变量：
  *
  *   KIMI_LOG_LEVEL=debug
  *   KIMI_LOG_GLOBAL_MAX_BYTES=... KIMI_LOG_GLOBAL_FILES=...

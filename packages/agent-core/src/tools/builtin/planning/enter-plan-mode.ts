@@ -1,8 +1,8 @@
 /**
- * EnterPlanModeTool — plan-mode entry tool.
+ * EnterPlanModeTool — 计划模式进入工具。
  *
- * The LLM calls this tool to enter plan mode directly. Entering plan mode
- * does not require approval in any permission mode.
+ * LLM 调用此工具直接进入计划模式。进入计划模式在任何权限模式下
+ * 都不需要审批。
  */
 
 
@@ -14,7 +14,7 @@ import type { ToolExecution } from '../../../loop/types';
 import { toInputJsonSchema } from '../../support/input-schema';
 import DESCRIPTION from './enter-plan-mode.md?raw';
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const EnterPlanModeInputSchema = z.object({}).strict();
 export type EnterPlanModeInput = z.infer<typeof EnterPlanModeInputSchema>;
@@ -31,7 +31,7 @@ export class EnterPlanModeTool implements BuiltinTool<EnterPlanModeInput> {
       description: 'Requesting to enter plan mode',
       approvalRule: this.name,
       execute: async () => {
-        // Guard: already in plan mode
+        // 守护：已在计划模式中
         if (this.agent.planMode.isActive) {
           return {
             isError: true,

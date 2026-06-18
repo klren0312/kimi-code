@@ -1,9 +1,8 @@
 /**
- * OAuth device-code panel rendered inside the transcript.
+ * 在转录区域内渲染的 OAuth 设备码面板。
  *
- * Borrows the rounded-border layout from `WelcomeComponent` so the login
- * prompt matches the rest of the chrome. All colors flow through the
- * active palette so theme switches take effect on the next render.
+ * 借用 `WelcomeComponent` 的圆角边框布局，使登录提示与其余界面元素保持一致。
+ * 所有颜色通过当前活动调色板流动，因此主题切换会在下次渲染时生效。
  */
 
 import type { Component } from '@earendil-works/pi-tui';

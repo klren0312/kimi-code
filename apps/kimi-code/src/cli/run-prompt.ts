@@ -59,6 +59,11 @@ export async function runPrompt(
   version: string,
   io: PromptRunIO = {},
 ): Promise<void> {
+  // Enable LLM communication logging if --log-llm flag is set
+  if (opts.logLlm) {
+    process.env['KIMI_CODE_LOG_LLM'] = '1';
+  }
+
   const startedAt = Date.now();
   const stdout = io.stdout ?? process.stdout;
   const stderr = io.stderr ?? process.stderr;

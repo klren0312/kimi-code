@@ -20,27 +20,26 @@ export interface HttpMcpClientOptions {
   readonly clientVersion?: string;
   readonly toolCallTimeoutMs?: number;
   /**
-   * Reads `process.env[name]` by default. Tests can inject a deterministic
-   * lookup function so they do not have to mutate global env.
+   * 默认读取 `process.env[name]`。测试可注入确定性查找函数，
+   * 以避免修改全局环境变量。
    */
   readonly envLookup?: (name: string) => string | undefined;
   /**
-   * Lets tests inject a fake `fetch` for the underlying transport.
+   * 允许测试为底层传输注入伪造的 `fetch`。
    */
   readonly fetch?: typeof fetch;
   /**
-   * OAuth client provider attached to the transport. Set only when the server
-   * has no static token configuration; the SDK uses this to handle 401s with
-   * RFC 9728 / RFC 8414 / DCR discovery and PKCE. The connection manager wires
-   * this in and surfaces `UnauthorizedError` as a `needs-auth` status.
+   * 附加到传输层的 OAuth 客户端提供方。仅在服务器未配置静态 token 时设置；
+   * SDK 使用它通过 RFC 9728 / RFC 8414 / DCR 发现和 PKCE 处理 401。
+   * 连接管理器注入此提供方，并将 `UnauthorizedError` 呈现为 `needs-auth` 状态。
    */
   readonly oauthProvider?: OAuthClientProvider;
 }
 
 /**
- * Wraps the SDK streamable-HTTP transport as a kosong {@link MCPClient}.
- * Static bearer tokens are looked up from `process.env[bearerTokenEnvVar]`.
- * OAuth providers are attached separately by the connection manager.
+ * 将 SDK 的可流式 HTTP 传输封装为 kosong {@link MCPClient}。
+ * 静态 bearer token 从 `process.env[bearerTokenEnvVar]` 查找。
+ * OAuth 提供方由连接管理器单独附加。
  */
 export class HttpMcpClient implements MCPClient {
   private readonly client: Client;
@@ -48,19 +47,17 @@ export class HttpMcpClient implements MCPClient {
   private readonly toolCallTimeoutMs?: number;
   private started = false;
   private closed = false;
-  // See StdioMcpClient.ready — distinguishes handshake-phase failures (caller
-  // sees them via `connect()` throwing, no unexpectedClose) from post-ready
-  // disconnects (the case `onUnexpectedClose` is designed to surface).
+  // 参见 StdioMcpClient.ready ——区分握手阶段的失败（调用方通过 `connect()` 抛出
+  // 异常看到，无 unexpectedClose）和就绪后的断连（`onUnexpectedClose` 设计要
+  // 呈现的情况）。
   private ready = false;
   private hooksInstalled = false;
   private unexpectedCloseListener: UnexpectedCloseListener | undefined;
   private lastTransportError: Error | undefined;
-  // See StdioMcpClient — buffered when the listener has not been installed
-  // yet so an early close is replayed instead of dropped.
+  // 参见 StdioMcpClient ——在监听器尚未安装时缓冲，以便早期关闭被重放而非丢弃。
   private pendingUnexpectedClose: UnexpectedCloseReason | undefined;
-  // Latch so `onerror` and a (theoretical) `onclose` for the same transport
-  // failure do not double-fire. Once we have decided the connection is dead,
-  // additional SDK notifications are noise.
+  // 锁存器，确保同一传输失败的 `onerror` 和（理论上可能的）`onclose` 不会
+  // 重复触发。一旦判定连接已断开，后续 SDK 通知即为噪音。
   private unexpectedCloseFired = false;
 
   constructor(config: McpServerHttpConfig, options: HttpMcpClientOptions = {}) {
@@ -85,7 +82,7 @@ export class HttpMcpClient implements MCPClient {
     }
     if (this.started) return;
     this.started = true;
-    // Install hooks BEFORE the SDK handshake; see StdioMcpClient.connect.
+    // 在 SDK 握手之前安装钩子；参见 StdioMcpClient.connect。
     this.installTransportHooks();
     try {
       await this.client.connect(this.transport);
@@ -107,10 +104,8 @@ export class HttpMcpClient implements MCPClient {
   }
 
   /**
-   * Register a listener for unsolicited transport drops. See
-   * `StdioMcpClient.onUnexpectedClose` for semantics. If the transport
-   * already signalled a terminal failure, the buffered reason is replayed
-   * synchronously.
+   * 注册非预期传输断开的监听器。参见 `StdioMcpClient.onUnexpectedClose`
+   * 了解语义。如果传输已发出终端失败信号，则缓冲的原因会同步重放。
    */
   onUnexpectedClose(listener: UnexpectedCloseListener): void {
     this.unexpectedCloseListener = listener;
@@ -143,28 +138,25 @@ export class HttpMcpClient implements MCPClient {
   }
 
   private installTransportHooks(): void {
-    // Idempotent — see StdioMcpClient.installTransportHooks.
+    // 幂等——参见 StdioMcpClient.installTransportHooks。
     if (this.hooksInstalled) return;
     this.hooksInstalled = true;
     this.client.onclose = () => {
       if (this.closed) return;
-      // Handshake-phase close surfaces via `client.connect()` throwing.
+      // 握手阶段的关闭通过 `client.connect()` 抛出异常来呈现。
       if (!this.ready) return;
       this.fireUnexpectedClose({ error: this.lastTransportError });
     };
-    // streamable-http's transport only calls `onclose` on its own `close()`
-    // path, so 99% of remote disconnects (SSE flap → reconnect exhaustion,
-    // POST send failure on a dead session) arrive as `onerror` instead. Mirror
-    // the way the SDK exposes a "the transport is gone" signal there by
-    // mapping the known-terminal error messages back to an unexpected close;
-    // everything else is treated as transient and only cached for diagnostics.
+    // streamable-http 的传输层仅在其自身的 `close()` 路径上调用 `onclose`，
+    // 因此 99% 的远程断连（SSE 波动 → 重连耗尽、在已断开的会话上发送 POST
+    // 失败）会通过 `onerror` 到达。在此将已知的终端错误消息映射回非预期关闭，
+    // 以镜像 SDK 暴露的"传输已消失"信号；其他所有错误视为瞬态，仅缓存以供诊断。
     this.client.onerror = (error) => {
       this.lastTransportError = error;
       if (this.closed) return;
-      // During the handshake, terminal errors (Unauthorized, reconnect
-      // exhaustion) propagate through `client.connect()` and the manager's
-      // `shouldMarkNeedsAuth` / `formatStartupError`. Firing here would
-      // double-report.
+      // 握手期间，终端错误（Unauthorized、重连耗尽）通过 `client.connect()`
+      // 和管理器的 `shouldMarkNeedsAuth` / `formatStartupError` 传播。
+      // 在此触发会导致重复报告。
       if (!this.ready) return;
       if (isTerminalTransportError(error)) {
         this.fireUnexpectedClose({ error });
@@ -185,21 +177,18 @@ export class HttpMcpClient implements MCPClient {
 }
 
 /**
- * Returns true when an error reported via `Client.onerror` indicates the
- * underlying HTTP transport is dead. The streamable-http SDK does not call
- * `onclose` for remote disconnects; instead it surfaces them through
- * `onerror`, but only a few specific messages mean "give up" rather than
- * "we will retry":
+ * 当通过 `Client.onerror` 报告的错误表明底层 HTTP 传输已死时返回 true。
+ * streamable-http SDK 不会对远程断连调用 `onclose`；而是通过 `onerror`
+ * 呈现它们，但只有少数特定消息意味着"放弃"而非"将重试"：
  *
- * - `UnauthorizedError` — RFC 9728/8414 auth flow gave up; the SDK won't
- *   retry without a fresh provider call.
- * - "Maximum reconnection attempts ... exceeded." — emitted from
- *   `_scheduleReconnection` after the SSE reconnect budget is gone
- *   (`streamableHttp.js`, `_scheduleReconnection`).
+ * - `UnauthorizedError` —— RFC 9728/8414 授权流程放弃；SDK 不会在没有
+ *   新的提供方调用的情况下重试。
+ * - "Maximum reconnection attempts ... exceeded." —— SSE 重连预算用尽后
+ *   由 `_scheduleReconnection` 发出（`streamableHttp.js`,
+ *   `_scheduleReconnection`）。
  *
- * Transient signals (per-request fetch failures, single SSE flaps that the
- * SDK is about to reconnect from) MUST NOT match; otherwise a brief network
- * blip would tear down every HTTP MCP entry.
+ * 瞬态信号（单次请求的 fetch 失败、SDK 即将重连的单次 SSE 波动）不得
+ * 匹配；否则短暂的网络抖动会拆除每个 HTTP MCP 条目。
  */
 export function isTerminalTransportError(error: Error): boolean {
   if (error.name === 'UnauthorizedError') return true;

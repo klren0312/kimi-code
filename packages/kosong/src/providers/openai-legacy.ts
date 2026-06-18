@@ -41,9 +41,9 @@ import {
   type ToolCallIdPolicy,
 } from './tool-call-id';
 
-// Inbound: scan in priority order; first string value wins. Outbound: the first
-// entry doubles as the default field we serialize ThinkPart back into. Both
-// arms can be overridden by an explicit `reasoningKey` on the provider config.
+// 入站：按优先级顺序扫描；第一个匹配的字符串值生效。出站：第一个
+// 条目同时作为将 ThinkPart 序列化回的默认字段。两侧都可被 provider
+// 配置上的显式 `reasoningKey` 覆盖。
 const KNOWN_REASONING_KEYS = ['reasoning_content', 'reasoning_details', 'reasoning'] as const;
 const DEFAULT_OUTBOUND_REASONING_KEY = KNOWN_REASONING_KEYS[0];
 const OPENAI_CHAT_TOOL_CALL_ID_POLICY: ToolCallIdPolicy = {
@@ -148,17 +148,16 @@ function convertMessage(
     }
   }
 
-  // Build the OpenAI message.
+  // 构建 OpenAI 消息。
   const result: OpenAIMessage = { role: message.role };
 
   if (message.role === 'tool') {
-    // OpenAI Chat Completions `tool` messages only accept text content.
-    // Any non-text content parts (image_url, audio_url, video_url) would be
-    // rejected by the API with a 400. Detect multimodal tool output and
-    // force the `extract_text` path in that case, regardless of the caller's
-    // `toolMessageConversion` setting. For pure-text tool results we honor
-    // the configured strategy (or fall through to the default content-part
-    // array when it is unset).
+    // OpenAI Chat Completions 的 `tool` 消息只接受文本内容。
+    // 任何非文本内容部分（image_url、audio_url、video_url）都会被
+    // API 以 400 拒绝。检测多模态工具输出，在这种情况下强制走
+    // `extract_text` 路径，忽略调用方的 `toolMessageConversion` 设置。
+    // 对于纯文本工具结果，遵循配置的策略（如果未设置则退回到
+    // 默认的内容部分数组）。
     const hasNonTextPart = message.content.some((p) => p.type !== 'text' && p.type !== 'think');
     const effectiveConversion: ToolMessageConversion = hasNonTextPart
       ? 'extract_text'
@@ -167,8 +166,8 @@ function convertMessage(
     if (effectiveConversion !== null) {
       result.content = convertToolMessageContentForChat(message, effectiveConversion);
     } else {
-      // Pure-text tool result with no conversion configured: serialize via the
-      // generic content-part path so single-text messages become a plain string.
+      // 未配置转换的纯文本工具结果：通过通用内容部分路径序列化，
+      // 使单文本消息成为纯字符串。
       const firstPart = nonThinkParts[0];
       if (nonThinkParts.length === 1 && firstPart?.type === 'text') {
         result.content = firstPart.text;
@@ -179,7 +178,7 @@ function convertMessage(
       }
     }
   } else {
-    // content: serialize to string if single text, array otherwise
+    // content：如果是单个文本则序列化为字符串，否则为数组
     const firstPart = nonThinkParts[0];
     if (nonThinkParts.length === 1 && firstPart?.type === 'text') {
       result.content = firstPart.text;
@@ -206,11 +205,11 @@ function convertMessage(
     result.tool_call_id = message.toolCallId;
   }
 
-  // Round-trip thinking content back to the server. Default to the de facto
-  // `reasoning_content` field so OpenAI-compatible reasoners (DeepSeek, Qwen,
-  // One API gateways) work without per-provider configuration. Servers that
-  // don't understand the field ignore it; servers that require a specific
-  // field can override via the explicit `reasoningKey`.
+  // 将思考内容回传给服务器。默认使用事实标准 `reasoning_content`
+  // 字段，以便 OpenAI 兼容的推理模型（DeepSeek、Qwen、
+  // One API 网关）无需逐 provider 配置即可工作。不识别该字段的
+  // 服务器会忽略它；需要特定字段的服务器可通过显式
+  // `reasoningKey` 覆盖。
   if (reasoningContent) {
     result[reasoningKey ?? DEFAULT_OUTBOUND_REASONING_KEY] = reasoningContent;
   }
@@ -218,9 +217,9 @@ function convertMessage(
   return result;
 }
 
-// Chat Completions has no url-based audio/video content part (only base64
-// `input_audio`), so unlike images these cannot be reattached as user input.
-// Note the omission inline in the tool message text instead.
+// Chat Completions 没有基于 url 的音频/视频内容部分（只有 base64
+// `input_audio`），因此与图片不同，它们不能作为用户输入重新附加。
+// 改为在工具消息文本中内联注明已省略。
 const OMITTED_AUDIO_PLACEHOLDER = '(audio omitted: not supported by this provider)';
 const OMITTED_VIDEO_PLACEHOLDER = '(video omitted: not supported by this provider)';
 
@@ -354,8 +353,8 @@ export class OpenAILegacyStreamedMessage implements StreamedMessage {
     const message = response.choices[0]?.message;
     if (!message) return;
 
-    // Reasoning content: honor the explicit key when set, otherwise scan the
-    // de facto field set so hand-written configs work without it.
+    // 推理内容：设置了显式 key 时遵循它，否则扫描事实标准字段集，
+    // 使手写配置无需额外设置即可工作。
     const reasoning = extractReasoningContent(message, reasoningKey);
     if (reasoning) {
       yield { type: 'think', think: reasoning } satisfies StreamedMessagePart;
@@ -401,28 +400,28 @@ export class OpenAILegacyStreamedMessage implements StreamedMessage {
         const choice = chunk.choices[0];
         if (!choice) continue;
 
-        // Capture finish_reason whenever the chunk carries one. Chat
-        // Completions only sets it on the final chunk for a given choice.
+        // 当块携带 finish_reason 时捕获它。Chat Completions 仅在
+        // 给定选择的最后一个块上设置该值。
         if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
           this._captureFinishReason(choice.finish_reason);
         }
 
         const delta = choice.delta;
 
-        // Reasoning content: honor the explicit key when set, otherwise scan
-        // the de facto field set so hand-written configs work without it.
+        // 推理内容：设置了显式 key 时遵循它，否则扫描事实标准字段集，
+        // 使手写配置无需额外设置即可工作。
         const reasoning = extractReasoningContent(delta, reasoningKey);
         if (reasoning) {
           yield { type: 'think', think: reasoning } satisfies StreamedMessagePart;
         }
 
-        // text content
+        // 文本内容
         if (delta.content) {
           yield { type: 'text', text: delta.content } satisfies StreamedMessagePart;
         }
 
-        // tool calls — preserve `index` on every yielded part so the generate
-        // loop can route interleaved argument deltas from parallel tool calls.
+        // 工具调用——在每个 yield 的 part 上保留 `index`，以便生成循环
+        // 能够路由来自并行工具调用的交错参数增量。
         for (const toolCall of delta.tool_calls ?? []) {
           for (const part of convertChatCompletionStreamToolCall(toolCall, bufferedToolCalls)) {
             yield part;
@@ -457,10 +456,10 @@ export class OpenAILegacyChatProvider implements ChatProvider {
     this._defaultHeaders = options.defaultHeaders;
     this._model = options.model;
     this._stream = options.stream ?? true;
-    // Normalize blank/whitespace reasoningKey to unset. ModelAliasSchema
-    // accepts `z.string().optional()`, so `reasoning_key = ""` in config.toml
-    // would otherwise disable the default field scan and route reads/writes
-    // through an empty property name.
+    // 将空白/纯空格的 reasoningKey 归一化为未设置。ModelAliasSchema
+    // 接受 `z.string().optional()`，因此 config.toml 中的
+    // `reasoning_key = ""` 会禁用默认字段扫描，并通过空属性名
+    // 路由读写操作。
     const normalizedReasoningKey = options.reasoningKey?.trim();
     this._reasoningKey =
       normalizedReasoningKey !== undefined && normalizedReasoningKey.length > 0
@@ -515,15 +514,15 @@ export class OpenAILegacyChatProvider implements ChatProvider {
       this._generationKwargs,
     );
 
-    // Determine reasoning_effort
+    // 确定 reasoning_effort
     let reasoningEffort: string | undefined = this._reasoningEffort;
 
-    // Auto-enable reasoning_effort when the history contains ThinkPart but reasoning
-    // was not explicitly configured. This prevents server validation errors from APIs
-    // (e.g. One API) that require reasoning_effort when messages contain reasoning_content.
-    // Skip when the caller already pinned reasoning_effort via withGenerationKwargs —
-    // their value would otherwise be silently overwritten below.
-    // See: https://github.com/MoonshotAI/kimi-code/issues/1616
+    // 当历史记录中包含 ThinkPart 但未显式配置推理时，自动启用
+    // reasoning_effort。这可以防止某些 API（如 One API）在消息包含
+    // reasoning_content 时要求 reasoning_effort 导致的服务器验证错误。
+    // 当调用方已通过 withGenerationKwargs 固定 reasoning_effort 时跳过——
+    // 否则其值会在下面被静默覆盖。
+    // 参见：https://github.com/MoonshotAI/kimi-code/issues/1616
     if (reasoningEffort === undefined && kwargs['reasoning_effort'] === undefined) {
       const hasThinkPart = history.some((message) =>
         message.content.some((part) => part.type === 'think'),
@@ -533,7 +532,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
       }
     }
 
-    // Remove undefined values from kwargs
+    // 从 kwargs 中移除 undefined 值
     for (const key of Object.keys(kwargs)) {
       if (kwargs[key] === undefined) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -541,7 +540,7 @@ export class OpenAILegacyChatProvider implements ChatProvider {
       }
     }
 
-    // Build the create params
+    // 构建 create 参数
     const createParams: Record<string, unknown> = {
       model: this._model,
       messages,

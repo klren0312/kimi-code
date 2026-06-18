@@ -5,15 +5,13 @@ export function abortError(message = 'Aborted'): Error {
 }
 
 /**
- * Marks an abort the user triggered deliberately (e.g. pressing ESC to
- * interrupt the agent), as distinct from a timeout, an internal error, or any
- * other programmatic abort. It travels as the AbortSignal's `reason`, so code
- * that settles an interrupted operation can tell a user interruption apart from
- * a failure and report it to the model accordingly instead of emitting a
- * neutral "was aborted" that the model mistakes for a system problem.
+ * 标记用户主动触发的中止（如按 ESC 中断 agent），区别于超时、内部错误
+ * 或任何其他程序化中止。它作为 AbortSignal 的 `reason` 传递，因此
+ * 处理中断操作的代码可以区分用户中断和故障，并相应地向模型报告，
+ * 而不是发出中立的"已中止"（模型可能误认为是系统问题）。
  *
- * `name` stays 'AbortError' so existing `isAbortError()` checks (and
- * `AbortSignal.throwIfAborted()`) keep treating it as an abort.
+ * `name` 保持 'AbortError'，使现有的 `isAbortError()` 检查（和
+ * `AbortSignal.throwIfAborted()`）继续将其视为中止。
  */
 export class UserCancellationError extends Error {
   readonly userCancelled = true;

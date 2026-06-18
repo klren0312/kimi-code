@@ -1,16 +1,16 @@
 /**
- * Renders a compaction block in the transcript.
+ * 在对话记录中渲染上下文压缩块。
  *
- * Lifecycle:
- *   - constructed on `compaction.started` → blinking white bullet +
- *     "Compacting context..." and optional custom instruction
- *   - `markDone()` on `compaction.completed` → solid green bullet +
+ * 生命周期：
+ *   - 在 `compaction.started` 时构建 → 闪烁白色圆点 +
+ *     "Compacting context..." 及可选的自定义说明
+ *   - 在 `compaction.completed` 时调用 `markDone()` → 实心绿色圆点 +
  *     "Compaction complete (X → Y tokens)"
- *   - `markCanceled()` on `compaction.cancelled` → solid warning bullet +
+ *   - 在 `compaction.cancelled` 时调用 `markCanceled()` → 实心警告圆点 +
  *     "Compaction cancelled"
  *
- * Bullet animation mirrors `ToolCallComponent` (500ms blink) so the user
- * reads the same "work in progress" signal across the UI.
+ * 圆点动画与 `ToolCallComponent` 一致（500ms 闪烁），
+ * 使用户在 UI 中看到相同的"进行中"信号。
  */
 
 import { Container, Text, Spacer } from '@earendil-works/pi-tui';
@@ -37,8 +37,8 @@ export class CompactionComponent extends Container {
     this.ui = ui;
     this.instruction = instruction;
 
-    // Top margin so the block isn't glued to the previous transcript
-    // entry (status line, tool result, etc.).
+    // 顶部间距，防止此块紧贴前一条对话记录
+    //（状态行、工具结果等）。
     this.addChild(new Spacer(1));
     this.headerText = new Text(this.buildHeader(), 0, 0);
     this.addChild(this.headerText);
@@ -54,12 +54,11 @@ export class CompactionComponent extends Container {
   }
 
   override invalidate(): void {
-    // Repaint the header with the active palette (it caches ANSI codes).
+    // 使用当前调色板重绘标题（它缓存了 ANSI 码）。
     this.headerText.setText(this.buildHeader());
-    // Rebuild instruction line with fresh theme colours.
+    // 使用新的主题颜色重建说明行。
     if (this.instruction !== undefined) {
-      // Remove the last child if it is the instruction line (it is always
-      // added after headerText and Spacer).
+      // 如果最后一个子元素是说明行则移除（它始终在 headerText 和 Spacer 之后添加）。
       if (this.children.length > 2) {
         this.children.pop();
       }

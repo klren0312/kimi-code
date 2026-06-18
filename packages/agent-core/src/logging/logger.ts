@@ -154,7 +154,7 @@ class RootLoggerImpl implements RootLogger {
     return entry.closePromise;
   }
 
-  /** @internal — vitest only. */
+  /** @internal — 仅供 vitest 使用。 */
   async __shutdownForTest(): Promise<void> {
     const closes: Promise<void>[] = [];
     if (this.globalSink !== undefined) closes.push(this.globalSink.close());
@@ -305,7 +305,7 @@ class LoggerImpl implements Logger {
     if (!root.isConfigured()) return;
     try {
       const { ctx: payloadCtx, error } = resolvePayload(payload);
-      // Bound ctx wins so call-site can't overwrite ownership fields.
+      // 绑定上下文优先，使调用方无法覆盖归属字段。
       const ctx = mergeCtx(payloadCtx, this.boundCtx);
       const sessionId = ctx?.['sessionId'];
       const sessionLogId = (ctx as InternalLogContext | undefined)?.[SESSION_LOG_ID];
@@ -319,7 +319,7 @@ class LoggerImpl implements Logger {
         sessionLogId: typeof sessionLogId === 'string' ? sessionLogId : undefined,
       });
     } catch {
-      // Diagnostic logging is best-effort and must never affect main control flow.
+      // 诊断日志采用尽力而为策略，绝不能影响主控制流。
     }
   }
 }
@@ -363,7 +363,7 @@ function resolvePayload(
     return { ctx: undefined, error: extractError(payload) };
   }
   if (typeof payload === 'object') {
-    // bunyan-style: a `{ error: Error }` field is hoisted out, stack extracted.
+    // bunyan 风格：`{ error: Error }` 字段会被提取出来，栈信息也会提取。
     const obj = payload as Record<string, unknown>;
     if (obj['error'] instanceof Error) {
       const { error: errValue, ...rest } = obj;
@@ -398,20 +398,20 @@ function mergeCtx(
 }
 
 /**
- * Root logger. Import and use directly for events that don't belong to any
- * session (CLI startup, harness construction, etc.):
+ * 根日志器。直接导入用于不属于任何会话的事件
+ * （CLI 启动、harness 构建等）：
  *
  *   import { log } from 'kimi-code-sdk';
  *   log.info('kimi-code starting', { version });
  *
- * For events scoped to a session or agent, use the parent's `log` field:
+ * 对于会话或 agent 范围的事件，使用父级的 `log` 字段：
  *
  *   session.log.error('mcp initial load failed', error);
  *   agent.log.error('turn failed', { turnId, error });
  *
- * Late-binding: methods look up the current `RootLogger` on every call, so
- * importing `log` at module load (before `KimiHarness` configures the root)
- * is safe — calls during the pre-configure window are silent noops.
+ * 延迟绑定：方法在每次调用时查找当前 `RootLogger`，因此
+ * 在模块加载时导入 `log`（在 `KimiHarness` 配置根日志器之前）
+ * 是安全的——在预配置窗口期间的调用会静默跳过。
  */
 export const log: Logger = new LoggerImpl({});
 
@@ -420,7 +420,7 @@ export function redact<T>(value: T): T {
   return redactCtx({ value: value as unknown })['value'] as T;
 }
 
-/** @internal — vitest only. */
+/** @internal — 仅供 vitest 使用。 */
 export async function __resetRootLoggerForTest(): Promise<void> {
   const globalAny = globalThis as Record<symbol, unknown>;
   const existing = globalAny[ROOT_SYMBOL];

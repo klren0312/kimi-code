@@ -25,8 +25,8 @@ const DRAFT_2019_KEYWORDS = new Set([
 
 const DRAFT_2020_KEYWORDS = new Set(['prefixItems', '$dynamicAnchor', '$dynamicRef']);
 
-// Mixing JSON Schema dialects in a single Ajv instance is unsafe because
-// keyword semantics differ, e.g. draft-07 tuple `items` vs 2020-12 `prefixItems`.
+// 在单个 Ajv 实例中混用 JSON Schema 方言是不安全的，因为关键字语义不同，
+// 例如 draft-07 的元组 `items` 与 2020-12 的 `prefixItems`。
 function ajvFor(schema: Record<string, unknown>): Ajv | Ajv2019 | Ajv2020 {
   const $schema = schema['$schema'];
   if (typeof $schema === 'string') {

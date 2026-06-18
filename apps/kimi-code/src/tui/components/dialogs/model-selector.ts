@@ -20,11 +20,11 @@ type ThinkingAvailability = 'toggle' | 'always-on' | 'unsupported';
 interface ModelChoice {
   readonly alias: string;
   readonly model: ModelAlias;
-  /** Model display name (left column). */
+  /** 模型显示名称（左列）。 */
   readonly name: string;
-  /** Provider display name (right column). */
+  /** 提供商显示名称（右列）。 */
   readonly provider: string;
-  /** Combined text the fuzzy filter matches against (name + provider). */
+  /** 模糊过滤器匹配的组合文本（名称 + 提供商）。 */
   readonly label: string;
 }
 
@@ -57,17 +57,18 @@ export interface ModelSelectorOptions {
   readonly currentValue: string;
   readonly selectedValue?: string;
   readonly currentThinking: boolean;
-  /** When true, typed characters filter the list (fuzzy) and a search line is shown. */
+  /** 为 true 时，输入的字符会过滤列表（模糊匹配），并显示搜索行。 */
   readonly searchable?: boolean;
-  /** Items per page. Lists longer than this paginate (PgUp/PgDn). */
+  /** 每页显示项数。超过此数量的列表会分页（PgUp/PgDn）。 */
   readonly pageSize?: number;
-  /** When true, the hint line mentions the Tab provider switch — set by
-   * TabbedModelSelectorComponent so the inner list advertises the tab keys. */
+  /** 为 true 时，提示行中提及 Tab 切换提供商 —— 由 TabbedModelSelectorComponent
+   * 设置，使内部列表展示 Tab 键提示。 */
   readonly providerSwitchHint?: boolean;
   readonly onSelect: (selection: ModelSelection) => void;
   readonly onCancel: () => void;
 }
 
+/** 根据模型列表创建模型选项数组。 */
 function createModelChoices(models: Record<string, ModelAlias>): readonly ModelChoice[] {
   return Object.entries(models).map(([alias, cfg]) => {
     const name = modelDisplayName(alias, cfg);
@@ -76,6 +77,7 @@ function createModelChoices(models: Record<string, ModelAlias>): readonly ModelC
   });
 }
 
+/** 检测模型的 thinking 能力可用性。 */
 function thinkingAvailability(model: ModelAlias): ThinkingAvailability {
   const caps = model.capabilities ?? [];
   if (caps.includes('always_thinking')) return 'always-on';
@@ -83,6 +85,7 @@ function thinkingAvailability(model: ModelAlias): ThinkingAvailability {
   return 'unsupported';
 }
 
+/** 计算模型的有效 thinking 状态。 */
 function effectiveThinking(model: ModelAlias, thinkingDraft: boolean): boolean {
   const availability = thinkingAvailability(model);
   if (availability === 'always-on') return true;
@@ -91,18 +94,18 @@ function effectiveThinking(model: ModelAlias, thinkingDraft: boolean): boolean {
 }
 
 /**
- * Flat, searchable single-list model picker.
+ * 扁平的、可搜索的单列表模型选择器。
  *
- * One navigation axis: ↑/↓ move the cursor (PgUp/PgDn page), typing fuzzy-filters
- * across every provider (provider name included), and ←/→ toggle the thinking
- * draft for models that support it. There are no provider tabs — filtering by
- * typing a provider name replaces them. See .agents/skills/write-tui/DESIGN.md.
+ * 单一导航轴：↑/↓ 移动光标（PgUp/PgDn 翻页），输入内容跨所有提供商
+ * 进行模糊过滤（提供商名称也包含在内），←/→ 切换支持 thinking 的模型
+ * 的 thinking 草稿状态。没有提供商标签页 —— 输入提供商名称过滤即可替代。
+ * 参见 .agents/skills/write-tui/DESIGN.md。
  */
 export class ModelSelectorComponent extends Container implements Focusable {
   focused = false;
   private readonly opts: ModelSelectorOptions;
   private readonly list: SearchableList<ModelChoice>;
-  /** Per-model thinking override set by ←/→; absent → the capability default. */
+  /** 通过 ←/→ 设置的逐模型 thinking 覆盖值；未设置时使用能力默认值。 */
   private readonly thinkingOverrides = new Map<string, boolean>();
 
   constructor(opts: ModelSelectorOptions) {
@@ -121,9 +124,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
   }
 
   /**
-   * Thinking draft for a model: an explicit ←/→ override when set, otherwise
-   * the live thinking state for the active model, otherwise On for any other
-   * thinking-capable model (a capable model should default to thinking on).
+   * 模型的 thinking 草稿：设置了显式 ←/→ 覆盖时使用覆盖值，
+   * 否则对当前活动模型使用实时 thinking 状态，对其他支持 thinking 的
+   * 模型默认为开启（有能力的模型应默认开启 thinking）。
    */
   private draftFor(choice: ModelChoice): boolean {
     const override = this.thinkingOverrides.get(choice.alias);
@@ -139,12 +142,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
       return;
     }
 
-    // ↑/↓, PgUp/PgDn, and — when searchable — typing + Backspace.
+    // ↑/↓、PgUp/PgDn，以及——在可搜索模式下——输入 + Backspace。
     if (this.list.handleKey(data)) {
       return;
     }
 
-    // Left/Right toggle the thinking draft for models that support it.
+    // 左/右方向键切换支持 thinking 的模型的 thinking 草稿状态。
     if (matchesKey(data, Key.left) || matchesKey(data, Key.right)) {
       const selected = this.selectedChoice();
       if (selected !== undefined && thinkingAvailability(selected.model) === 'toggle') {
@@ -173,8 +176,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
         ? currentTheme.fg('textMuted', '  (type to search)')
         : '';
 
-    // "type to search" already lives in the title suffix, so the hint only
-    // surfaces the backspace shortcut once a query is active.
+    // "type to search" 已经在标题后缀中，因此提示行仅在查询激活后
+    // 才显示 Backspace 快捷键。
     const hintParts: string[] = [];
     if (this.opts.providerSwitchHint) hintParts.push('Tab toggle provider');
     hintParts.push('↑↓ navigate');
@@ -195,8 +198,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
     if (view.items.length === 0) {
       lines.push(currentTheme.fg('textMuted', '   No matches'));
     } else {
-      // Column width for model names so the provider column lines up. Capped so
-      // the provider + "← current" marker still fit on normal terminal widths.
+      // 模型名称的列宽，使提供商列对齐。设置上限以确保
+      // 提供商 + "← current" 标记在正常终端宽度下仍然适配。
       const nameCap = Math.max(8, Math.floor(width * 0.5));
       let nameWidth = 0;
       for (let i = view.page.start; i < view.page.end; i++) {
@@ -223,7 +226,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
       }
     }
 
-    // Scroll / match indicator.
+    // 滚动/匹配指示器。
     if (view.query.length > 0) {
       lines.push('');
       lines.push(
@@ -254,18 +257,19 @@ export class ModelSelectorComponent extends Container implements Focusable {
     return this.list.selected();
   }
 
+  /** 渲染 thinking 开关控件。 */
   private renderThinkingControl(choice: ModelChoice): string {
     const segment = (label: string, active: boolean): string =>
       active
         ? currentTheme.boldFg('primary', `[ ${label} ]`)
         : currentTheme.fg('text', `  ${label}  `);
-    // The whole segment is muted, suffix included, so the disabled side reads
-    // as a single greyed-out control rather than a selectable option.
+    // 整个片段（含后缀）都是静音色，使不可用的一侧显示为单一灰色控件，
+    // 而非可选选项。
     const unavailable = (label: string): string =>
       currentTheme.fg('textMuted', `  ${label} (Unsupported)  `);
 
-    // On stays left and Off right in all three states so the control never
-    // shifts while the cursor moves across models.
+    // On 始终在左侧，Off 始终在右侧，三种状态下保持一致，
+    // 使控件在光标跨模型移动时不会产生位移。
     const availability = thinkingAvailability(choice.model);
     if (availability === 'always-on') {
       return `  ${segment('On', true)} ${unavailable('Off')}`;

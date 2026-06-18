@@ -1,3 +1,18 @@
+/**
+ * Agent 记录——有序事件日志，持久化 {@link Agent} 在会话期间执行的每个状态变更操作。
+ *
+ * 记录是 Agent 状态的唯一来源。恢复时，它们通过 {@link restoreAgentRecord} 重放
+ * 以确定性地重建内存状态，无副作用（无 UI 事件、LLM 调用、工具执行、后台工作、
+ * 网络请求或记录文件本身的文件系统写入之外的文件系统操作）。
+ *
+ * 本模块重新导出记录子系统的公共表面：
+ * - 来自 {@link ./types} 的记录类型和持久化接口
+ * - 来自 {@link ./migration} 的线路协议版本
+ * - {@link FileSystemAgentRecordPersistence} 和 {@link InMemoryAgentRecordPersistence}
+ * - {@link BlobStore} 和 {@link isBlobRef} 用于大媒体卸载
+ *
+ * @module records
+ */
 import type { Agent } from '..';
 import {
   AGENT_WIRE_PROTOCOL_VERSION,
@@ -19,16 +34,23 @@ export type { FileSystemAgentRecordPersistenceOptions } from './persistence';
 export { BlobStore, isBlobRef } from './blobref';
 export type { BlobStoreOptions } from './blobref';
 
-// Contract: restore MUST only rebuild in-memory state. It must not emit UI
-// events, call the LLM, execute tools, start background work, make network
-// requests, or touch the filesystem in a way that triggers external side effects.
-//
-// Prefer restoring by calling the same method that wrote the record, so live
-// execution and resume share one state mutation path. For example,
-// permission.set_mode replays through agent.permission.setMode(input.mode),
-// not by assigning modeOverride here. records.logRecord, emitEvent, and
-// emitStatusUpdated already gate on records.restoring, so those calls are safe
-// during resume.
+/**
+ * 将单条持久化的 {@link AgentRecord} 重放到 {@link Agent} 上，
+ * 重建内存状态而无外部副作用。
+ *
+ * 契约：此函数必须仅重建内存状态。不得发出 UI 事件、调用 LLM、
+ * 执行工具、启动后台工作、发起网络请求，或以触发外部副作用的方式
+ * 操作文件系统。
+ *
+ * 它优先通过调用写入记录的相同方法来恢复，使实时执行和恢复共享
+ * 一条状态变更路径。例如，`permission.set_mode` 通过
+ * `agent.permission.setMode(input.mode)` 重放，而非直接赋值 `modeOverride`。
+ * `records.logRecord`、`emitEvent` 和 `emitStatusUpdated` 已在
+ * `records.restoring` 上设置门控，因此这些调用在恢复期间是安全的。
+ *
+ * @param agent - 将被变更状态的 Agent 实例。
+ * @param input - 要重放的记录。
+ */
 function restoreAgentRecord(agent: Agent, input: AgentRecord): void {
   switch (input.type) {
     case 'metadata':
@@ -89,9 +111,9 @@ function restoreAgentRecord(agent: Agent, input: AgentRecord): void {
       return;
     case 'context.append_loop_event':
       agent.context.appendLoopEvent(input.event);
-      // Advance the turn counter past internally-driven turns (goal
-      // continuations, steer-launched turns) that allocate a turnId without a
-      // `turn.prompt` record. Their loop events still carry the real turnId.
+      // 将 turn 计数器推进到内部驱动的 turn（目标延续、引导启动的 turn）之后，
+      // 这些 turn 分配了 turnId 但没有 `turn.prompt` 记录。
+      // 它们的循环事件仍然携带真实的 turnId。
       if ('turnId' in input.event) {
         const restoredTurnId = Number.parseInt(input.event.turnId, 10);
         if (!Number.isNaN(restoredTurnId)) {
@@ -132,27 +154,66 @@ function restoreAgentRecord(agent: Agent, input: AgentRecord): void {
   }
 }
 
+/**
+ * 在记录恢复期间捕获的上下文，用于抑制不应在重放期间运行的操作
+ * （如发出事件、写入新记录）。
+ */
 export interface RestoringContext {
+  /** 正在恢复的记录的时间戳，用作参考时钟。 */
   time?: number;
 }
 
+/**
+ * {@link AgentRecords.replay} 的选项。
+ */
 export interface AgentRecordsReplayOptions {
+  /**
+   * 当为 `true`（默认值）时，迁移后的记录被重写到持久化层，
+   * 以便将来的重放跳过迁移。设为 `false` 可在不修改后端存储的情况下
+   * 执行只读重放。
+   */
   readonly rewriteMigratedRecords?: boolean;
 }
 
+/**
+ * 管理 {@link AgentRecord} 的生命周期：在实时执行期间记录新记录，
+ * 在重放期间恢复记录，以及编排带有自动线路协议迁移的完整会话重放。
+ *
+ * 该类充当 {@link Agent} 和其 {@link AgentRecordPersistence} 后端之间的桥梁，
+ * 确保记录带时间戳、感知迁移，并在恢复期间正确门控。
+ */
 export class AgentRecords {
   private _restoring: RestoringContext | null = null;
   private metadataInitialized = false;
 
+  /**
+   * @param agent - 恢复/重放期间将被变更状态的 Agent。
+   * @param persistence - 可选的持久化后端。省略时，实例只能记录记录
+   *   （记录被静默丢弃）且重放将抛出异常。
+   */
   constructor(
     private readonly agent: Agent,
     private readonly persistence?: AgentRecordPersistence,
   ) {}
 
+  /**
+   * 返回当前恢复上下文，如果 Agent 处于实时执行模式则返回 `null`。
+   * 其他子系统用于检测和抑制重放期间的副作用。
+   */
   get restoring() {
     return this._restoring;
   }
 
+  /**
+   * 持久化实时执行期间产生的新记录。
+   *
+   * 如果没有 `time`，记录使用 `Date.now()` 作为时间戳。
+   * 在第一条非 metadata 记录之前自动插入合成的 `metadata` 记录，
+   * 以确保 wire 文件始终以版本头开始。恢复期间的调用被静默忽略
+   * 以防止递归写入。
+   *
+   * @param record - 要记录的记录。
+   */
   logRecord(record: AgentRecord): void {
     if (this._restoring !== null) return;
     const stamped: AgentRecord =
@@ -175,6 +236,14 @@ export class AgentRecords {
     this.persistence?.append(stamped);
   }
 
+  /**
+   * 将单条记录重放到 Agent 上，通过恢复上下文抑制副作用。
+   * 如果重放被中断（例如由 `replayBuilder` 信号触发）则返回 `true`，
+   * 表示调用方应停止。
+   *
+   * @param record - 要恢复的记录。
+   * @returns 如果应在此记录后停止重放则返回 `true`。
+   */
   restore(record: AgentRecord): boolean {
     this._restoring = { time: record.time ?? Date.now() };
     try {
@@ -185,6 +254,17 @@ export class AgentRecords {
     }
   }
 
+  /**
+   * 执行完整会话重放：读取所有持久化记录，根据需要应用线路协议迁移，
+   * 将每条记录恢复到 Agent 上，并可选地将迁移后的记录重写回持久化层。
+   *
+   * 所有记录重放后，重新水合上下文历史中的任何 blob 引用，
+   * 使下游消费者看到内联的 `data:` URI。
+   *
+   * @param options - 重放配置。
+   * @returns 带有可选 `warning` 的对象，如果持久化版本比当前协议版本更新。
+   * @throws 如果未提供持久化后端，或第一条记录不是 `metadata` 记录。
+   */
   async replay(options: AgentRecordsReplayOptions = {}): Promise<{ warning?: string }> {
     if (!this.persistence) throw new Error('No persistence provided for AgentRecords');
     const rewriteMigratedRecords = options.rewriteMigratedRecords ?? true;
@@ -238,6 +318,10 @@ export class AgentRecords {
     return { warning };
   }
 
+  /**
+   * 刷新所有待写入到持久化后端，确保持久性。
+   * 未配置持久化时为空操作。
+   */
   async flush(): Promise<void> {
     await this.persistence?.flush();
   }

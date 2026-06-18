@@ -1,16 +1,14 @@
 /**
- * TasksBrowserApp — full-screen alt-screen takeover for browsing
- * background tasks. Three-pane layout (left task list, right top
- * detail, right bottom preview output) framed by a header row and
- * footer key hint.
+ * TasksBrowserApp — 全屏备用屏幕接管，用于浏览后台任务。
+ * 三面板布局（左侧任务列表、右上方详情、右下方预览输出），
+ * 由标题行和底部按键提示框住。
  *
- * Mounted by `kimi-tui.ts` via container swap rather than `showOverlay`
- * — the main TUI's children are saved, cleared, and this component is
- * added as the sole child so it covers the entire screen. The
- * controller restores the children when the user exits.
+ * 由 `kimi-tui.ts` 通过容器交换而非 `showOverlay` 挂载
+ * ——主 TUI 的子组件被保存、清除，此组件作为唯一子组件添加，
+ * 覆盖整个屏幕。用户退出时控制器恢复子组件。
  *
- * Data (tasks list, tail output) flows in via `setProps`; user actions
- * fire the `on*` callbacks back to the controller.
+ * 数据（任务列表、尾部输出）通过 `setProps` 流入；
+ * 用户操作通过 `on*` 回调触发回控制器。
  */
 
 import {
@@ -43,11 +41,11 @@ export interface TasksBrowserProps {
   readonly onToggleFilter: () => void;
   readonly onRefresh: () => void;
   readonly onCancel: () => void;
-  /** Fired when the user confirms a stop request via the inline `y` prompt. */
+  /** 当用户通过内联 `y` 提示确认停止请求时触发。 */
   readonly onStopConfirmed: (taskId: string) => void;
-  /** Fired when the user presses Enter or O on a selected task. */
+  /** 当用户在选中的任务上按 Enter 或 O 时触发。 */
   readonly onOpenOutput: (taskId: string) => void;
-  /** Fired when stop is requested on a task that cannot be stopped. */
+  /** 当对无法停止的任务请求停止时触发。 */
   readonly onStopIgnored?: (taskId: string, reason: 'terminal') => void;
 }
 
@@ -60,14 +58,14 @@ const STATUS_LABEL: Record<BackgroundTaskStatus, string> = {
   lost: 'lost',
 };
 
-/** Auto-cancel the inline stop confirmation after this many ms. */
+/** 在指定毫秒后自动取消内联停止确认。 */
 const STOP_CONFIRM_TIMEOUT_MS = 5_000;
 
-/** Minimum dimensions before we just print a "too small" message. */
+/** 超出此尺寸前仅显示"太小"消息的最小尺寸。 */
 const MIN_WIDTH = 48;
 const MIN_HEIGHT = 10;
 
-/** Hard caps so a tiny / huge terminal still gets a sensible left-column width. */
+/** 硬性上限，确保极小/极大终端仍能获得合理的左列宽度。 */
 const LIST_COL_MIN = 28;
 const LIST_COL_MAX = 44;
 const LIST_COL_RATIO = 0.32;
@@ -119,7 +117,7 @@ function padToWidth(line: string, width: number): string {
   return line + ' '.repeat(width - w);
 }
 
-/** Fit `line` into exactly `width` columns, even after CJK-edge truncation. */
+/** 将 `line` 适配到恰好 `width` 列，包括 CJK 边缘截断后。 */
 function fitExactly(line: string, width: number): string {
   let s = line;
   if (visibleWidth(s) > width) s = truncateToWidth(s, width, ELLIPSIS);
@@ -295,8 +293,8 @@ export class TasksBrowserApp extends Container implements Focusable {
   }
 
   /**
-   * Render the entire screen as `terminal.rows` lines of `width` cols.
-   * Layout: header(1) + body(rows-2) + footer(1).
+   * 将整个屏幕渲染为 `terminal.rows` 行、`width` 列。
+   * 布局：header(1) + body(rows-2) + footer(1)。
    */
   override render(width: number): string[] {
     const rows = Math.max(1, this.terminal.rows);
@@ -325,7 +323,7 @@ export class TasksBrowserApp extends Container implements Focusable {
     return lines;
   }
 
-  // ── header / footer ──────────────────────────────────────────────────
+  // ── 标题 / 底栏 ──────────────────────────────────────────────────
 
   private renderHeader(width: number): string {
     const title = currentTheme.boldFg('primary', ' TASK BROWSER ');
@@ -381,12 +379,12 @@ export class TasksBrowserApp extends Container implements Focusable {
     return fitExactly(left, width);
   }
 
-  // ── frame primitive ──────────────────────────────────────────────────
+  // ── 框架原语 ──────────────────────────────────────────────────
 
   /**
-   * Render a framed box: `┌─ Title ─┐` top, `│ <content> │` sides, `└─┘`
-   * bottom. Result is exactly `width × height` cells. `content` is a
-   * pre-rendered array of inner-width-sized lines; extra rows are padded.
+   * 渲染带框架的方框：`┌─ Title ─┐` 顶部，`│ <content> │` 两侧，`└─┘`
+   * 底部。结果恰好为 `width × height` 个单元格。`content` 是
+   * 预渲染的内部宽度行数组；多余行会被填充。
    */
   private renderFrame(
     title: string,
@@ -426,7 +424,7 @@ export class TasksBrowserApp extends Container implements Focusable {
     return lines;
   }
 
-  // ── left: task list frame ────────────────────────────────────────────
+  // ── 左侧：任务列表框架 ────────────────────────────────────────────
 
   private renderListFrame(width: number, height: number): string[] {
     const title = `Tasks [${this.props.filter}]`;
@@ -504,11 +502,11 @@ export class TasksBrowserApp extends Container implements Focusable {
     if (this.listScroll > maxScroll) this.listScroll = maxScroll;
   }
 
-  // ── right: detail + preview stack ────────────────────────────────────
+  // ── 右侧：详情 + 预览堆叠 ────────────────────────────────────────
 
   private renderRightStack(width: number, height: number): string[] {
-    // Detail gets ~8 rows (or 40% of body, whichever is larger). Preview
-    // takes the rest. Both rendered as separate frames stacked vertically.
+    // 详情约占 8 行（或主体的 40%，取较大值）。预览
+    // 占据剩余部分。两者都作为单独的框架垂直堆叠渲染。
     const detailHeight = Math.max(8, Math.min(Math.floor(height * 0.4), height - 5));
     const previewHeight = height - detailHeight;
     return [
@@ -592,7 +590,7 @@ export class TasksBrowserApp extends Container implements Focusable {
     return this.renderFrame('Preview Output', styled, width, height);
   }
 
-  // ── too-small fallback ──────────────────────────────────────────────
+  // ── 太小回退 ──────────────────────────────────────────────────
 
   private renderTooSmall(width: number, rows: number): string[] {
     const lines: string[] = [];

@@ -1,32 +1,31 @@
 /**
- * ProviderManagerComponent — pure-view CRUD UI for the `/provider` command.
+ * ProviderManagerComponent — `/provider` 命令的纯视图 CRUD UI。
  *
- * Single-column layout showing one row per "platform / source":
- *   - each Open Platform login (1 source = 1 provider)
- *   - each Custom Registry connection grouping by `{url, apiKey}`
- *     (1 source = N providers from the same api.json fetch)
- *   - any other configured provider (1 source = 1 provider)
- *   - a synthetic final `[ Add New Platform ]` action row
- * Kimi Code OAuth (`DEFAULT_OAUTH_PROVIDER_NAME`) is intentionally hidden
- * — that account is managed through `/login` / `/logout`, not here.
+ * 单列布局，每行显示一个"平台 / 来源"：
+ *   - 每个 Open Platform 登录（1 个来源 = 1 个 provider）
+ *   - 每个 Custom Registry 连接按 `{url, apiKey}` 分组
+ *     （1 个来源 = 同一次 api.json 获取的 N 个 provider）
+ *   - 任何其他已配置的 provider（1 个来源 = 1 个 provider）
+ *   - 一个合成的 `[ Add New Platform ]` 操作行
+ * Kimi Code OAuth（`DEFAULT_OAUTH_PROVIDER_NAME`）被有意隐藏
+ * ——该账户通过 `/login` / `/logout` 管理，不在此处。
  *
- * Keyboard:
- *   - ↑ / ↓             move highlight
- *   - ← / → · PgUp/PgDn page
- *   - Enter             on `[ Add New Platform ]` → `onAdd()`
- *   - D                 delete with inline `[y/N]` confirmation
- *                         on a source row → `onDeleteSource(providerIds)`
- *                         on `[ Add New Platform ]` → ignored
- *   - Esc               `onClose()` (outside confirm)
+ * 键盘：
+ *   - ↑ / ↓             移动高亮
+ *   - ← / → · PgUp/PgDn 翻页
+ *   - Enter             在 `[ Add New Platform ]` 上 → `onAdd()`
+ *   - D                 带内联 `[y/N]` 确认的删除
+ *                         在来源行上 → `onDeleteSource(providerIds)`
+ *                         在 `[ Add New Platform ]` 上 → 忽略
+ *   - Esc               `onClose()`（在确认之外）
  *
- * The `[y/N]` confirmation is a transient substate handled in-component:
- * while armed, only `y` / `Y` / `n` / `N` / `Esc` are honored and the
- * prompt replaces the footer hint.
+ * `[y/N]` 确认是组件内处理的瞬态子状态：
+ * 激活时，仅响应 `y` / `Y` / `n` / `N` / `Esc`，
+ * 提示替换底栏提示。
  *
- * The component is pure-view: every CRUD side effect is dispatched back
- * through callbacks. The host (`KimiTui`) is responsible for performing
- * the harness / config mutations and then pushing a fresh snapshot via
- * `setOptions`.
+ * 该组件是纯视图：所有 CRUD 副作用通过回调派发。
+ * 宿主（`KimiTui`）负责执行 harness / config 变更，
+ * 然后通过 `setOptions` 推送新快照。
  */
 
 import type { ProviderConfig } from '@moonshot-ai/kimi-code-sdk';
@@ -56,31 +55,31 @@ interface ConfirmState {
 }
 
 export interface ProviderManagerOptions {
-  /** All currently configured providers (`config.providers`). */
+  /** 所有当前已配置的 providers（`config.providers`）。 */
   readonly providers: Record<string, ProviderConfig>;
-  /** Provider id of the currently active model. */
+  /** 当前活跃模型的 provider id。 */
   readonly activeProviderId?: string;
   readonly onAdd: () => void;
-  /** Delete all providers under a source (Open Platform / custom-registry
-   *  fetch / standalone). Passed the full provider-id list so the host
-   *  doesn't have to re-derive the source grouping. */
+  /** 删除某个来源（Open Platform / custom-registry
+   *  获取 / 独立）下的所有 providers。传递完整的 provider id 列表，
+   *  以便宿主无需重新推导来源分组。 */
   readonly onDeleteSource: (providerIds: readonly string[]) => void;
   readonly onClose: () => void;
 }
 
-/** Real (non-synthetic) source row. */
+/** 真实（非合成）来源行。 */
 interface SourceRow {
   readonly kind: 'source';
   readonly id: string;
   readonly label: string;
   readonly providerIds: readonly string[];
-  /** True when one of `providerIds` is the active provider. */
+  /** 当 `providerIds` 中有一个是当前活跃 provider 时为 true。 */
   readonly hasActive: boolean;
-  /** Optional base URL extracted from the provider config. */
+  /** 从 provider 配置中提取的可选基础 URL。 */
   readonly baseUrl?: string;
 }
 
-/** Synthetic `[ Add New Platform ]` action row pinned to the bottom. */
+/** 固定在底部的合成 `[ Add New Platform ]` 操作行。 */
 interface AddRow {
   readonly kind: 'add';
   readonly id: '__add__';
@@ -93,10 +92,10 @@ const ADD_ROW_LABEL = '[ Add New Platform ]';
 const PAGE_SIZE = 8;
 const HEADER_HINT = '↑↓ navigate · D delete · Esc cancel';
 
-// Narrows a `ProviderConfig` blob to a `CustomRegistrySource` payload.
-// Mirrors `readCustomRegistrySource` in `kimi-tui.ts`. We can't import
-// that helper because it lives in the host and would create a cyclic
-// dependency on the component's container; duplicating ~15 lines is cheap.
+// 将 `ProviderConfig` 数据收窄为 `CustomRegistrySource` 载荷。
+// 镜像 `kimi-tui.ts` 中的 `readCustomRegistrySource`。我们无法
+// 导入该辅助函数，因为它位于宿主中，会在组件容器上产生循环依赖；
+// 复制约 15 行代码代价很低。
 function readCustomRegistrySource(provider: unknown): CustomRegistrySource | undefined {
   if (typeof provider !== 'object' || provider === null) return undefined;
   const source = (provider as { readonly source?: unknown }).source;
@@ -113,9 +112,9 @@ function readCustomRegistrySource(provider: unknown): CustomRegistrySource | und
 }
 
 /**
- * Pretty-print a URL for the source-row label. Strips the scheme and
- * truncates obvious api.json suffixes so the row stays narrow. Falls
- * back to the raw URL if parsing fails.
+ * 为来源行标签美化 URL。去掉协议头并
+ * 截断明显的 api.json 后缀，使行保持窄。
+ * 解析失败时回退到原始 URL。
  */
 function sourceUrlLabel(url: string): string {
   try {
@@ -127,20 +126,20 @@ function sourceUrlLabel(url: string): string {
 }
 
 /**
- * Group providers into source rows + append the synthetic add-row.
- * The grouping rules:
- *   - `DEFAULT_OAUTH_PROVIDER_NAME` → skipped (managed via /logout).
- *   - Open Platform id (`isOpenPlatformId(id)`) → 1 source per provider,
- *     label = `OpenPlatformDefinition.name`.
- *   - `cfg.source.kind === 'apiJson'` → one source per `{url, apiKey}`
- *     pair, label = hostname + pathname.
- *   - Anything else → 1 source per provider, label = provider id.
+ * 将 providers 分组为来源行 + 追加合成的添加行。
+ * 分组规则：
+ *   - `DEFAULT_OAUTH_PROVIDER_NAME` → 跳过（通过 /logout 管理）。
+ *   - Open Platform id（`isOpenPlatformId(id)`）→ 每个 provider 1 个来源，
+ *     标签 = `OpenPlatformDefinition.name`。
+ *   - `cfg.source.kind === 'apiJson'` → 每个 `{url, apiKey}` 对一个来源，
+ *     标签 = 主机名 + 路径名。
+ *   - 其他 → 每个 provider 1 个来源，标签 = provider id。
  */
 function buildRows(opts: ProviderManagerOptions): readonly Row[] {
   const sources: SourceRow[] = [];
 
-  // Map from `${url}${apiKey}` → index into `sources`, so we can
-  // append further providers into the same group.
+  // 从 `${url}${apiKey}` → `sources` 索引的映射，以便我们可以
+  // 将后续 providers 追加到同一分组中。
   const customRegistryIndex = new Map<string, number>();
 
   for (const [id, cfg] of Object.entries(opts.providers)) {
@@ -229,10 +228,9 @@ export class ProviderManagerComponent extends Container implements Focusable {
   }
 
   /**
-   * Replace the props the component renders against. Existing selection
-   * is preserved when possible (by id or first provider id) so deletions
-   * don't visually jump. Any in-flight `[y/N]` substate is cleared because
-   * the underlying target may have changed.
+   * 替换组件渲染所依据的属性。尽可能保留现有选择
+   * （通过 id 或第一个 provider id），这样删除时不会出现视觉跳动。
+   * 任何进行中的 `[y/N]` 子状态被清除，因为底层目标可能已更改。
    */
   setOptions(next: ProviderManagerOptions): void {
     const previousSelected = this.rows[this.selectedIndex];
@@ -260,7 +258,7 @@ export class ProviderManagerComponent extends Container implements Focusable {
     this.invalidate();
   }
 
-  /** Rows after applying the active fuzzy filter; the add-row is always kept. */
+  /** 应用当前模糊筛选后的行；添加行始终保留。 */
   private page(): PageView {
     return pageView(this.rows.length, this.selectedIndex, PAGE_SIZE);
   }
@@ -312,7 +310,7 @@ export class ProviderManagerComponent extends Container implements Focusable {
       return;
     }
 
-    // Delete the highlighted provider with the D key.
+    // 使用 D 键删除高亮的 provider。
     const ch = printableChar(data);
     if (ch === 'd' || ch === 'D') {
       this.armDeleteConfirm();
@@ -349,15 +347,14 @@ export class ProviderManagerComponent extends Container implements Focusable {
       this.opts.onDeleteSource(confirm.providerIds);
       return;
     }
-    // Any other key while in the confirm substate is ignored.
+    // 在确认子状态下的任何其他按键被忽略。
   }
 
   override render(width: number): string[] {
     const lines: string[] = [];
 
-    // Header shape mirrors the model dialog (see model-selector.ts): a single
-    // top border, the title, the keymap hint, then a blank line. No inner
-    // border under the title.
+    // 标题形状镜像模型对话框（参见 model-selector.ts）：单行
+    // 上边框、标题、键位提示，然后一个空行。标题下方无内边框。
     const border = currentTheme.fg('primary', '─'.repeat(width));
     lines.push(border);
     lines.push(currentTheme.boldFg('primary', ' Providers'));
@@ -415,9 +412,9 @@ function renderRow(
   const pointer = isSelected ? SELECT_POINTER : ' ';
   const pointerStyle = (text: string) =>
     isSelected ? currentTheme.fg('primary', text) : currentTheme.fg('textDim', text);
-  // The synthetic "Add New Platform" row is an action/CTA: keep it in the brand
-  // color so it never reads as disabled, and bold it when selected (matching
-  // the other rows' selected treatment).
+  // 合成的 "Add New Platform" 行是操作/CTA：保持品牌颜色
+  // 以确保不会被误读为禁用状态，选中时加粗
+  // （与其他行的选中处理一致）。
   const labelStyle = (text: string) =>
     isSelected
       ? currentTheme.boldFg('primary', text)
@@ -425,12 +422,12 @@ function renderRow(
         ? currentTheme.fg('primary', text)
         : currentTheme.fg('text', text);
 
-  // The active provider is flagged with a trailing "← current" (success),
-  // matching the model selector's current-item marker — see .agents/skills/write-tui/DESIGN.md.
+  // 当前活跃的 provider 以尾随的 "← current"（success）标记，
+  // 与模型选择器的当前项标记一致——参见 .agents/skills/write-tui/DESIGN.md。
   const isActive = row.kind === 'source' && row.hasActive;
   const marker = isActive ? ` ${CURRENT_MARK}` : '';
 
-  // Reserve 2 leading spaces + 2 for the pointer + room for the marker.
+  // 预留 2 个前导空格 + 2 个指针空间 + 标记空间。
   const labelWidth = Math.max(0, width - 4 - visibleWidth(marker));
   const labelText = truncateToWidth(row.label, labelWidth, '…');
   let line = `  ${pointerStyle(`${pointer} `)}${labelStyle(labelText)}`;

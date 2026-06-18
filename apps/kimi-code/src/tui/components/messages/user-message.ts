@@ -1,5 +1,5 @@
 /**
- * Renders a user message in the transcript.
+ * 在对话记录中渲染用户消息。
  */
 
 import { Spacer, Text, truncateToWidth, visibleWidth, type Component } from '@earendil-works/pi-tui';
@@ -36,12 +36,12 @@ export class UserMessageComponent implements Component {
 
     const lines: string[] = [];
 
-    // Spacer
+    // 间隔行
     for (const line of this.spacerComponent.render(safeWidth)) {
       lines.push(line);
     }
 
-    // Text — re-dye on every render so theme switches are reflected
+    // 文本 —— 每次渲染重新着色，以便反映主题切换
     const coloredText = currentTheme.boldFg('roleUser', this.text);
     const textLines = new Text(coloredText, 0, 0).render(contentWidth);
     for (let i = 0; i < textLines.length; i++) {
@@ -49,7 +49,7 @@ export class UserMessageComponent implements Component {
       lines.push(prefix + textLines[i]);
     }
 
-    // Images — indented to align with text after the bullet
+    // 图片 —— 缩进以对齐圆点后的文本
     for (const thumbnail of this.imageThumbnails) {
       const imageLines = thumbnail.render(contentWidth);
       for (const line of imageLines) {

@@ -1,16 +1,16 @@
 /**
- * TabbedModelSelectorComponent — a thin wrapper around ModelSelectorComponent
- * that splits the model list into per-provider tabs.
+ * TabbedModelSelectorComponent —— ModelSelectorComponent 的薄包装器，
+ * 将模型列表按提供商拆分为标签页。
  *
- * Tabs are derived from the `models` passed at construction time:
- *   ['all', ...uniqueProviderIds]   (insertion order, deduplicated)
+ * 标签页由构造时传入的 `models` 派生：
+ *   ['all', ...uniqueProviderIds]   （插入顺序，去重）
  *
- * Each tab owns its own inner ModelSelectorComponent built from the filtered
- * subset of models. ↑/↓/Enter/Esc/←/→ (thinking) and typing (filter) are
- * forwarded to the active inner selector; Tab / Shift-Tab cycle between tabs.
+ * 每个标签页拥有自己的内部 ModelSelectorComponent，使用过滤后的模型子集构建。
+ * ↑/↓/Enter/Esc/←/→（thinking）和输入（过滤）转发到活动的内部选择器；
+ * Tab / Shift-Tab 在标签页之间切换。
  *
- * The active tab is highlighted with a filled background (matching the
- * AskUserQuestion dialog's tab strip) — see .agents/skills/write-tui/DESIGN.md.
+ * 活动标签页以填充背景高亮（与 AskUserQuestion 对话框的标签栏一致）
+ * —— 参见 .agents/skills/write-tui/DESIGN.md。
  */
 
 import type { ModelAlias } from '@moonshot-ai/kimi-code-sdk';
@@ -40,8 +40,7 @@ export interface TabbedModelSelectorOptions {
   readonly currentValue: string;
   readonly selectedValue?: string;
   readonly currentThinking: boolean;
-  /** When set, the tab for this provider id is initially active instead of the
-   * tab derived from `currentValue`. */
+  /** 设置后，该提供商 ID 对应的标签页初始激活，而非从 `currentValue` 派生的标签页。 */
   readonly initialTabId?: string;
   readonly onSelect: (selection: ModelSelection) => void;
   readonly onCancel: () => void;
@@ -64,9 +63,8 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
     this.opts = opts;
     this.tabs = buildTabs(opts);
 
-    // Default to the "All" tab. Only an explicit initialTabId (e.g. the
-    // provider just added via /provider) opens on a specific provider tab —
-    // the current model is still highlighted inside whichever tab is active.
+    // 默认使用 "All" 标签页。仅当设置了显式 initialTabId（例如通过 /provider 新增的提供商）
+    // 时才在特定提供商标签页上打开 —— 当前模型仍在活动标签页内高亮显示。
     const initialTabIdx = opts.initialTabId
       ? this.tabs.findIndex((tab) => tab.id === opts.initialTabId)
       : -1;
@@ -97,9 +95,9 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
     if (this.tabs.length <= 1) {
       return inner.map((line) => truncateToWidth(line, width));
     }
-    // Layout: divider, title, hint, blank, tab strip, blank, then the model
-    // list. The inner selector's blank line (inner[3]) separates the hint from
-    // the tab strip; an extra blank separates the tabs from their list.
+    // 布局：分隔线、标题、提示、空行、标签栏、空行，然后是模型列表。
+    // 内部选择器的空行（inner[3]）分隔提示与标签栏；
+    // 额外的空行分隔标签栏与列表。
     const stripLine = this.renderTabStrip(width);
     const out: string[] = [
       inner[0] ?? '',
@@ -120,6 +118,7 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
     }
   }
 
+  /** 将焦点同步到活动标签页。 */
   private syncFocusToActive(): void {
     for (let i = 0; i < this.tabs.length; i++) {
       const tab = this.tabs[i]!;
@@ -127,9 +126,8 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
     }
   }
 
-  /** Style a tab segment. The active tab is filled with the brand background
-   * (matching the AskUserQuestion dialog); inactive tabs are muted. Both have
-   * the same visible width so switching never shifts the layout. */
+  /** 设置标签片段的样式。活动标签使用品牌背景填充（与 AskUserQuestion 对话框一致）；
+   * 非活动标签使用静音色。两者可见宽度相同，切换时不会导致布局偏移。 */
   private styleTab(label: string, isActive: boolean): string {
     const cell = ` ${label} `;
     return isActive
@@ -137,6 +135,7 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
       : currentTheme.fg('textMuted', cell);
   }
 
+  /** 渲染标签栏，支持在空间不足时滚动显示。 */
   private renderTabStrip(width: number): string {
     const segments: string[] = [];
     for (let i = 0; i < this.tabs.length; i++) {
@@ -144,14 +143,14 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
       segments.push(this.styleTab(tab.label, i === this.activeIndex));
     }
 
-    // If everything fits with a leading space, show the whole strip. The
-    // provider-switch hint lives in the inner selector's hint line, not here.
+    // 如果所有标签加上前导空格能放得下，则显示完整标签栏。
+    // 提供商切换提示在内部选择器的提示行中，不在此处。
     const totalSegmentWidth = segments.reduce((sum, s) => sum + visibleWidth(s), 0);
     if (1 + totalSegmentWidth <= width) {
       return ' ' + segments.join(' ');
     }
 
-    // Scrolling needed. Find the widest window that contains activeIndex.
+    // 需要滚动。找到包含 activeIndex 的最宽窗口。
     const segmentWidths = segments.map((s) => visibleWidth(s));
     let start = this.activeIndex;
     let end = this.activeIndex + 1;
@@ -203,6 +202,7 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
   }
 }
 
+/** 根据选项构建标签页列表（"全部" + 各提供商标签页）。 */
 function buildTabs(opts: TabbedModelSelectorOptions): readonly ModelTab[] {
   const entries = Object.entries(opts.models);
   const providerIds: string[] = [];
@@ -236,6 +236,7 @@ function buildTabs(opts: TabbedModelSelectorOptions): readonly ModelTab[] {
   return tabs;
 }
 
+/** 为指定的模型子集创建内部 ModelSelectorComponent 实例。 */
 function makeSelector(
   opts: TabbedModelSelectorOptions,
   subset: Record<string, ModelAlias>,

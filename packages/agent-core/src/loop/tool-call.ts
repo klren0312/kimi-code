@@ -1,16 +1,15 @@
 /**
- * Tool-call lifecycle for one completed provider response.
+ * 单个已完成提供者响应的工具调用生命周期。
  *
- * This module keeps the provider-order invariant in one place:
- *   - validate every provider tool call before hooks or events
- *   - run preparation hooks and compute tool-call display fields in provider order
- *   - dispatch `tool.call` before execution starts
- *   - execute tools with non-conflicting resource accesses concurrently
- *   - serialize tools whose resource accesses conflict
- *   - dispatch terminal `tool.result` events in provider order
+ * 此模块将提供者顺序不变量集中在一个位置：
+ *   - 在钩子或事件之前验证每个提供者工具调用
+ *   - 按提供者顺序运行准备钩子并计算工具调用显示字段
+ *   - 在执行开始前派发 `tool.call`
+ *   - 并发执行资源访问不冲突的工具
+ *   - 序列化资源访问冲突的工具
+ *   - 按提供者顺序派发终端 `tool.result` 事件
  *
- * These phases are coupled by transcript ordering and abort handling, so they
- * should be reviewed together.
+ * 这些阶段通过转录顺序和中止处理耦合，因此应一并审查。
  */
 
 import type { ContentPart } from '@moonshot-ai/kosong';
@@ -48,10 +47,9 @@ const TOOL_OUTPUT_NON_TEXT = 'Tool returned non-text content.';
 const validators = new WeakMap<ExecutableTool, ToolArgsValidator>();
 
 /**
- * Output for an aborted tool call. When the abort carries a user-cancellation
- * reason (the user pressed stop), say so explicitly so the model treats it as a
- * deliberate interruption instead of a system fault to theorise about or retry.
- * Any other abort keeps the neutral wording.
+ * 中止的工具调用的输出。当中止携带用户取消原因（用户按下了停止键）时，
+ * 明确说明以便模型将其视为有意的中断，而非需要推理或重试的系统故障。
+ * 其他中止保持中性措辞。
  */
 function abortedToolOutput(toolName: string, signal: AbortSignal): string {
   if (isUserCancellation(signal.reason)) {
@@ -146,9 +144,9 @@ export async function runToolCallBatch(
       }
     }
 
-    // Tool tasks may finish out of order; terminal results are still emitted in
-    // provider order. Await all tasks so each recorded `tool.call` gets a
-    // paired `tool.result`; the caller checks abort before writing `step.end`.
+    // 工具任务可能乱序完成；终端结果仍按提供者顺序发出。
+    // 等待所有任务完成，使每个已记录的 `tool.call` 都有配对的
+    // `tool.result`；调用方在写入 `step.end` 前检查中止状态。
     for (const pendingResult of pendingResults) {
       const result = await finalizePendingToolResult(batchStep, await pendingResult);
       if (result.stopTurn === true) stopTurn = true;
@@ -160,17 +158,17 @@ export async function runToolCallBatch(
       });
     }
   } finally {
-    // Preparation or result dispatch can throw after execution has started.
-    // Always settle spawned tasks before the caller continues so rejected
-    // execute promises cannot surface as detached unhandled rejections.
+    // 准备或结果派发可能在执行开始后抛出异常。
+    // 在调用方继续之前始终完成已生成的任务，以确保被拒绝的
+    // 执行 Promise 不会作为分离的未处理拒绝浮出。
     await Promise.allSettled(pendingResults);
   }
   return { stopTurn };
 }
 
 /**
- * Provider-order validation pass. It does not run hooks, spawn tools, or write
- * events. Validator compilation may populate the local cache.
+ * 按提供者顺序的验证阶段。不运行钩子、生成工具或写入事件。
+ * 验证器编译可能填充本地缓存。
  */
 function preflightToolCall(
   tools: readonly ExecutableTool[] | undefined,
@@ -357,8 +355,8 @@ function makeResolvedToolCallTask(result: PendingToolResult): ToolCallTask<Pendi
 }
 
 /**
- * Run `prepareToolExecution` in provider order before recording `tool.call`.
- * Hook decisions can block a call or replace args before execution starts.
+ * 在记录 `tool.call` 之前按提供者顺序运行 `prepareToolExecution`。
+ * 钩子决定可以阻止调用或在执行开始前替换参数。
  */
 async function runPrepareToolExecutionHook(
   step: ToolCallBatchContext,
@@ -384,8 +382,8 @@ async function runPrepareToolExecutionHook(
       llm,
     });
   } catch (error) {
-    // If the turn is cancelled while an abort-aware hook is awaited, report the
-    // call as aborted instead of treating it as a hook failure.
+    // 如果在等待支持中止的钩子时轮次被取消，
+    // 将调用报告为已中止，而不是将其视为钩子失败。
     if (isAbortError(error) || signal.aborted) {
       return {
         kind: 'hookFailed',
@@ -529,8 +527,7 @@ async function finalizePendingToolResult(
       result: normalizeToolResult(effectiveResult),
     };
   } catch (error) {
-    // This is the redaction/truncation boundary. If it fails, do not persist
-    // the raw tool output; write an error result instead.
+    // 这是脱敏/截断边界。如果失败，不要持久化原始工具输出；改为写入错误结果。
     const aborted = isAbortError(error) || signal.aborted;
     if (!aborted) {
       step.log?.warn('finalizeToolResult hook failed', {
@@ -604,8 +601,8 @@ async function raceExecuteWithGraceTimeout(
   });
 
   try {
-    // Tools that ignore AbortSignal may never settle. After abort, the grace
-    // branch lets the turn finish with a synthetic error result.
+    // 忽略 AbortSignal 的工具可能永远不会完成。中止后，
+    // 宽限期分支允许轮次以合成错误结果结束。
     return await Promise.race([executePromise, graceSentinel]);
   } finally {
     if (graceTimer !== undefined) clearTimeout(graceTimer);
@@ -613,7 +610,7 @@ async function raceExecuteWithGraceTimeout(
       try {
         signal.removeEventListener('abort', onAbort);
       } catch {
-        // Some AbortSignal polyfills do not implement removeEventListener.
+        // 某些 AbortSignal polyfill 未实现 removeEventListener。
       }
     }
   }
@@ -624,11 +621,10 @@ function isMediaContentPart(part: ContentPart): boolean {
 }
 
 /**
- * Validate a tool's raw return against the {@link ExecutableToolResult} contract.
- * A tool that returns `undefined`, a primitive, or an object without a valid
- * `output` field is coerced into an `isError: true` result so the loop can still
- * emit a paired `tool.result` event. This is the trust boundary between
- * arbitrary tool implementations and the rest of the loop.
+ * 根据 {@link ExecutableToolResult} 契约验证工具的原始返回值。
+ * 返回 `undefined`、原始值或没有有效 `output` 字段的对象的工具
+ * 会被强制转换为 `isError: true` 结果，以便循环仍然可以发出
+ * 配对的 `tool.result` 事件。这是任意工具实现与循环其余部分之间的信任边界。
  */
 function coerceToolResult(value: unknown, toolName: string): ExecutableToolResult {
   if (value === null || value === undefined) {
@@ -701,8 +697,8 @@ function makeErrorToolResult(
 }
 
 /**
- * Record `tool.call` in provider order. Reusing the provider/API tool-call id
- * keeps transcript linkage on one canonical identity.
+ * 按提供者顺序记录 `tool.call`。复用提供者/API 工具调用 ID
+ * 使转录关联保持在同一个规范标识上。
  */
 async function dispatchToolCall(
   step: ToolCallStepContext,

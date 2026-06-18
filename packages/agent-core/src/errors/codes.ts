@@ -1,12 +1,12 @@
 /**
- * Error codes for Kimi Core's public error protocol.
+ * Kimi Core 公共错误协议的错误码。
  *
- * `ErrorCodes` is the source of truth for every code Kimi Core may emit.
- * Downstream consumers (SDK, RPC clients, telemetry, agent-facing docs)
- * should depend on these string values rather than on class identity.
+ * `ErrorCodes` 是 Kimi Core 可能发出的每个错误码的权威来源。
+ * 下游消费者（SDK、RPC 客户端、遥测、面向 agent 的文档）
+ * 应依赖这些字符串值，而非类标识。
  *
- * Codes follow `domain.reason`. Adding a code is a minor change; renaming
- * or removing one is a major change.
+ * 错误码遵循 `domain.reason` 格式。添加错误码是 minor 变更；
+ * 重命名或移除是 major 变更。
  */
 export const ErrorCodes = {
   CONFIG_INVALID: 'config.invalid',
@@ -86,8 +86,8 @@ export interface KimiErrorInfo {
   readonly title: string;
   readonly retryable: boolean;
   /**
-   * Whether the code is a stable public contract. `false` reserves the
-   * right to rename or remove without a major version bump.
+   * 该错误码是否为稳定的公共契约。`false` 表示保留
+   * 在不进行 major 版本升级的情况下重命名或移除的权利。
    */
   readonly public: boolean;
   readonly action?: string;

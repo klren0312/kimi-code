@@ -1,5 +1,4 @@
-// Barrel re-export so #/errors resolves to a single .ts file (the first
-// entry in the package imports map). vitest does not resolve cleanly through
-// the directory fallback; this thin barrel keeps the alias working uniformly
-// across node, tsc, and vitest. Real module lives under ./errors.
+// 桶导出，使 #/errors 解析到单个 .ts 文件（package imports map 中的第一个
+// 条目）。vitest 无法正确地通过目录回退解析；这个轻量桶导出让别名在
+// node、tsc 和 vitest 之间统一生效。实际模块位于 ./errors 下。
 export * from './errors/index';

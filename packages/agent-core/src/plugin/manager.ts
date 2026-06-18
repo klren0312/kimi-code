@@ -22,9 +22,9 @@ import {
   normalizePluginId,
 } from './types';
 
-// Hidden Kimi CLI subcommand that re-enters as a Node interpreter.
-// Used as fallback when an MCP server declares `"command": "node"` but the
-// user is running a single-binary Kimi build that doesn't have `node` on PATH.
+// 隐藏的 Kimi CLI 子命令，以 Node 解释器身份重新进入。
+// 当 MCP 服务器声明 `"command": "node"` 但用户正在运行没有 `node` 在 PATH 上的
+// 单二进制 Kimi 构建时，用作后备方案。
 const KIMI_NODE_FALLBACK_SUBCOMMAND = '__plugin_run_node';
 
 export interface PluginManagerOptions {
@@ -444,8 +444,7 @@ function withMcpServerEnabled(config: McpServerConfig, enabled: boolean): McpSer
 }
 
 function pluginMcpRuntimeName(pluginId: string, serverName: string): string {
-  // Plugin ids cannot contain ":", so this keeps plugin/server pairs unambiguous
-  // even when either side contains "-".
+  // Plugin id 不能包含 ":"，因此即使任一侧包含 "-"，plugin/server 对也能保持明确性。
   return `plugin-${pluginId}:${serverName}`;
 }
 

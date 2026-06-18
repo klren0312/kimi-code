@@ -1,18 +1,17 @@
 /**
- * Cron-fire XML rendering — produces the chat-history injection text
- * the scheduler hands to the model when a CronTask fires.
+ * Cron 触发 XML 渲染 — 生成当 CronTask 触发时调度器注入到模型的
+ * 聊天历史文本。
  *
- * Output shape:
+ * 输出形状：
  *   <cron-fire jobId="..." cron="..." recurring="true|false" coalescedCount="N" stale="true|false">
  *   <prompt>
- *   verbatim user prompt
+ *   原始用户 prompt
  *   </prompt>
  *   </cron-fire>
  *
- * Mirrors `agent/context/notification-xml.ts`: attribute values are
- * escape-safe via `stringAttr`, but the body inside `<prompt>` is
- * verbatim. The injection target is an LLM-visible transcript where
- * double-escaping would be noisier than literal punctuation.
+ * 镜像 `agent/context/notification-xml.ts`：属性值通过 `stringAttr`
+ * 转义安全，但 `<prompt>` 内的主体保持原样。注入目标是 LLM 可见的
+ * 转录记录，双重转义会比字面标点更干扰阅读。
  */
 import type { CronJobOrigin } from '../../agent/context/types';
 
@@ -37,8 +36,7 @@ export function renderCronFireXml(
 
 function stringAttr(value: unknown, fallback: string): string {
   if (typeof value !== 'string' || value.length === 0) return fallback;
-  // Attribute boundary safety: escape `&` and `"`. Body-text `<` / `>`
-  // stay untouched — the injection target is an LLM-visible transcript
-  // where double-escaping would be noisier than literal punctuation.
+  // 属性边界安全：转义 `&` 和 `"`。主体文本中的 `<` / `>` 保持不变
+  // — 注入目标是 LLM 可见的转录记录，双重转义会比字面标点更干扰阅读。
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }

@@ -75,7 +75,8 @@ export function createProgram(
     )
     .addOption(new Option('--yes').hideHelp().default(false))
     .addOption(new Option('--auto-approve').hideHelp().default(false))
-    .option('--plan', 'Start in plan mode.', false);
+    .option('--plan', 'Start in plan mode.', false)
+    .option('--log-llm', 'Enable LLM communication logging with web viewer.', false);
 
   registerExportCommand(program);
   registerProviderCommand(program);
@@ -123,6 +124,7 @@ export function createProgram(
       outputFormat: raw['outputFormat'] as CLIOptions['outputFormat'],
       prompt: raw['prompt'] as string | undefined,
       skillsDirs: raw['skillsDir'] as string[],
+      logLlm: raw['logLlm'] as boolean,
     };
 
     onMain(opts);

@@ -34,7 +34,7 @@ import {
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// /provider command
+// /provider 命令
 // ---------------------------------------------------------------------------
 
 export async function handleProviderCommand(host: SlashCommandHost): Promise<void> {
@@ -195,9 +195,8 @@ async function handleCatalogProviderAdd(host: SlashCommandHost): Promise<void> {
   }
   const baseUrl = catalogBaseUrl(entry, wire);
 
-  // Persist the provider and all its models immediately after the api key is
-  // entered. The model selector that follows is just a convenience to pick the
-  // default model; ESC leaves the provider in place without a default selection.
+  // 在输入 API 密钥后立即持久化提供者及其所有模型。
+  // 随后的模型选择器仅用于方便选择默认模型；按 ESC 可保留提供者而不进行默认选择。
   const existingConfig = await host.harness.getConfig();
   if (existingConfig.providers[providerId] !== undefined) {
     await host.harness.removeProvider(providerId);
@@ -210,8 +209,8 @@ async function handleCatalogProviderAdd(host: SlashCommandHost): Promise<void> {
     baseUrl,
     apiKey,
     models,
-    selectedModelId: '', // no default yet; user picks in the model selector
-    thinking: false,    // will be resolved by the model selector
+    selectedModelId: '', // 尚无默认值；用户在模型选择器中选择
+    thinking: false,    // 将由模型选择器决定
   });
 
   await host.harness.setConfig({
@@ -223,9 +222,8 @@ async function handleCatalogProviderAdd(host: SlashCommandHost): Promise<void> {
   host.track('connect', { provider: providerId, method: 'catalog' });
   host.showStatus(`Provider added: ${entry.name ?? providerId}`);
 
-  // Build a merged model dictionary that includes existing models plus the
-  // newly-persisted provider's models, so the tabbed selector shows every
-  // provider's tab (the new provider's tab starts active via initialTabId).
+  // 构建一个合并的模型字典，包含现有模型和新持久化的提供者模型，
+  // 以便标签选择器显示每个提供者的标签（新提供者的标签通过 initialTabId 默认激活）。
   const stateModels = await host.harness.getConfig().then((c) => c.models ?? {});
   const mergedModels = { ...stateModels };
 
@@ -310,8 +308,7 @@ async function handleCustomRegistryAddViaDialog(host: SlashCommandHost): Promise
     'success',
   );
 
-  // Offer the model selector so the user can pick a default, just like the
-  // catalog (known-provider) flow.
+  // 提供模型选择器，让用户可以选择默认模型，与目录（已知提供者）流程相同。
   const stateModels = await host.harness.getConfig().then((c) => c.models ?? {});
   const firstNewAlias = Object.keys(stateModels).find((a) =>
     addedProviderIds.some((pid) => a.startsWith(`${pid}/`)),

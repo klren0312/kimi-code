@@ -1,8 +1,7 @@
 /**
- * Renders thinking content in the transcript.
- * Supports live in-place updates while thinking streams, then finalizes
- * without replacing the component.
- * Supports expand/collapse via Ctrl+O (shared with tool output).
+ * 在对话记录中渲染思考内容。
+ * 支持在思考流式传输时进行实时原地更新，完成后定稿而不替换组件。
+ * 支持通过 Ctrl+O 展开/折叠（与工具输出共享）。
  */
 
 import { Text, truncateToWidth, type Component, type TUI } from '@earendil-works/pi-tui';
@@ -26,10 +25,10 @@ export class ThinkingComponent implements Component {
   private readonly ui: TUI | undefined;
   private spinnerFrame = 0;
   private spinnerInterval: ReturnType<typeof setInterval> | undefined;
-  // Hold a single Text instance so pi-tui's (text, width) → lines cache
-  // actually survives across renders. Re-constructing per render destroys
-  // the cache and forces full re-wrap on every frame, which dominates CPU
-  // once the transcript accumulates many finalized thinking blocks.
+  // 保持单个 Text 实例，以便 pi-tui 的 (text, width) → 行缓存
+  // 能在多次渲染间存活。每次渲染重新构造会销毁缓存，
+  // 导致每帧都强制重新换行，当对话记录中积累大量已定稿的
+  // 思考块后，这会成为 CPU 的主要消耗。
   private readonly textComponent: Text;
 
   constructor(
@@ -106,7 +105,7 @@ export class ThinkingComponent implements Component {
       return rendered;
     }
 
-    // Leading blank + first PREVIEW_LINES content lines + hint line.
+    // 前导空行 + 前 PREVIEW_LINES 行内容 + 提示行。
     const truncated = rendered.slice(0, 1 + THINKING_PREVIEW_LINES);
     const remaining = contentLines.length - THINKING_PREVIEW_LINES;
     const hint = `... (${String(remaining)} more lines, ctrl+o to expand)`;

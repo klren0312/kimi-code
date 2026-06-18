@@ -28,14 +28,12 @@ export interface KimiFilesOptions {
 }
 
 /**
- * Kimi-specific file upload client.
+ * Kimi 专用的文件上传客户端。
  *
- * Wraps the underlying OpenAI-compatible `files.create` API to upload videos
- * to Moonshot's file service and return them as {@link VideoURLPart} values
- * suitable for use in chat messages.
+ * 封装底层 OpenAI 兼容的 `files.create` API，将视频上传至 Moonshot 的文件服务，
+ * 并返回适合在聊天消息中使用的 {@link VideoURLPart} 值。
  *
- * A `KimiFiles` instance is typically obtained from
- * {@link KimiChatProvider.files}.
+ * `KimiFiles` 实例通常通过 {@link KimiChatProvider.files} 获取。
  */
 export class KimiFiles {
   private readonly _apiKey: string | undefined;
@@ -60,17 +58,15 @@ export class KimiFiles {
   }
 
   /**
-   * Upload a video file to Kimi/Moonshot for use in chat messages.
+   * 将视频文件上传到 Kimi/Moonshot 以供聊天消息使用。
    *
-   * Accepts either a local filesystem path or an in-memory
-   * {@link VideoUploadInput}. Returns a {@link VideoURLPart} referencing the
-   * uploaded file by its Moonshot file id.
+   * 接受本地文件系统路径或内存中的 {@link VideoUploadInput}。
+   * 返回一个 {@link VideoURLPart}，通过 Moonshot 文件 id 引用已上传的文件。
    *
-   * @param input - Local path string or `{ data, mimeType }` object.
-   * @returns A `VideoURLPart` whose `url` references the uploaded file
-   *          by its Moonshot file id (e.g. `ms://<file-id>`).
-   * @throws {ChatProviderError} if the input is not a video or the upload
-   *         fails.
+   * @param input - 本地路径字符串或 `{ data, mimeType }` 对象。
+   * @returns 一个 `VideoURLPart`，其 `url` 通过 Moonshot 文件 id 引用已上传的文件
+   *          （例如 `ms://<file-id>`）。
+   * @throws {ChatProviderError} 如果输入不是视频或上传失败。
    */
   async uploadVideo(
     input: string | VideoUploadInput,
@@ -79,27 +75,25 @@ export class KimiFiles {
     let file: unknown;
 
     if (typeof input === 'string') {
-      // Validate the path eagerly so callers get a clear synchronous-ish
-      // failure rather than a generic stream error from the upload pipeline.
+      // 预先验证路径，使调用方能获得清晰的同步式错误，
+      // 而不是上传管线返回的通用流错误。
       if (!fs.existsSync(input)) {
         throw new ChatProviderError(`Video file not found: ${input}`);
       }
       const filename = path.basename(input);
-      // Infer mime type from the file extension and reject anything that is
-      // not a recognised video type. Without this check, callers passing a
-      // non-video file (e.g. `note.txt`) would still hit the upload API and
-      // fail with a confusing server error; surfacing the issue here keeps
-      // the API contract honest and matches the `VideoUploadInput` branch.
+      // 根据文件扩展名推断 MIME 类型，并拒绝任何非已知视频类型。
+      // 若不做此检查，传入非视频文件（例如 `note.txt`）的调用方仍会请求上传 API，
+      // 并收到令人困惑的服务器错误；在此处提前暴露问题可保持 API 契约的严谨性，
+      // 并与 `VideoUploadInput` 分支的行为保持一致。
       const mimeType = guessMimeTypeFromExt(filename);
       if (mimeType === undefined || !mimeType.startsWith('video/')) {
         throw new ChatProviderError(
           `KimiFiles.uploadVideo: file extension does not indicate a video type: ${filename}`,
         );
       }
-      // Read the file into memory and wrap it in a File/Blob. We avoid
-      // `fs.createReadStream` here because a still-open stream would race
-      // with callers that delete the source file after `uploadVideo`
-      // resolves (also common in tests with tmp directories).
+      // 将文件读入内存并包装为 File/Blob。此处避免使用 `fs.createReadStream`，
+      // 因为在 `uploadVideo` 返回后若流仍处于打开状态，会与调用方删除源文件的操作产生竞争
+      // （在使用临时目录的测试中也很常见）。
       const data = await fs.promises.readFile(input);
       const blob = new Blob([new Uint8Array(data)], { type: mimeType });
       file = new File([blob], filename, { type: mimeType });
@@ -108,10 +102,10 @@ export class KimiFiles {
         throw new ChatProviderError(`Expected a video mime type, got ${input.mimeType}`);
       }
       const filename = input.filename ?? guessFilename(input.mimeType);
-      // The OpenAI SDK's `Uploadable` accepts a File-like object. We build
-      // one via the standard Web `File` constructor (available in Node 20+).
-      // `Blob` and `File` are available as globals in Node 20+. The cast via
-      // `Uint8Array` satisfies `BlobPart` in both Node and DOM lib contexts.
+      // OpenAI SDK 的 `Uploadable` 接受类 File 对象。此处通过标准 Web `File` 构造函数
+      // 创建（Node 20+ 中可用）。
+      // `Blob` 和 `File` 在 Node 20+ 中作为全局对象可用。通过 `Uint8Array` 转换
+      // 可在 Node 和 DOM lib 上下文中满足 `BlobPart` 要求。
       const bytes = input.data instanceof Uint8Array ? input.data : new Uint8Array(input.data);
       const blob = new Blob([bytes], { type: input.mimeType });
       file = new File([blob], filename, { type: input.mimeType });
@@ -157,8 +151,8 @@ export class KimiFiles {
 }
 
 /**
- * Guess a filename for an upload from a video MIME type.
- * Falls back to `upload.bin` for unknown types.
+ * 根据视频 MIME 类型猜测上传文件名。
+ * 对于未知类型，回退为 `upload.bin`。
  */
 function guessFilename(mimeType: string): string {
   const ext = MIME_TO_EXT[mimeType.toLowerCase()] ?? 'bin';
@@ -181,8 +175,8 @@ const EXT_TO_MIME: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * Guess a MIME type from a filename extension. Only recognises the video
- * types listed in {@link MIME_TO_EXT}; returns `undefined` otherwise.
+ * 根据文件扩展名猜测 MIME 类型。仅识别 {@link MIME_TO_EXT} 中列出的视频类型；
+ * 否则返回 `undefined`。
  */
 function guessMimeTypeFromExt(filename: string): string | undefined {
   const dot = filename.lastIndexOf('.');

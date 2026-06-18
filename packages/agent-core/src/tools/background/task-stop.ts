@@ -1,5 +1,5 @@
 /**
- * TaskStopTool — stop a running background task.
+ * TaskStopTool — 停止正在运行的后台任务。
  */
 
 import { z } from 'zod';
@@ -47,8 +47,8 @@ export class TaskStopTool implements BuiltinTool<TaskStopInput> {
           return { isError: true, output: `Task not found: ${args.task_id}` };
         }
 
-        // A blank or whitespace-only reason falls back to the default. `?? default`
-        // would not cover the empty-string case, so trim and coalesce explicitly.
+        // 空白或纯空格的 reason 回退到默认值。`?? default` 不会覆盖空字符串的情况，
+        // 因此显式 trim 并合并。
         const trimmedReason = args.reason?.trim();
         const reason =
           trimmedReason === undefined || trimmedReason.length === 0
@@ -56,14 +56,14 @@ export class TaskStopTool implements BuiltinTool<TaskStopInput> {
             : trimmedReason;
 
         if (isBackgroundTaskTerminal(info.status)) {
-          // Already-terminal tasks report their current state using the same
-          // structured multi-line format as the normal stop path below.
+          // 已终止的任务使用与正常停止路径相同的结构化多行格式
+          // 报告其当前状态。
           return {
             output:
               `task_id: ${info.taskId}\n` +
               `status: ${info.status}\n` +
-              // A task persisted by an older build may carry a blank stopReason;
-              // `??` would not coalesce `''`, so trim-and-`||` to the placeholder.
+              // 旧版本构建持久化的任务可能携带空的 stopReason；
+              // `??` 不会合并 `''`，因此使用 trim-and-`||` 回退到占位符。
               `reason: ${terminalStopReason(info.stopReason)}`,
             isError: false,
           };

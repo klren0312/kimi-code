@@ -1,12 +1,12 @@
 /**
- * Declared capabilities for a specific model.
+ * 特定模型的已声明能力。
  *
- * `getModelCapability(wire, model)` returns one of these so callers can gate
- * requests against modalities the model does not accept without dispatching
- * the request and watching it fail upstream.
+ * `getModelCapability(wire, model)` 返回其中之一，以便调用方可以在
+ * 不发送请求并观察其在上游失败的情况下，根据模型不接受的模态
+ * 来限制请求。
  *
- * `max_context_tokens: 0` means "unknown"; callers that do not gate on
- * context length can ignore the field.
+ * `max_context_tokens: 0` 表示"未知"；不根据上下文长度进行限制的
+ * 调用方可以忽略此字段。
  */
 export interface ModelCapability {
   readonly image_in: boolean;
@@ -20,9 +20,8 @@ export interface ModelCapability {
 const UNKNOWN_CAPABILITY_MARKER = Symbol.for('moonshot-ai.kosong.UNKNOWN_CAPABILITY');
 
 /**
- * Shared read-only default returned when a provider has not catalogued a
- * given model. Frozen so accidental mutation at one call site cannot leak
- * into another.
+ * 当提供者未编目给定模型时返回的共享只读默认值。
+ * 已冻结，以防某个调用点的意外修改泄漏到其他地方。
  */
 export const UNKNOWN_CAPABILITY: ModelCapability = Object.freeze(
   Object.defineProperty(

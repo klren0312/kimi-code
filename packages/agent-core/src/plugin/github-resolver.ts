@@ -15,25 +15,23 @@ export interface GithubSourceResolution {
 }
 
 /**
- * Resolve a `github` source descriptor to a downloadable zip URL.
+ * 将 `github` 源描述符解析为可下载的 zip URL。
  *
- * Hot path is the bare-URL case (no explicit ref). We deliberately avoid
- * `api.github.com` because its anonymous quota (60/hour per egress IP) is
- * shared with the user's browser, gh CLI, IDE integrations, etc., and
- * first-time install failing because some other tool burned the budget is
- * unacceptable for our UX.
+ * 热路径是裸 URL 场景（无显式 ref）。我们刻意避免使用
+ * `api.github.com`，因为其匿名配额（每出口 IP 60 次/小时）与用户的
+ * 浏览器、gh CLI、IDE 集成等共享，首次安装因其他工具耗尽配额而失败
+ * 对我们的用户体验来说是不可接受的。
  *
- * Strategy:
- *   1. Explicit ref → straight to codeload, zero network calls beforehand.
- *   2. Bare URL:
- *      a. GET `github.com/{owner}/{repo}/releases/latest` with manual
- *         redirect. 302 → extract tag from `Location` header. This is a
- *         documented-by-behavior GitHub UI route used by Homebrew, gh, etc.
- *         It is *not* part of the API quota.
- *      b. 404 or 302 to `/releases` (fork without own releases) → fall back
- *         to `codeload.github.com/{o}/{r}/zip/HEAD`, which streams the
- *         default branch tip without us needing to know its name.
- *      c. codeload 404 on HEAD → the repo itself does not exist.
+ * 策略：
+ *   1. 显式 ref → 直接使用 codeload，无需预先发起网络请求。
+ *   2. 裸 URL：
+ *      a. GET `github.com/{owner}/{repo}/releases/latest`，手动处理重定向。
+ *         302 → 从 `Location` 头部提取 tag。这是一个被 Homebrew、gh 等
+ *         使用的 GitHub UI 路由行为。它*不*计入 API 配额。
+ *      b. 404 或 302 到 `/releases`（fork 没有自己的 release）→ 回退到
+ *         `codeload.github.com/{o}/{r}/zip/HEAD`，它会流式传输默认分支
+ *         的最新提交，无需知道分支名称。
+ *      c. codeload 对 HEAD 返回 404 → 仓库本身不存在。
  */
 export async function resolveGithubSource(
   input: GithubSourceInput,
@@ -57,7 +55,7 @@ export async function resolveGithubSource(
     };
   }
 
-  // No release we could resolve. Fall back to the default branch via codeload.
+  // 无法解析到 release，回退到通过 codeload 获取默认分支。
   const headProbe = await fetch(
     `https://codeload.github.com/${owner}/${repo}/zip/HEAD`,
     { method: 'HEAD' },
@@ -78,16 +76,15 @@ export async function resolveGithubSource(
 }
 
 /**
- * Returns:
- *   - tag string  → a real latest release was advertised
- *   - undefined   → the repo definitively has no own latest release;
- *                   caller should fall back to the default branch
+ * 返回值：
+ *   - tag 字符串 → 成功解析到最新的 release
+ *   - undefined   → 仓库确实没有自己的最新 release；
+ *                   调用方应回退到默认分支
  *
- * Throws on any unexpected HTTP status (5xx, 403, 429, ...). We deliberately
- * do *not* fold those into "no release" — silently installing the default
- * branch on a transient GitHub error is worse than failing loudly: the user
- * would end up with content different from what they asked for and we would
- * not tell them.
+ * 遇到任何意外 HTTP 状态码（5xx、403、429 等）时抛出异常。我们刻意
+ * *不*将这些情况归为"无 release" —— 在 GitHub 暂时出错时静默安装
+ * 默认分支比大声报错更糟糕：用户会得到与预期不同的内容，而我们不会
+ * 告知他们。
  */
 async function tryResolveLatestReleaseTag(
   owner: string,
@@ -96,7 +93,7 @@ async function tryResolveLatestReleaseTag(
   const url = `https://github.com/${owner}/${repo}/releases/latest`;
   const resp = await fetch(url, { redirect: 'manual' });
 
-  // Definitive "no own latest release". Distinct from transient errors.
+  // 确定性的"没有自己的最新 release"。与暂时性错误不同。
   if (resp.status === 404) return undefined;
 
   if (resp.status !== 301 && resp.status !== 302) {
@@ -110,9 +107,9 @@ async function tryResolveLatestReleaseTag(
   const location = resp.headers.get('location');
   if (location === null) return undefined;
 
-  // Forks without their own releases redirect to bare `/releases` (the page
-  // that lists tags inherited from upstream) instead of a specific tag URL.
-  // Treat that as "no own latest release" and fall back to the default branch.
+  // 没有自己 release 的 fork 会重定向到 `/releases`（列出从上游继承的 tag
+  // 的页面），而不是特定的 tag URL。将其视为"没有自己的最新 release"，
+  // 并回退到默认分支。
   const match = /\/releases\/tag\/([^/?#]+)/.exec(location);
   if (match === null) return undefined;
   try {
@@ -126,29 +123,27 @@ function codeloadUrl(owner: string, repo: string, ref: GithubRef): string {
   const base = `https://codeload.github.com/${owner}/${repo}/zip`;
   const encoded = encodeCodeloadRefPath(ref.value);
   if (ref.kind === 'sha') return `${base}/${encoded}`;
-  // For a ref we confirmed is a tag (came from /releases/tag/...), use the
-  // explicit refs/tags/ path so the download is unambiguous even if a branch
-  // with the same name exists in the repo.
+  // 对于确认是 tag 的 ref（来自 /releases/tag/...），使用显式的 refs/tags/ 路径，
+  // 以确保下载路径明确，即使仓库中存在同名分支也是如此。
   if (ref.kind === 'tag') return `${base}/refs/tags/${encoded}`;
-  // For a `branch`-kind ref we cannot tell whether the user-typed value names
-  // a branch or a tag (e.g. `/tree/v5.1.0`). Use codeload's short form to let
-  // the GitHub backend resolve it the same way `github.com/.../tree/<x>` does.
+  // 对于 `branch` 类型的 ref，我们无法判断用户输入的值是分支名还是 tag 名
+  // （例如 `/tree/v5.1.0`）。使用 codeload 的短路径形式，让 GitHub 后端
+  // 以与 `github.com/.../tree/<x>` 相同的方式解析。
   return `${base}/${encoded}`;
 }
 
 /**
- * Percent-encode a ref name for safe interpolation into a codeload URL path.
+ * 对 ref 名称进行百分号编码，以便安全地插入到 codeload URL 路径中。
  *
- * Git permits characters in ref names that have special meaning in URLs.
- * The reviewer-flagged case is `#`: a valid Git tag character (e.g. a release
- * named `release#1`) but a URL fragment delimiter. Pasted naively into
- * `…/refs/tags/release#1`, the `#1` is parsed as a fragment and the HTTP
- * request reaches the server as `…/refs/tags/release` — which 404s, or worse,
- * delivers a different ref.
+ * Git 允许 ref 名称中包含在 URL 中具有特殊含义的字符。审查中关注的
+ * 案例是 `#`：它是有效的 Git tag 字符（例如名为 `release#1` 的 release），
+ * 但同时也是 URL 片段分隔符。直接粘贴到 `…/refs/tags/release#1` 中，
+ * `#1` 会被解析为片段，HTTP 请求到达服务器时变成 `…/refs/tags/release` ——
+ * 会返回 404，或者更糟，返回不同的 ref。
  *
- * Refs may also legitimately contain `/` (a branch named `feat/foo`, or a
- * tag named `series/v1`). We must preserve those as real path separators.
- * So: split on `/`, percent-encode each segment, and rejoin.
+ * Ref 中也可能合法包含 `/`（名为 `feat/foo` 的分支，或名为 `series/v1` 的 tag）。
+ * 我们必须将它们保留为真实的路径分隔符。
+ * 因此：按 `/` 分割，对每个段进行百分号编码，然后重新连接。
  */
 function encodeCodeloadRefPath(value: string): string {
   return value.split('/').map(encodeURIComponent).join('/');

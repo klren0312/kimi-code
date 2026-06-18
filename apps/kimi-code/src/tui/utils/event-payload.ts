@@ -57,7 +57,7 @@ export function parseStreamingArgs(argumentsText: string): Record<string, unknow
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // fall through to partial scan
+      // 解析失败，回退到部分扫描
     }
   }
   const result: Record<string, unknown> = {};

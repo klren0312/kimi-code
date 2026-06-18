@@ -83,7 +83,7 @@ export class SessionReplayRenderer {
   }
 
   // ---------------------------------------------------------------------------
-  // Snapshot hydration
+  // 快照水合（恢复初始状态）
   // ---------------------------------------------------------------------------
 
   private hydrateSnapshot(agent: ResumedAgentState): void {
@@ -111,13 +111,9 @@ export class SessionReplayRenderer {
   }
 
   /**
-   * Push real terminal status into each replayed `Agent` card whose
-   * backing background task is already in a terminal state. Runs AFTER
-   * `renderRecords` because the tool call components only exist once the
-   * replay has mounted them — `hydrateBackgroundState` runs too early to
-   * reach them. Without this, terminated bg agents (including ones that
-   * reconcile reclassified as `lost`) keep the spawn-success ToolResult's
-   * default of `✓ Completed`.
+   * 将真实的终端状态推送至每个已回放的 `Agent` 卡片，这些卡片对应的后台任务已经处于终态。
+   * 在 `renderRecords` 之后运行，因为工具调用组件只有在回放挂载后才存在——`hydrateBackgroundState` 运行过早，无法触达它们。
+   * 如果不这样做，已终止的后台 agent（包括被重新归类为 `lost` 的）会保持 spawn-success ToolResult 的默认 `✓ Completed` 状态。
    */
   private applyTerminalBackgroundAgentStatuses(agent: ResumedAgentState): void {
     for (const info of agent.background) {
@@ -162,7 +158,7 @@ export class SessionReplayRenderer {
   }
 
   // ---------------------------------------------------------------------------
-  // Record rendering
+  // 记录渲染
   // ---------------------------------------------------------------------------
 
   private renderRecords(agent: ResumedAgentState): void {
@@ -356,7 +352,7 @@ export class SessionReplayRenderer {
   }
 
   // ---------------------------------------------------------------------------
-  // Special content renderers
+  // 特殊内容渲染器
   // ---------------------------------------------------------------------------
 
   private renderSkillActivation(

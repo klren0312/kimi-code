@@ -45,11 +45,11 @@ import {
 } from './tool-call-id';
 
 /**
- * Normalize an Anthropic `stop_reason` string to the unified
- * {@link FinishReason} enum.
+ * 将 Anthropic 的 `stop_reason` 字符串标准化为统一的
+ * {@link FinishReason} 枚举。
  *
- * Source: `message.stop_reason` (non-stream) or the last `message_delta`
- * event's `delta.stop_reason` (stream).
+ * 数据来源：`message.stop_reason`（非流式）或最后一个 `message_delta`
+ * 事件的 `delta.stop_reason`（流式）。
  */
 function normalizeAnthropicStopReason(raw: string | null | undefined): {
   finishReason: FinishReason | null;
@@ -82,13 +82,13 @@ export interface AnthropicOptions {
   betaFeatures?: string[] | undefined;
   defaultHeaders?: Record<string, string>;
   metadata?: Record<string, string> | undefined;
-  /** Use streaming API. Defaults to true. Set to false for non-streaming (test/fallback). */
+  /** 使用流式 API。默认为 true。设为 false 可使用非流式（测试/回退）。 */
   stream?: boolean | undefined;
   /**
-   * Explicitly declare whether the model supports adaptive thinking
-   * (`thinking: { type: 'adaptive' }`), overriding the model-name version
-   * inference. Useful for custom-named endpoints whose model name does not
-   * encode a parseable Claude version. Leave undefined to infer from the name.
+   * 显式声明模型是否支持自适应思考
+   * （`thinking: { type: 'adaptive' }`），覆盖基于模型名称的版本推断。
+   * 适用于自定义端点，其模型名称不包含可解析的 Claude 版本信息。
+   * 留空则从模型名称自动推断。
    */
   adaptiveThinking?: boolean | undefined;
   clientFactory?: (auth: ProviderRequestAuth) => Anthropic;
@@ -113,44 +113,42 @@ const ANTHROPIC_TOOL_CALL_ID_POLICY: ToolCallIdPolicy = {
 };
 
 /**
- * Per-version default output ceilings sourced from Anthropic's Messages
- * API model cards (platform.claude.com/docs/en/about-claude/models/overview).
- * Values are the documented synchronous Messages-API maximum — we send
- * the full ceiling because Claude 4 + interleaved-thinking shares this
- * budget with encrypted reasoning, so anything below the documented cap
- * can silently truncate mid-`tool_use`.
+ * 按版本划分的默认输出上限，数据来源于 Anthropic Messages API 模型文档
+ * （platform.claude.com/docs/en/about-claude/models/overview）。
+ * 值为文档记录的同步 Messages-API 最大值——我们发送完整的上限值，
+ * 因为 Claude 4 + 交错思考会与加密推理共享此预算，低于文档上限的
+ * 值可能会导致 `tool_use` 执行过程中被静默截断。
  *
- * Keys are `<family>-<major>[-<minor>]`. Lookups try the most specific
- * key first, then fall back to the family/major-only entry, so an
- * unrecognized minor version (e.g. a future `opus-4-10`) gets the
- * family's baseline rather than the generic fallback.
+ * 键格式为 `<family>-<major>[-<minor>]`。查找时先尝试最精确的键，
+ * 然后回退到仅含 family/major 的条目，因此未识别的次版本号
+ * （如未来的 `opus-4-10`）将使用该系列的基线值，而非通用回退值。
  */
 const CEILING_BY_FAMILY_VERSION: Readonly<Record<string, number>> = {
-  // Claude Fable 5 documents a 128k output ceiling.
+  // Claude Fable 5 文档记录的输出上限为 128k。
   'fable-5': 128000,
-  // Claude Opus per minor version. 4.6 and 4.7 raised the cap to 128k;
-  // 4.5 ships at 64k; 4.1 and the dated 4.0 release stay at 32k.
+  // Claude Opus 按次版本号划分。4.6 和 4.7 将上限提升至 128k；
+  // 4.5 为 64k；4.1 及带日期的 4.0 版本保持在 32k。
   'opus-4-7': 128000,
   'opus-4-6': 128000,
   'opus-4-5': 64000,
   'opus-4-1': 32000,
   'opus-4-0': 32000,
   'opus-4': 32000,
-  // Claude Sonnet 4.x: 4.0 / 4.5 / 4.6 all document a 64k ceiling.
+  // Claude Sonnet 4.x：4.0 / 4.5 / 4.6 文档记录的上限均为 64k。
   'sonnet-4-6': 64000,
   'sonnet-4-5': 64000,
   'sonnet-4-0': 64000,
   'sonnet-4': 64000,
-  // Claude Haiku 4.5 is 64k; the family-only entry keeps future dated
-  // 4.x Haiku releases on the same ceiling.
+  // Claude Haiku 4.5 为 64k；仅含系列的条目使未来的带日期 4.x
+  // Haiku 版本保持相同的上限。
   'haiku-4-5': 64000,
   'haiku-4': 64000,
-  // Claude 3.5 / 3.7 documented at 8192 (standard endpoint).
+  // Claude 3.5 / 3.7 文档记录的上限为 8192（标准端点）。
   'opus-3-5': 8192,
   'sonnet-3-5': 8192,
   'sonnet-3-7': 8192,
   'haiku-3-5': 8192,
-  // Original Claude 3 generation.
+  // 初代 Claude 3 系列。
   'opus-3': 4096,
   'sonnet-3': 4096,
   'haiku-3': 4096,
@@ -166,31 +164,29 @@ interface ClaudeVersion {
   minor: number | null;
 }
 
-// Family-first form: "opus-4-7", "sonnet-4.6", "haiku-4-5-20251001",
-// "fable-5" (single version component — Fable ids carry no minor).
-// Version numbers are capped at 1–2 digits with a non-digit lookahead so
-// 8-digit date suffixes (e.g. `-20251001`) don't get consumed as version
-// components.
+// 系列优先格式："opus-4-7"、"sonnet-4.6"、"haiku-4-5-20251001"、
+// "fable-5"（单一版本组件——Fable 标识符不含次版本号）。
+// 版本号限制为 1–2 位数字，后跟非数字前瞻断言，以确保
+// 8 位日期后缀（如 `-20251001`）不会被误解析为版本组件。
 const FAMILY_FIRST_RE =
   /(opus|sonnet|haiku|fable)[-._](\d{1,2})(?!\d)(?:[-._](\d{1,2})(?!\d))?/;
-// Legacy version-first form: "3-5-sonnet", "3.7.opus" — used by older
-// Anthropic model ids and Bedrock variants of Claude 3.x.
+// 旧版版本优先格式："3-5-sonnet"、"3.7.opus"——用于较旧的
+// Anthropic 模型标识符及 Claude 3.x 的 Bedrock 变体。
 const VERSION_FIRST_RE = /(\d{1,2})[-._](\d{1,2})[-._](opus|sonnet|haiku)/;
-// Bare family form for base Claude 3 (no minor): "3-opus", "3.haiku".
+// 基础 Claude 3 的裸系列格式（无次版本号）："3-opus"、"3.haiku"。
 const BARE_FAMILY_RE = /(\d{1,2})[-._](opus|sonnet|haiku)/;
 
 /**
- * Extract Claude family + version from a model id.
+ * 从模型标识符中提取 Claude 系列和版本号。
  *
- * Designed to survive the naming variants we see across vendors:
- * vendor prefixes (`anthropic.`, `aws/`, `openrouter/`,
- * `online-`), suffixes (date stamps like `-20251001`, build tags
- * like `-construct`, `-v1:0`), and `.` vs `-` separators between
- * the family and version components.
+ * 设计为能够兼容各供应商的命名变体：
+ * 供应商前缀（`anthropic.`、`aws/`、`openrouter/`、
+ * `online-`）、后缀（日期戳如 `-20251001`、构建标签如
+ * `-construct`、`-v1:0`），以及系列和版本组件之间的
+ * `.` 与 `-` 分隔符差异。
  *
- * Returns `null` when the id contains no Claude marker or no
- * recognizable family/version, in which case the resolver should fall
- * back to the override or {@link FALLBACK_MAX_TOKENS}.
+ * 当标识符不包含 Claude 标记或无法识别的系列/版本时返回 `null`，
+ * 此时解析器应使用覆盖值或 {@link FALLBACK_MAX_TOKENS} 作为回退。
  */
 function parseClaudeVersion(model: string): ClaudeVersion | null {
   return parseClaudeFamilyVersion(model, true);
@@ -202,11 +198,10 @@ function parseClaudeAliasVersion(model: string): ClaudeVersion | null {
 
 function parseClaudeFamilyVersion(model: string, requireClaudeMarker: boolean): ClaudeVersion | null {
   const normalized = model.toLowerCase();
-  // Guard against false positives on non-Claude models that happen to
-  // contain an `opus-4-7`-like substring (e.g. fine-tunes named after a
-  // checkpoint). The Anthropic provider might still be configured for
-  // non-Claude endpoints, so without this guard we'd quietly apply
-  // Claude ceilings to unrelated models.
+  // 防止在非 Claude 模型上出现误匹配，这些模型可能恰好包含
+  // 类似 `opus-4-7` 的子字符串（如以检查点命名的微调模型）。
+  // Anthropic 提供者可能仍被配置为连接非 Claude 端点，
+  // 若无此防护，我们会悄悄将 Claude 上限应用于无关模型。
   if (requireClaudeMarker && !normalized.includes('claude')) return null;
 
   const familyFirst = FAMILY_FIRST_RE.exec(normalized);
@@ -246,18 +241,18 @@ function lookupClaudeCeiling(version: ClaudeVersion): number | undefined {
 }
 
 /**
- * Resolve the default `max_tokens` for an Anthropic request.
+ * 解析 Anthropic 请求的默认 `max_tokens`。
  *
- * Precedence:
- *   1. Caller-provided `override` (e.g. `models.<alias>.maxOutputSize`
- *      from the harness config) — honored when present so users can
- *      intentionally lower the budget (handy for forcing truncation
- *      in tests) or raise it on a model we don't yet know about.
- *   2. When the model id parses to a known Claude family + version,
- *      the override is clamped to the documented Messages-API ceiling
- *      so we never send a value the server would reject.
- *   3. With no override and no recognized version, fall back to
- *      {@link FALLBACK_MAX_TOKENS}.
+ * 优先级：
+ *   1. 调用方提供的 `override`（如来自 harness 配置的
+ *      `models.<alias>.maxOutputSize`）——当存在时予以接受，
+ *      以便用户有意降低预算（便于在测试中强制截断）或
+ *      对尚未识别的模型提高上限。
+ *   2. 当模型标识符可解析为已知的 Claude 系列 + 版本时，
+ *      override 会被限制在文档记录的 Messages-API 上限内，
+ *      确保不会发送服务器会拒绝的值。
+ *   3. 无 override 且无法识别版本时，回退到
+ *      {@link FALLBACK_MAX_TOKENS}。
  */
 export function resolveDefaultMaxTokens(model: string, override?: number): number {
   const parsed = parseClaudeVersion(model);
@@ -292,8 +287,8 @@ function supportsAdaptiveThinking(model: string): boolean {
   if (version === null) {
     return false;
   }
-  // A missing minor is a bare family-major id: "claude-fable-5" (5.0 ≥ 4.6,
-  // adaptive-only) or "claude-opus-4" (4.0 < 4.6, budget-based).
+  // 缺少次版本号表示是裸系列-主版本标识符："claude-fable-5"（5.0 ≥ 4.6，
+  // 仅自适应模式）或 "claude-opus-4"（4.0 < 4.6，基于预算模式）。
   return versionAtLeast(
     { major: version.major, minor: version.minor ?? 0 },
     ADAPTIVE_MIN_VERSION,
@@ -358,7 +353,7 @@ function shouldPreserveUnsignedThinking(model: string): boolean {
 }
 
 /**
- * Content block types that support cache_control injection.
+ * 支持 cache_control 注入的内容块类型。
  */
 const CACHEABLE_TYPES = new Set([
   'text',
@@ -384,15 +379,13 @@ function injectCacheControlOnLastBlock(messages: MessageParam[]): void {
 }
 
 /**
- * Check whether a MessageParam is a user message whose content consists
- * entirely of `tool_result` blocks.
+ * 检查 MessageParam 是否为内容完全由 `tool_result` 块组成的用户消息。
  *
- * Used to detect adjacent tool-result-only messages that must be merged
- * before hitting the Anthropic wire. Per the Messages API parallel-tool-use
- * spec, all `tool_result` blocks answering parallel `tool_use` calls must
- * live in a single user message — splitting them across consecutive user
- * messages fails on strict Anthropic-compatible backends (HTTP 400) and
- * silently degrades parallel tool use on api.anthropic.com.
+ * 用于检测需要在发送到 Anthropic 接口之前合并的相邻纯工具结果消息。
+ * 根据 Messages API 并行工具调用规范，所有响应并行 `tool_use` 调用的
+ * `tool_result` 块必须位于同一条用户消息中——将它们拆分到连续的用户消息中
+ * 会在严格的 Anthropic 兼容后端上失败（HTTP 400），并在 api.anthropic.com
+ * 上静默降级并行工具使用。
  */
 function isToolResultOnly(message: MessageParam): boolean {
   if (message.role !== 'user') return false;
@@ -406,10 +399,9 @@ interface AnthropicImageBlock {
   cache_control?: { type: 'ephemeral' };
 }
 
-// The Messages API has no representation for audio or video input. Instead of
-// silently dropping such parts (the model would not even know an attachment
-// existed), emit a placeholder text block so it can acknowledge the gap.
-// Consecutive parts of the same kind collapse into a single placeholder.
+// Messages API 没有音频或视频输入的表示形式。与其静默丢弃这些部分
+// （模型甚至不知道附件的存在），不如发出一个占位文本块，
+// 以便模型能够感知到缺失。连续的同类部分会折叠为单个占位符。
 const OMITTED_MEDIA_PLACEHOLDER = {
   audio_url: '(audio omitted: not supported by this provider)',
   video_url: '(video omitted: not supported by this provider)',
@@ -478,7 +470,7 @@ function toolResultToBlock(toolCallId: string, content: ContentPart[]): ToolResu
 function convertMessage(message: Message, model: string): MessageParam {
   const role = message.role;
 
-  // system role -> <system>...</system> wrapped user message
+  // system 角色 -> 用 <system>...</system> 包裹的用户消息
   if (role === 'system') {
     const text = message.content
       .filter((p) => p.type === 'text')
@@ -490,7 +482,7 @@ function convertMessage(message: Message, model: string): MessageParam {
     };
   }
 
-  // tool role -> ToolResultBlockParam in user message
+  // tool 角色 -> 用户消息中的 ToolResultBlockParam
   if (role === 'tool') {
     if (message.toolCallId === undefined) {
       throw new ChatProviderError('Tool message missing `toolCallId`.');
@@ -499,7 +491,7 @@ function convertMessage(message: Message, model: string): MessageParam {
     return { role: 'user', content: [block as ContentBlockParam] };
   }
 
-  // user or assistant
+  // user 或 assistant
   const blocks: ContentBlockParam[] = [];
   for (const part of message.content) {
     if (part.type === 'text') {
@@ -507,20 +499,19 @@ function convertMessage(message: Message, model: string): MessageParam {
     } else if (part.type === 'image_url') {
       blocks.push(imageUrlPartToAnthropic(part.imageUrl.url) as unknown as ContentBlockParam);
     } else if (part.type === 'think') {
-      // ThinkPart -> ThinkingBlockParam.
+      // ThinkPart -> ThinkingBlockParam。
       //
-      // Signed: emit the block with its signature. api.anthropic.com requires a
-      // valid signature and always supplies one, so Anthropic-sourced history
-      // always takes this branch.
+      // 有签名：带签名发出该块。api.anthropic.com 要求有效签名并始终提供，
+      // 因此来源于 Anthropic 的历史记录始终走此分支。
       //
-      // Unsigned: still PRESERVE the thinking, emitted *without* a `signature`
-      // field. Anthropic-compatible backends (e.g. Kimi) stream thinking with
-      // no signature_delta, yet reject a tool-call turn whose thinking is gone
-      // ("thinking is enabled but reasoning_content is missing"). Dropping it
-      // here is what broke multi-step tool use on those backends. Claude
-      // models reject unsigned thinking blocks, so those are only preserved
-      // for non-Claude Anthropic-compatible models. An unsigned part with no
-      // text carries nothing, so it is skipped.
+      // 无签名：仍然保留思考内容，*不带* `signature` 字段发出。
+      // Anthropic 兼容后端（如 Kimi）在流式传输思考内容时不提供 signature_delta，
+      // 但会拒绝思考内容缺失的工具调用轮次
+      // （"thinking is enabled but reasoning_content is missing"）。
+      // 此处丢弃思考内容是导致这些后端多步工具使用失败的原因。
+      // Claude 模型会拒绝无签名的思考块，因此仅对非 Claude 的
+      // Anthropic 兼容模型保留无签名思考内容。无文本的无签名部分
+      // 不携带任何信息，因此会被跳过。
       if (part.encrypted !== undefined) {
         blocks.push({
           type: 'thinking',
@@ -539,7 +530,7 @@ function convertMessage(message: Message, model: string): MessageParam {
     }
   }
 
-  // Tool calls -> ToolUseBlockParam
+  // 工具调用 -> ToolUseBlockParam
   if (message.toolCalls.length > 0) {
     for (const tc of message.toolCalls) {
       let toolInput: Record<string, unknown> = {};
@@ -568,14 +559,14 @@ function convertMessage(message: Message, model: string): MessageParam {
   return { role: role, content: blocks };
 }
 export function convertAnthropicError(error: unknown): ChatProviderError {
-  // Check timeout before connection (APIConnectionTimeoutError extends APIConnectionError)
+  // 在检查连接错误之前先检查超时（APIConnectionTimeoutError 继承自 APIConnectionError）
   if (error instanceof AnthropicTimeoutError) {
     return new APITimeoutError(error.message);
   }
   if (error instanceof AnthropicConnectionError) {
     return new APIConnectionError(error.message);
   }
-  // APIError with a status code => status error
+  // 带状态码的 APIError => 状态错误
   if (error instanceof AnthropicAPIError && typeof error.status === 'number') {
     const reqId = error.requestID ?? null;
     return normalizeAPIStatusError(error.status, error.message, reqId);
@@ -769,9 +760,9 @@ class AnthropicStreamedMessage implements StreamedMessage {
                 id: block.id,
                 name: block.name,
                 arguments: '',
-                // Carry the Anthropic block index so parallel tool_use
-                // blocks' interleaved input_json_delta chunks can be routed
-                // to the correct ToolCall by the generate loop.
+                // 携带 Anthropic 块索引，以便并行 tool_use 块的
+                // 交错 input_json_delta 数据块能被生成循环
+                // 正确路由到对应的 ToolCall。
                 _streamIndex: blockIndex,
               } satisfies ToolCall;
               break;
@@ -792,8 +783,8 @@ class AnthropicStreamedMessage implements StreamedMessage {
               yield {
                 type: 'tool_call_part',
                 argumentsPart: delta.partial_json,
-                // Carry the Anthropic block index so this delta is routed
-                // to the matching ToolCall (parallel tool_use support).
+                // 携带 Anthropic 块索引，以便此 delta 被路由到
+                // 匹配的 ToolCall（支持并行 tool_use）。
                 index: blockIndex,
               };
               break;
@@ -806,12 +797,12 @@ class AnthropicStreamedMessage implements StreamedMessage {
               break;
           }
         } else if (eventType === 'content_block_stop') {
-          // No-op: the generate loop infers tool-call completion from the
-          // next non-merging part (typically the next content_block_start)
-          // or from stream end. Anthropic's block boundary is therefore
-          // absorbed inside the adapter rather than surfaced upstream.
+          // 无操作：生成循环从下一个非合并部分（通常是下一个
+          // content_block_start）或流结束推断工具调用完成。
+          // 因此 Anthropic 的块边界在适配器内部处理，
+          // 而非向上传递。
         } else if (eventType === 'message_delta') {
-          // Update usage from delta
+          // 从 delta 更新用量
           const deltaUsage = (evt as { usage?: Record<string, unknown> }).usage;
           if (deltaUsage !== undefined) {
             if (typeof deltaUsage['output_tokens'] === 'number') {
@@ -827,13 +818,13 @@ class AnthropicStreamedMessage implements StreamedMessage {
               this._usage.inputOther = deltaUsage['input_tokens'];
             }
           }
-          // The terminal `stop_reason` lives on `delta.stop_reason` of the
-          // last `message_delta` event for this response. Capture it here.
+          // 终止 `stop_reason` 存在于此响应最后一个 `message_delta` 事件的
+          // `delta.stop_reason` 中。在此处捕获。
           //
-          // Accept `null` explicitly: if the key is present we forward the
-          // value (including null) to `_captureStopReason`, which maps it to
-          // `{null, null}`. Only a missing key skips the capture. This avoids
-          // a stale prior capture persisting after an explicit null reset.
+          // 显式接受 `null`：如果键存在，我们将值（包括 null）转发给
+          // `_captureStopReason`，它会将其映射为 `{null, null}`。
+          // 仅当键缺失时才跳过捕获。这避免了在显式 null 重置后
+          // 过期的先前捕获值仍然保留的问题。
           const messageDeltaPayload = (evt as { delta?: Record<string, unknown> }).delta;
           if (messageDeltaPayload !== undefined && 'stop_reason' in messageDeltaPayload) {
             this._captureStopReason(
@@ -841,7 +832,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
             );
           }
         }
-        // message_stop: nothing to do
+        // message_stop：无需操作
       }
     } catch (error: unknown) {
       throw convertAnthropicError(error);
@@ -907,7 +898,7 @@ export class AnthropicChatProvider implements ChatProvider {
           return effort;
       }
     }
-    // budget-based
+    // 基于预算模式
     const budget = (thinkingConfig as { budget_tokens?: number }).budget_tokens ?? 0;
     if (budget <= 1024) {
       return 'low';
@@ -931,7 +922,7 @@ export class AnthropicChatProvider implements ChatProvider {
     history: Message[],
     options?: GenerateOptions,
   ): Promise<StreamedMessage> {
-    // Build system param
+    // 构建 system 参数
     const system: TextBlockParam[] | undefined = systemPrompt
       ? [
           {
@@ -942,8 +933,8 @@ export class AnthropicChatProvider implements ChatProvider {
         ]
       : undefined;
 
-    // Convert messages, merging consecutive tool-result-only user messages
-    // into a single user message (Anthropic parallel-tool-use spec).
+    // 转换消息，将连续的纯工具结果用户消息合并为单条用户消息
+    // （Anthropic 并行工具调用规范）。
     const messages: MessageParam[] = [];
     const normalizedHistory = normalizeToolCallIdsForProvider(
       history,
@@ -962,11 +953,11 @@ export class AnthropicChatProvider implements ChatProvider {
       }
     }
 
-    // Inject cache_control on last content block of last message (after merge,
-    // so it lands on the final tool_result block in the merged user message).
+    // 在最后一条消息的最后一个内容块上注入 cache_control（在合并之后执行，
+    // 使其落在合并后用户消息的最后一个 tool_result 块上）。
     injectCacheControlOnLastBlock(messages);
 
-    // Build generation kwargs (excluding betaFeatures)
+    // 构建生成参数（不包括 betaFeatures）
     const kwargs: Record<string, unknown> = {};
     if (this._generationKwargs.max_tokens !== undefined) {
       kwargs['max_tokens'] = this._generationKwargs.max_tokens;
@@ -980,10 +971,10 @@ export class AnthropicChatProvider implements ChatProvider {
     if (this._generationKwargs.top_p !== undefined) {
       kwargs['top_p'] = this._generationKwargs.top_p;
     }
-    // Fable rejects an explicit `disabled` thinking config (HTTP 400, unlike
-    // Opus 4.7/4.8 which accept it), so omit the field instead. Note thinking
-    // cannot actually be turned off on Fable: adaptive thinking is always on,
-    // and an omitted `thinking` field still runs with it.
+    // Fable 会拒绝显式的 `disabled` 思考配置（返回 HTTP 400，
+    // 与接受该配置的 Opus 4.7/4.8 不同），因此改为省略该字段。
+    // 注意：Fable 上实际上无法关闭思考功能——自适思始终开启，
+    // 省略 `thinking` 字段仍然会使用自适应思考。
     const thinking = this._generationKwargs.thinking;
     if (thinking !== undefined && !(thinking.type === 'disabled' && isFableModel(this._model))) {
       kwargs['thinking'] = thinking;
@@ -992,14 +983,14 @@ export class AnthropicChatProvider implements ChatProvider {
       kwargs['output_config'] = this._generationKwargs.output_config;
     }
 
-    // Build beta headers
+    // 构建 beta 请求头
     const betas = this._generationKwargs.betaFeatures ?? [];
     const extraHeaders: Record<string, string> = {};
     if (betas.length > 0) {
       extraHeaders['anthropic-beta'] = betas.join(',');
     }
 
-    // Convert tools
+    // 转换工具
     const anthropicTools: AnthropicToolParam[] = tools.map((t) => convertTool(t));
     if (anthropicTools.length > 0) {
       const lastTool = anthropicTools.at(-1);
@@ -1008,7 +999,7 @@ export class AnthropicChatProvider implements ChatProvider {
       }
     }
 
-    // Build the create params
+    // 构建创建参数
     const createParams: Record<string, unknown> = {
       model: this._model,
       messages,
@@ -1039,9 +1030,9 @@ export class AnthropicChatProvider implements ChatProvider {
     const client = this._createClient(options?.auth);
 
     if (this._stream) {
-      // Use the raw Messages stream instead of the SDK MessageStream helper.
-      // The helper reparses accumulated input_json_delta buffers on every chunk,
-      // which becomes synchronous O(n^2) work for large streamed tool arguments.
+      // 使用原始 Messages 流而非 SDK 的 MessageStream 辅助器。
+      // 该辅助器在每个数据块上重新解析累积的 input_json_delta 缓冲区，
+      // 对于大型流式工具参数这会变成同步的 O(n^2) 操作。
       try {
         const stream = await client.messages.create(
           { ...createParams, stream: true } as unknown as MessageCreateParamsStreaming,
@@ -1053,7 +1044,7 @@ export class AnthropicChatProvider implements ChatProvider {
       }
     }
 
-    // Non-streaming fallback
+    // 非流式回退
     try {
       const response = await client.messages.create(
         { ...createParams, stream: false } as unknown as MessageCreateParams,
@@ -1110,15 +1101,14 @@ export class AnthropicChatProvider implements ChatProvider {
     return defaultHeaders;
   }
 
-  // We use the Anthropic SDK purely as a transport to arbitrary
-  // anthropic-compatible endpoints (`baseUrl` may point anywhere). Left to its
-  // defaults the SDK auto-discovers credentials from the shell environment
-  // (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_CUSTOM_HEADERS), which
-  // would leak an out-of-band bearer/headers to a third-party endpoint even when
-  // an explicit apiKey is set. So we hard-disable every auto-discovery channel.
-  // These `null`s — and the nulled headers in _buildDefaultHeaders — are NOT
-  // redundant: removing them reintroduces credential leakage. Regression cover:
-  // test/e2e/anthropic-adapter.test.ts.
+  // 我们将 Anthropic SDK 纯粹用作连接任意 Anthropic 兼容端点的传输层
+  // （`baseUrl` 可指向任何位置）。如果使用默认配置，SDK 会从 shell 环境
+  // 自动发现凭据（ANTHROPIC_AUTH_TOKEN、ANTHROPIC_BASE_URL、
+  // ANTHROPIC_CUSTOM_HEADERS），即使设置了显式 apiKey，也会将
+  // 带外的 bearer/headers 泄漏给第三方端点。因此我们硬禁用所有自动发现通道。
+  // 这些 `null`——以及 _buildDefaultHeaders 中的 null 化 headers——并非
+  // 冗余：移除它们会重新引入凭据泄漏。回归测试覆盖：
+  // test/e2e/anthropic-adapter.test.ts。
   private _buildClient(apiKey: string): Anthropic {
     return new Anthropic({
       apiKey,
@@ -1129,8 +1119,8 @@ export class AnthropicChatProvider implements ChatProvider {
   }
 
   withThinking(effort: ThinkingEffort): AnthropicChatProvider {
-    // Resolve once: an explicit `adaptiveThinking` option overrides the
-    // model-name version inference, so custom-named endpoints can opt in/out.
+    // 一次性解析：显式的 `adaptiveThinking` 选项覆盖基于模型名称的
+    // 版本推断，使自定义端点可以选择启用/禁用。
     const adaptive = this._adaptiveThinking ?? supportsAdaptiveThinking(this._model);
 
     if (effort === 'off') {

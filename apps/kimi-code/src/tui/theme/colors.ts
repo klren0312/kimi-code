@@ -1,75 +1,72 @@
 /**
- * Color palette definitions for dark and light themes.
+ * 暗色和亮色主题的调色板定义。
  *
- * `darkColors` / `lightColors` are the semantic `ColorPalette` consumed by
- * every UI component via the global Theme singleton. Each token holds its hex
- * value directly — see the per-token docs on `ColorPalette` for what each one
- * controls.
+ * `darkColors` / `lightColors` 是每个 UI 组件通过全局 Theme 单例
+ * 消费的语义化 `ColorPalette`。每个 token 直接保存其十六进制值——
+ * 详见 `ColorPalette` 上每个 token 的文档，了解其控制的用途。
  *
- * Light palette values are tuned for ≥ 4.5:1 contrast against #FFFFFF
- * for text tokens and ≥ 3:1 for chrome (border / large text), matching
- * WCAG AA.
+ * 亮色调色板的文本 token 针对 #FFFFFF 背景进行了 ≥ 4.5:1 对比度调优，
+ * chrome 元素（边框/大文本）≥ 3:1，符合 WCAG AA 标准。
  */
 
-// Each token below documents where it is actually consumed, so theme authors
-// know what changing it affects. "Widely" means the token is read across most
-// dialogs/messages rather than in one specific place.
+// 下面每个 token 都记录了其实际消费位置，以便主题作者了解
+// 修改它会影响什么。"广泛使用"表示该 token 在大多数对话框/消息中
+// 都被读取，而非仅在某个特定位置。
 export interface ColorPalette {
-  // ── Brand ──
-  /** Dominant interactive/brand colour: links & inline code, the selected item
-   *  in nearly every dialog, the focused editor border, plan/"running" badges,
-   *  spinners. The most widely used token. */
+  // ── 品牌色 ──
+  /** 主要交互/品牌色：链接和行内代码、几乎所有对话框中选中的项目、
+   *  编辑器聚焦边框、计划/"运行中"徽标、加载动画。使用最广泛的 token。 */
   primary: string;
-  /** Secondary highlight: approval "▶" prefix, device-code box, image
-   *  placeholder, BTW / queue panes, custom-registry import. */
+  /** 次要高亮色：审批 "▶" 前缀、设备码框、图片占位符、
+   *  BTW / 队列面板、自定义注册表导入。 */
   accent: string;
 
-  // ── Text ──
-  /** Default body text: dialog bodies, todo titles, footer model label,
-   *  markdown headings, tool/read output, and assistant-side message bullets
-   *  (assistant / tool / agent / read) plus markdown list bullets. */
+  // ── 文本色 ──
+  /** 默认正文文本：对话框正文、待办标题、页脚模型标签、
+   *  markdown 标题、工具/读取输出，以及助手侧消息要点
+   *  （助手/工具/代理/读取）加 markdown 列表要点。 */
   text: string;
-  /** Emphasised / bold text: input dialogs, status messages. */
+  /** 强调/加粗文本：输入对话框、状态消息。 */
   textStrong: string;
-  /** Secondary, dimmed text (the most widely used dim shade): thinking blocks,
-   *  hints, descriptions, completed todos, markdown quotes, and the footer
-   *  status bar (cwd path, git badge). */
+  /** 次要、暗淡文本（使用最广泛的暗淡色调）：思考块、
+   *  提示、描述、已完成待办、markdown 引用，以及页脚
+   *  状态栏（cwd 路径、git 徽标）。 */
   textDim: string;
-  /** Faintest text: counters, scroll info, descriptions, markdown link URLs,
-   *  code-block borders. */
+  /** 最淡文本：计数器、滚动信息、描述、markdown 链接 URL、
+   *  代码块边框。 */
   textMuted: string;
 
-  // ── Surface ──
-  /** Borders: pane & editor borders, markdown horizontal rule. */
+  // ── 表面色 ──
+  /** 边框：面板和编辑器边框、markdown 水平分隔线。 */
   border: string;
-  /** Focus / attention border — currently only the approval panel. */
+  /** 聚焦/注意边框——目前仅用于审批面板。 */
   borderFocus: string;
 
-  // ── State ──
-  /** Success: ✓ marks, "enabled", completed states. */
+  // ── 状态色 ──
+  /** 成功：✓ 标记、"已启用"、已完成状态。 */
   success: string;
-  /** Warning: auto/yolo badges, stale markers, plan-mode hint. */
+  /** 警告：auto/yolo 徽标、过时标记、计划模式提示。 */
   warning: string;
-  /** Error: error messages, failed tool output. */
+  /** 错误：错误消息、失败的工具输出。 */
   error: string;
 
-  // ── Diff (all consumed by components/media/diff-preview.ts) ──
-  /** Added lines. */
+  // ── Diff（全部由 components/media/diff-preview.ts 消费）──
+  /** 新增行。 */
   diffAdded: string;
-  /** Removed lines. */
+  /** 删除行。 */
   diffRemoved: string;
-  /** Added lines — intra-line changed words (bold). */
+  /** 新增行——行内变更词（加粗）。 */
   diffAddedStrong: string;
-  /** Removed lines — intra-line changed words (bold). */
+  /** 删除行——行内变更词（加粗）。 */
   diffRemovedStrong: string;
-  /** Line-number gutter (also approval panel/preview). */
+  /** 行号装订线（也用于审批面板/预览）。 */
   diffGutter: string;
-  /** Meta / hunk headers. */
+  /** 元信息 / hunk 头。 */
   diffMeta: string;
 
-  // ── Roles ──
-  /** User message: bullet & text, skill-activation name. The one role colour
-   *  with its own hue — assistant/thinking/status bullets reuse text/textDim. */
+  // ── 角色色 ──
+  /** 用户消息：要点和文本、技能激活名称。唯一拥有独立色相的
+   *  角色色——助手/思考/状态要点复用 text/textDim。 */
   roleUser: string;
 }
 
@@ -127,7 +124,7 @@ export const lightColors: ColorPalette = {
 
 export type ResolvedTheme = 'dark' | 'light';
 
-/** Synchronous palette lookup for built-in themes only. */
+/** 仅用于内置主题的同步调色板查找。 */
 export function getBuiltInPalette(resolved: ResolvedTheme): ColorPalette {
   return resolved === 'dark' ? darkColors : lightColors;
 }

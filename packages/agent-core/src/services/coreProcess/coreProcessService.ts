@@ -1,5 +1,5 @@
 /**
- * `CoreProcessService` — implementation of `ICoreProcessService`.
+ * `CoreProcessService` — `ICoreProcessService` 的实现。
  */
 
 import { createRPC, KimiCore } from '../../rpc';
@@ -24,30 +24,27 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
   readonly _serviceBrand: undefined;
 
   /**
-   * Service-facing RPC handle. This is a `Proxy` over the awaited
-   * `RPCMethods<CoreAPI>` so callers don't have to await a promise themselves
-   * — `core.rpc.createSession({...})` returns a `Promise<SessionSummary>`
-   * directly. After dispose, the proxy rejects on every method invocation.
+   * 面向服务的 RPC 句柄。这是对已 resolve 的 `RPCMethods<CoreAPI>` 的 `Proxy`，
+   * 使调用方无需自行 await 一个 promise — `core.rpc.createSession({...})`
+   * 直接返回 `Promise<SessionSummary>`。dispose 后，代理上的每个方法调用都会 reject。
    */
   public readonly rpc: CoreRPC;
 
   /**
-   * The in-process `KimiCore` instance. Kept private so daemon-side code can't
-   * grab it and bypass the peer-service indirection.
+   * 进程内的 `KimiCore` 实例。保持私有，使 daemon 侧代码无法获取它
+   * 并绕过对等服务间接层。
    */
   private readonly _core: KimiCore;
 
   /**
-   * Promise that resolves to the resolved RPC methods. The `rpc` proxy awaits
-   * this on every dispatch (cheap — controlled-promise resolves synchronously
-   * on the second call).
+   * 解析为已解析 RPC 方法的 promise。`rpc` 代理在每次分发时 await 此值
+   *（开销低 — 受控 promise 在第二次调用时同步 resolve）。
    */
   private readonly _coreRpcPromise: Promise<CoreRPC>;
 
   /**
-   * Cached readiness signal. We treat "SDK-side RPC bound" as the readiness
-   * marker today; once `KimiCore.pluginsReady` is publicly exposed we can
-   * combine them here.
+   * 缓存的就绪信号。当前以"SDK 侧 RPC 已绑定"作为就绪标记；
+   * 当 `KimiCore.pluginsReady` 公开暴露后，可在此处组合它们。
    */
   private readonly _ready: Promise<void>;
 
@@ -61,48 +58,43 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
   ) {
     super();
 
-    // 1. Build the in-process RPC pair. Left/Right are typed; `coreRpc` is the
-    //    function KimiCore receives, `sdkRpc` is the one we satisfy.
+    // 1. 构建进程内 RPC 对。Left/Right 有类型约束；`coreRpc` 是 KimiCore
+    //    接收的函数，`sdkRpc` 是我们满足的一侧。
     const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
 
-    // Default-wire the OAuth token resolver. Without this, KimiCore's
-    // `ProviderManager.resolveAuth` sees `resolveOAuthTokenProvider ===
-    // undefined` and synthesizes a closure that ALWAYS throws
-    // `AUTH_LOGIN_REQUIRED` — even after a successful device-code login that
-    // persisted a fresh token to disk. The daemon's `/auth` readiness probe
-    // is a different code path (file existence on the credentials store) so
-    // it stays green; the failure only surfaces inside the prompt turn, as
-    // an `auth.login_required` error after `turn.step.started`. We bridge
-    // the gap by default-constructing a managed auth facade against the same
-    // home + config paths KimiCore will use, and handing its
-    // `resolveOAuthTokenProvider` into the core. Callers (e.g. node-sdk
-    // tests) can still override via `options.resolveOAuthTokenProvider`.
+    // 默认接入 OAuth token 解析器。不设此项的话，KimiCore 的
+    // `ProviderManager.resolveAuth` 看到 `resolveOAuthTokenProvider === undefined`
+    // 会合成一个始终抛出 `AUTH_LOGIN_REQUIRED` 的闭包 — 即使成功的
+    // device-code 登录已将新 token 持久化到磁盘。daemon 的 `/auth` 就绪探针
+    // 是不同的代码路径（凭据存储的文件存在性检查），因此仍显示绿色；
+    // 故障仅在 prompt 轮次内部暴露，表现为 `turn.step.started` 之后的
+    // `auth.login_required` 错误。我们通过使用与 KimiCore 相同的
+    // home + config 路径默认构造一个托管认证 facade，并将其
+    // `resolveOAuthTokenProvider` 传入核心来弥合此差距。调用方
+    //（例如 node-sdk 测试）仍可通过 `options.resolveOAuthTokenProvider` 覆盖。
     const resolveOAuthTokenProvider: OAuthTokenProviderResolver =
       options.resolveOAuthTokenProvider ??
       CoreProcessService._defaultOAuthTokenResolver(env.homeDir, env.configPath);
 
-    // Default-wire the Kimi request headers (User-Agent + X-Msh-* device
-    // identity). Without this, KimiCore's outbound fetch carries the
-    // default Node fetch User-Agent and the managed Kimi-for-Coding
-    // endpoint rejects with 40340 ("only available for Coding Agents
-    // such as Kimi CLI, Claude Code, …"). Mirrors what `SDKRpcClient`
-    // does for the in-process TUI path (node-sdk's sdk-rpc-client.ts).
-    // Caller-supplied `kimiRequestHeaders` always wins; absent that, we
-    // synthesize from `options.identity`. Hosts that pass neither
-    // (no identity, no headers) still construct — but their requests will
-    // trip the 40340 guard.
+    // 默认接入 Kimi 请求头（User-Agent + X-Msh-* 设备标识）。不设此项的话，
+    // KimiCore 的出站 fetch 携带默认的 Node fetch User-Agent，托管
+    // Kimi-for-Coding 端点会以 40340（"仅适用于 Coding Agents
+    // 如 Kimi CLI、Claude Code、…"）拒绝。与 `SDKRpcClient` 为进程内 TUI 路径
+    //（node-sdk 的 sdk-rpc-client.ts）所做的接线方式一致。
+    // 调用方提供的 `kimiRequestHeaders` 始终优先；缺失时从 `options.identity`
+    // 合成。两者都不传（无 identity、无 headers）的宿主仍可构造 —
+    // 但其请求会触发 40340 门控。
     const kimiRequestHeaders: Record<string, string> | undefined =
       options.kimiRequestHeaders ??
       CoreProcessService._defaultKimiRequestHeaders(env.homeDir, options.identity);
 
-    // `appVersion` flows into Session records (`app_version`) and tool
-    // call ctx. Prefer explicit > identity.version so callers can pin
-    // a different value if they need to.
+    // `appVersion` 写入 Session 记录（`app_version`）和工具调用上下文。
+    // 优先显式值 > identity.version，使调用方在需要时可指定不同的值。
     const appVersion: string | undefined =
       options.appVersion ?? options.identity?.version;
 
-    // 2. Construct the core. KimiCore's ctor wires itself into `coreRpc` and
-    //    exposes `this.sdk: Promise<SDKRPC>` for the reverse direction.
+    // 2. 构造核心。KimiCore 的构造函数将自身接入 `coreRpc` 并暴露
+    //    `this.sdk: Promise<SDKRPC>` 用于反向通信。
     this._core = new KimiCore(coreRpc, {
       ...options,
       homeDir: env.homeDir,
@@ -112,9 +104,9 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
       resolveOAuthTokenProvider,
     });
 
-    // 3. Satisfy the SDK side with a BridgeClientAPI that routes to peer services.
-    //    sdkRpc returns Promise<RPCMethods<CoreAPI>> — these are the methods
-    //    in-package services will dispatch on.
+    // 3. 使用路由到对等服务的 BridgeClientAPI 满足 SDK 侧。
+    //    sdkRpc 返回 Promise<RPCMethods<CoreAPI>> — 这些是包内服务
+    //    将在其上进行分发的方法。
     const clientApi = new BridgeClientAPI({
       eventService,
       approvalService,
@@ -123,13 +115,12 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
     });
     this._coreRpcPromise = sdkRpc(clientApi);
 
-    // 4. Readiness is "the RPC pair is bound on both sides". Plugin load
-    //    happens inside KimiCore's ctor and self-heals (the worker captures
-    //    the error rather than surfacing it; see core-impl.ts:170-172).
+    // 4. 就绪条件是"RPC 对两侧均已绑定"。插件加载在 KimiCore 的构造函数内
+    //    进行且会自愈（worker 捕获错误而非暴露；参见 core-impl.ts:170-172）。
     this._ready = this._coreRpcPromise.then(() => undefined);
 
-    // 5. Build the dispatch proxy. Each method on the proxy awaits the resolved
-    //    RPC methods then forwards. After dispose, dispatch rejects eagerly.
+    // 5. 构建分发代理。代理上的每个方法先 await 已解析的 RPC 方法再转发。
+    //    dispose 后，分发会立即 reject。
     this.rpc = this._buildRpcProxy();
   }
 
@@ -139,10 +130,9 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
 
   override dispose(): void {
     if (this._store.isDisposed) return;
-    // KimiCore does not currently expose a dispose() — when it does, we'll
-    // await/call it here BEFORE super.dispose(). For now, disposing the
-    // service flips _disposed, which makes future rpc.* invocations reject
-    // before they reach KimiCore.
+    // KimiCore 当前未暴露 dispose() — 当它有时，会在 super.dispose() 之前
+    // await/调用它。目前，释放服务会翻转 _disposed 标志，使未来的 rpc.* 调用
+    // 在到达 KimiCore 之前 reject。
     super.dispose();
   }
 
@@ -150,17 +140,16 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
     const rpcPromise = this._coreRpcPromise;
     const isDisposedRef = () => this._store.isDisposed;
 
-    // We don't know the concrete method set at compile time here (CoreAPI is
-    // a structural interface; `RPCMethods<CoreAPI>` is a mapped type).
-    // The Proxy lets us intercept every property access and return a function
-    // that awaits the underlying RPC and forwards.
+    // 此处在编译时不知道具体的方法集（CoreAPI 是结构化接口；
+    // `RPCMethods<CoreAPI>` 是映射类型）。Proxy 让我们拦截每个属性访问
+    // 并返回一个 await 底层 RPC 后转发的函数。
     return new Proxy({} as CoreRPC, {
       get(_target, prop) {
-        // Symbols / well-known properties (Symbol.toPrimitive, then-able
-        // probe, etc.) should not be RPC-dispatched.
+        // Symbol / 内置属性（Symbol.toPrimitive、then-able 探测等）
+        // 不应被 RPC 分发。
         if (typeof prop !== 'string') return undefined;
-        // Returning a function keeps `typeof rpc.foo === 'function'` true,
-        // which downstream code may probe.
+        // 返回函数保持 `typeof rpc.foo === 'function'` 为真，
+        // 下游代码可能会探测此属性。
         return (...args: unknown[]) => {
           if (isDisposedRef()) {
             return Promise.reject(new Error('CoreProcessService has been disposed'));
@@ -180,14 +169,12 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
   }
 
   /**
-   * Build the default `resolveOAuthTokenProvider` from the same home + config
-   * paths KimiCore resolves internally. Mirrors `SDKRpcClient`'s default in
-   * `packages/node-sdk/src/sdk-rpc-client.ts` so the daemon and the SDK
-   * runtimes share OAuth credentials when both run against the same
-   * `~/.kimi-code`.
+   * 从与 KimiCore 内部解析的相同 home + config 路径构建默认的
+   * `resolveOAuthTokenProvider`。与 `SDKRpcClient` 在
+   * `packages/node-sdk/src/sdk-rpc-client.ts` 中的默认值一致，
+   * 使 daemon 和 SDK 运行时在都使用同一个 `~/.kimi-code` 时共享 OAuth 凭据。
    *
-   * Exposed as `static` so tests can assert the wiring without exercising the
-   * full agent-core turn loop.
+   * 以 `static` 暴露，使测试无需运行完整的 agent-core 轮次即可验证接线。
    */
   static _defaultOAuthTokenResolver(
     homeDir: string,
@@ -198,22 +185,19 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
   }
 
   /**
-   * Build the default `kimiRequestHeaders` from `options.identity` so the
-   * outbound `User-Agent` + device-identity headers identify this process
-   * as a real Coding Agent host (e.g. `kimi-code-cli/<ver>`). Without
-   * these, the managed Kimi-for-Coding endpoint rejects with 40340.
+   * 从 `options.identity` 构建默认的 `kimiRequestHeaders`，使出站
+   * `User-Agent` + 设备标识头将此进程标识为真正的 Coding Agent 宿主
+   *（例如 `kimi-code-cli/<ver>`）。不设这些头的话，托管 Kimi-for-Coding
+   * 端点会以 40340 拒绝。
    *
-   * Returns `undefined` when no identity is provided — preserves the
-   * pre-fix contract for hosts that pass headers explicitly via
-   * `options.kimiRequestHeaders` (or for legacy callers / tests that
-   * don't talk to the managed endpoint at all).
+   * 未提供 identity 时返回 `undefined` — 为通过 `options.kimiRequestHeaders`
+   * 显式传入头的宿主保留先前约定（或完全不与托管端点通信的遗留调用方/测试）。
    *
-   * `homeDir` resolution matches KimiCore's so the per-device id (minted
-   * + cached at `<homeDir>/device_id` on first call) lives in the same
-   * root as everything else KimiCore touches.
+   * `homeDir` 解析与 KimiCore 一致，使每个设备的 id（首次调用时在
+   * `<homeDir>/device_id` 处铸造并缓存）位于 KimiCore 触及的所有内容的
+   * 相同根目录下。
    *
-   * Exposed as `static` so tests can assert the wiring without booting
-   * the service.
+   * 以 `static` 暴露，使测试无需启动服务即可验证接线。
    */
   static _defaultKimiRequestHeaders(
     homeDir: string,
@@ -227,16 +211,14 @@ export class CoreProcessService extends Disposable implements ICoreProcessServic
   }
 }
 
-// Self-register under the global singleton registry. Ctor signature is
+// 在全局单例注册表中自注册。构造函数签名为
 // `(options, @IEnvironmentService, @IEventService, @IApprovalService,
-//  @IQuestionService, @ILogService)` — the leading `options` slot is a pure data bag so we
-// register with `[{}]` as a sane default. Daemon-side `start.ts` overrides
-// this descriptor via `services.set(ICoreProcessService, new
-// SyncDescriptor(CoreProcessService, [opts.coreProcessOptions ?? {}], false))`
-// when it has access to the real options bag. Later registrations win — both
-// at registry level and at `ServiceCollection` level.
-// `supportsDelayedInstantiation = false` preserves current reverse-dispose
-// semantics.
+//  @IQuestionService, @ILogService)` — 首位 `options` 槽是纯数据包，
+// 因此使用 `[{}]` 作为合理默认值注册。daemon 侧的 `start.ts` 通过
+// `services.set(ICoreProcessService, new SyncDescriptor(CoreProcessService,
+// [opts.coreProcessOptions ?? {}], false))` 覆盖此描述符。
+// 后注册的优先 — 在注册表级别和 `ServiceCollection` 级别均如此。
+// `supportsDelayedInstantiation = false` 保留当前反向释放语义。
 registerSingleton(
   ICoreProcessService,
   new SyncDescriptor(CoreProcessService, [{} as CoreProcessServiceOptions], false),

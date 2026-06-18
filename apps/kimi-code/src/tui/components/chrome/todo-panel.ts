@@ -1,12 +1,10 @@
 /**
- * TodoPanel — live-updating TODO list shown before the input area.
+ * TodoPanel — 在输入区域上方显示的实时更新待办事项列表。
  *
- * Mounted as a dedicated `Container` slot between the activity pane
- * (spinners / thinking stream) and the queue / editor block. The host
- * calls {@link setTodos} whenever the LLM invokes the `TodoList`
- * tool; state survives across turns so the list stays visible until
- * explicitly cleared (`todos: []`), a new session starts, or `/clear`
- * is issued.
+ * 作为专用的 `Container` 插槽挂载在活动面板（旋转器/思考流）和队列/编辑器块之间。
+ * 宿主在 LLM 调用 `TodoList` 工具时调用 {@link setTodos}；
+ * 状态在各轮次间保持，因此列表会持续可见，直到被显式清除（`todos: []`）、
+ * 新会话开始或执行 `/clear` 命令。
  */
 
 import type { Component } from '@earendil-works/pi-tui';
@@ -31,21 +29,19 @@ export interface VisibleTodos {
 }
 
 /**
- * Pick which todos to render when the list exceeds {@link MAX_VISIBLE}.
+ * 当列表超过 {@link MAX_VISIBLE} 时选择要渲染的待办事项。
  *
- * The selector is order-agnostic — the TodoList tool keeps whatever
- * order the model produced and does not group items by status, so an
- * interleaved sequence like `pending, done, pending, done, ...` is
- * possible and must still yield MAX_VISIBLE rows when enough exist.
+ * 选择器与顺序无关——TodoList 工具保持模型产生的任意顺序，
+ * 不会按状态分组，因此可能出现 `pending, done, pending, done, ...` 这样的交错序列，
+ * 且当数量足够时仍需生成 MAX_VISIBLE 行。
  *
- * Strategy:
- * 1. Include every `in_progress` item (capped at MAX_VISIBLE).
- * 2. Fill remaining slots with "what's next" — the earliest `pending`
- *    items in their original positions — while reserving one slot for
- *    "what just finished" — the latest `done` item — when both kinds
- *    exist. If one side has too few candidates, the other expands.
+ * 策略：
+ * 1. 包含所有 `in_progress` 项目（上限为 MAX_VISIBLE）。
+ * 2. 用"接下来做什么"填充剩余槽位——按原始位置取最早的 `pending` 项目，
+ *    同时为"刚刚完成"预留一个槽位——取最新的 `done` 项目——当两种都存在时。
+ *    如果一侧候选不足，另一侧会扩展。
  *
- * Items are returned in their original order.
+ * 项目按原始顺序返回。
  */
 export function selectVisibleTodos(todos: readonly TodoItem[]): VisibleTodos {
   if (todos.length <= MAX_VISIBLE) {
@@ -65,7 +61,7 @@ export function selectVisibleTodos(todos: readonly TodoItem[]): VisibleTodos {
   for (const i of inProgress.slice(0, MAX_VISIBLE)) picked.add(i);
 
   if (picked.size < MAX_VISIBLE) {
-    // Most recent done first; earliest pending first.
+    // 最近完成的优先；最早待办的优先。
     const doneCandidates = done.toReversed();
     const pendingCandidates = pending;
 

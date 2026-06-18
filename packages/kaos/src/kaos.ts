@@ -3,95 +3,94 @@ import type { KaosProcess } from './process';
 import type { StatResult } from './types';
 
 /**
- * Kimi Agent Operating System (KAOS) interface.
+ * Kimi Agent Operating System (KAOS) 接口。
  *
- * This is the core abstraction that allows the agent to interact with
- * different execution environments (local, SSH, containers, etc.)
- * through a unified API.
+ * 这是允许 Agent 通过统一 API 与不同执行环境（本地、SSH、容器等）
+ * 交互的核心抽象。所有操作通过此接口进行，使得上层代码无需关心
+ * 底层是本地文件系统还是远程连接。
  */
 export interface Kaos {
-  /** Human-readable name for this environment (e.g. `"local"`, `"ssh:host"`). */
+  /** 此环境的可读名称（如 `"local"`、`"ssh:host"`） */
   readonly name: string;
 
   /**
-   * OS / shell probe describing the target environment. Populated by the
-   * concrete Kaos implementation (e.g. `detectEnvironmentFromNode()` for
-   * `LocalKaos`, a remote probe for `SSHKaos`).
+   * 描述目标环境的 OS/Shell 探测结果。由具体的 Kaos 实现填充
+   * （如 `LocalKaos` 使用 `detectEnvironmentFromNode()`，
+   * `SSHKaos` 使用远程探测）。
    */
   readonly osEnv: Environment;
 
-  // ── Path operations (sync) ──────────────────────────────────────────
+  // ── 路径操作（同步）──────────────────────────────────────────────
 
-  /** Return the path style used by this environment. */
+  /** 返回此环境使用的路径风格（POSIX 或 Windows）。 */
   pathClass(): 'posix' | 'win32';
-  /** Normalize the given path string (resolve `.` / `..` segments). */
+  /** 规范化给定路径字符串（解析 `.` / `..` 段）。 */
   normpath(path: string): string;
-  /** Return the home directory of the current user. */
+  /** 返回当前用户的主目录。 */
   gethome(): string;
-  /** Return the current working directory. */
+  /** 返回当前工作目录。 */
   getcwd(): string;
 
-  // ── Directory operations (async) ────────────────────────────────────
+  // ── 目录操作（异步）───────────────────────────────────────────────
 
-  /** Change the working directory to `path`. */
+  /** 将工作目录切换到 `path`。 */
   chdir(path: string): Promise<void>;
-  /** Return a new Kaos with the given `cwd`. */
+  /** 返回一个设置了新 `cwd` 的 Kaos 副本。 */
   withCwd(cwd: string): Kaos;
   /**
-   * Return a new Kaos that overlays `env` onto every spawned process.
+   * 返回一个为每个启动的进程叠加了 `env` 环境变量的 Kaos 副本。
    *
-   * The provided record is read when a process is spawned, so callers may
-   * mutate a stable record to update future executions.
+   * 提供的记录在进程启动时读取，因此调用方可修改稳定的记录对象
+   * 来影响后续的执行。
    */
   withEnv(env: Record<string, string>): Kaos;
-  /** Return stat metadata for `path`. */
+  /** 返回 `path` 的文件状态元数据。 */
   stat(path: string, options?: { followSymlinks?: boolean }): Promise<StatResult>;
-  /** Yield entry names in the directory at `path`. */
+  /** 逐个产出 `path` 目录下的条目名称。 */
   iterdir(path: string): AsyncGenerator<string>;
-  /** Yield paths matching `pattern` under `path`. */
+  /** 产出 `path` 下匹配 `pattern` 的路径。 */
   glob(
     path: string,
     pattern: string,
     options?: { caseSensitive?: boolean },
   ): AsyncGenerator<string>;
 
-  // ── File operations (async) ─────────────────────────────────────────
+  // ── 文件操作（异步）────────────────────────────────────────────────
 
-  /** Read up to `n` bytes from `path` (all bytes if `n` is omitted). */
+  /** 从 `path` 读取最多 `n` 字节（省略 `n` 则读取全部）。 */
   readBytes(path: string, n?: number): Promise<Buffer>;
   /**
-   * Read the file at `path` as a string.
+   * 将 `path` 处的文件作为字符串读取。
    *
-   * `errors` controls how decode errors are handled — mirrors Python's
-   * `open(..., errors=)` parameter:
-   * - `'strict'` (default): throw on any invalid byte for the encoding
-   * - `'replace'`: substitute each invalid byte with U+FFFD (REPLACEMENT CHARACTER)
-   * - `'ignore'`: drop invalid bytes silently
+   * `errors` 控制解码错误的处理方式——对应 Python 的 `open(..., errors=)` 参数：
+   * - `'strict'`（默认）：遇到无效字节时抛出异常
+   * - `'replace'`：将每个无效字节替换为 U+FFFD（替换字符）
+   * - `'ignore'`：静默丢弃无效字节
    */
   readText(
     path: string,
     options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
   ): Promise<string>;
-  /** Yield lines from the file at `path` one by one. */
+  /** 逐行产出 `path` 文件的内容。 */
   readLines(
     path: string,
     options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
   ): AsyncGenerator<string>;
-  /** Write raw bytes to `path`, returning the number of bytes written. */
+  /** 将原始字节写入 `path`，返回写入的字节数。 */
   writeBytes(path: string, data: Buffer): Promise<number>;
-  /** Write text to `path`, returning the number of characters written. */
+  /** 将文本写入 `path`，返回写入的字符数。 */
   writeText(
     path: string,
     data: string,
     options?: { mode?: 'w' | 'a'; encoding?: BufferEncoding },
   ): Promise<number>;
-  /** Create a directory at `path`. */
+  /** 在 `path` 创建目录。 */
   mkdir(path: string, options?: { parents?: boolean; existOk?: boolean }): Promise<void>;
 
-  // ── Process execution ───────────────────────────────────────────────
+  // ── 进程执行 ───────────────────────────────────────────────────────
 
-  /** Spawn a process with the given arguments. */
+  /** 使用给定参数启动进程。 */
   exec(...args: string[]): Promise<KaosProcess>;
-  /** Spawn a process with explicit environment variables. */
+  /** 使用显式环境变量启动进程。 */
   execWithEnv(args: string[], env?: Record<string, string>): Promise<KaosProcess>;
 }

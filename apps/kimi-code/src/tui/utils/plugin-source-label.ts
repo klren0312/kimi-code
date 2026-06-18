@@ -7,12 +7,11 @@ export const THIRD_PARTY_BADGE = 'third-party';
 export type PluginTrustLabel = 'official' | 'curated' | 'third-party';
 
 /**
- * Human-readable provenance label for a plugin, suitable for inline display
- * in `/plugins` overviews and lists.
+ * 插件的可读来源标签，适用于 `/plugins` 概览和列表中的行内展示。
  *
- * - github source → `github <owner>/<repo>@<ref>`
- * - zip-url with parseable URL → `via <host[:port]>`
- * - everything else → raw source kind (`local-path`, `zip-url`)
+ * - github 来源 → `github <owner>/<repo>@<ref>`
+ * - 可解析 URL 的 zip-url → `via <host[:port]>`
+ * - 其他情况 → 原始来源类型（`local-path`、`zip-url`）
  */
 export function formatPluginSourceLabel(plugin: PluginSummary): string {
   if (plugin.source === 'github' && plugin.github !== undefined) {
@@ -26,8 +25,8 @@ export function formatPluginSourceLabel(plugin: PluginSummary): string {
 }
 
 /**
- * Returns one of three trust labels for a plugin. Only Kimi-hosted plugin zip
- * paths receive official or curated badges. Everything else is third-party.
+ * 返回插件的三个信任标签之一。只有 Kimi 托管的插件 zip 路径
+ * 才会获得 official 或 curated 标记，其余均为 third-party。
  */
 export function pluginTrustLabel(plugin: PluginSummary): PluginTrustLabel {
   if (plugin.source !== 'zip-url' || plugin.originalSource === undefined) {

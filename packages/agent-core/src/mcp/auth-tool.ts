@@ -1,27 +1,22 @@
 /**
- * Synthetic `mcp__<server>__authenticate` tool.
+ * 合成的 `mcp__<server>__authenticate` 工具。
  *
- * When a remote MCP server lands in the `needs-auth` state — i.e. its
- * initial connection failed with a 401 / `UnauthorizedError` and no static
- * bearer token is configured — the {@link ToolManager} swaps the real MCP
- * tool list for this single tool. Calling it:
+ * 当远程 MCP 服务器进入 `needs-auth` 状态时——即其初始连接因 401 /
+ * `UnauthorizedError` 失败且未配置静态 bearer token——{@link ToolManager}
+ * 会将真实的 MCP 工具列表替换为这个单独的工具。调用它时：
  *
- *  1. Asks {@link McpOAuthService} to perform RFC 9728 / RFC 8414 / RFC 7591
- *     discovery and produce an authorization URL.
- *  2. Streams that URL back to the model via `onUpdate({kind:'status'})`
- *     and returns it in the tool output so the model can hand it to the
- *     human user.
- *  3. Blocks (up to {@link DEFAULT_AUTH_TIMEOUT_MS}) on the one-shot
- *     localhost callback listener owned by the OAuth service.
- *  4. Drives a manager-level `reconnect(name)` once tokens have been
- *     persisted, which flips the entry to `connected` and lets
- *     `ToolManager` swap the synthetic tool out for the real MCP tools.
+ *  1. 请求 {@link McpOAuthService} 执行 RFC 9728 / RFC 8414 / RFC 7591
+ *     发现并生成授权 URL。
+ *  2. 通过 `onUpdate({kind:'status'})` 将该 URL 流式传回模型，并在
+ *     工具输出中返回，以便模型将其传递给用户。
+ *  3. 在 OAuth 服务持有的一次性本地回调解监听器上阻塞
+ *    （最多 {@link DEFAULT_AUTH_TIMEOUT_MS}）。
+ *  4. token 持久化后驱动管理器级别的 `reconnect(name)`，将条目切换为
+ *     `connected` 并让 `ToolManager` 将合成工具替换为真实的 MCP 工具。
  *
- * The blocking shape (option 1 in the plan) keeps the implementation
- * simple at the cost of holding one tool call open for the duration of
- * the human's browser flow. If the model ends up re-invoking the tool
- * mid-flow we just start a fresh flow; the new callback server supersedes
- * the old one.
+ * 阻塞模式（计划中的选项 1）使实现保持简单，代价是在用户完成浏览器流程
+ * 期间保持一个工具调用处于打开状态。如果模型在流程中途再次调用该工具，
+ * 则启动新的流程；新的回调解监听器会取代旧的。
  */
 
 import { z } from 'zod';
@@ -61,21 +56,21 @@ Take no arguments. Treat the URL as sensitive — do not modify it or strip
 query parameters.`;
 
 export interface CreateMcpAuthToolOptions {
-  /** Friendly MCP server name as configured in `mcp.json`. */
+  /** 在 `mcp.json` 中配置的友好 MCP 服务器名称。 */
   readonly serverName: string;
-  /** Base URL of the MCP server (used for OAuth resource metadata discovery). */
+  /** MCP 服务器的基础 URL（用于 OAuth 资源元数据发现）。 */
   readonly serverUrl: string;
-  /** OAuth orchestrator, typically `Session`-scoped. */
+  /** OAuth 编排器，通常为 `Session` 作用域。 */
   readonly oauthService: McpOAuthService;
   /**
-   * Triggers a manager-level reconnect once tokens land on disk. Implemented
-   * by the {@link McpConnectionManager} and bound in the {@link ToolManager}
-   * `needs-auth` branch.
+   * token 持久化到磁盘后触发管理器级别的重连。由
+   * {@link McpConnectionManager} 实现，并在 {@link ToolManager}
+   * 的 `needs-auth` 分支中绑定。
    */
   readonly reconnect: (signal?: AbortSignal) => Promise<void>;
   /**
-   * Overrides the per-call OAuth wait timeout. Tests set this to a small
-   * number; production callers should accept the default.
+   * 覆盖每次调用的 OAuth 等待超时时间。测试中设为较小的值；
+   * 生产环境调用方应使用默认值。
    */
   readonly timeoutMs?: number;
 }
@@ -84,7 +79,7 @@ export function createMcpAuthTool(options: CreateMcpAuthToolOptions): Executable
   const { serverName, serverUrl, oauthService, reconnect, timeoutMs } = options;
   const name = qualifyMcpToolName(serverName, AUTH_TOOL_TOOL_NAME);
   const description = DESCRIPTION_TEMPLATE(serverName);
-  // No arguments; an empty object schema keeps providers happy across SDKs.
+  // 无参数；空对象 schema 可以兼容各 SDK 提供方。
   const parameters = toInputJsonSchema(z.object({}));
   const execute = async (ctx: ExecutableToolContext): Promise<ExecutableToolResult> => {
     const { signal, onUpdate } = ctx;

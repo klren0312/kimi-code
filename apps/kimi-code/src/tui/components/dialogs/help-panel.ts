@@ -1,11 +1,10 @@
 /**
- * HelpPanel — modal `/help` display. Lists keyboard shortcuts, slash
- * commands (with aliases + descriptions) in colour-coded sections.
+ * HelpPanel —— 模态 `/help` 显示面板。列出键盘快捷键、斜杠命令
+ *（含别名和描述），按带颜色编码的分区展示。
  *
- * Mirrors the container-replacement pattern used by SessionPicker /
- * ApprovalPanel: host mounts the panel into `editorContainer`, picks
- * it as the focused component, and tears it down on the `onClose`
- * callback (fired on Esc / Enter / q).
+ * 遵循 SessionPicker / ApprovalPanel 使用的容器替换模式：
+ * 宿主将面板挂载到 `editorContainer`，选中为焦点组件，
+ * 并在 `onClose` 回调（由 Esc / Enter / q 触发）中卸载。
  */
 
 import {
@@ -29,7 +28,7 @@ export interface HelpPanelCommand {
   readonly description: string;
 }
 
-/** Static list — keep in sync with the global editor bindings. */
+/** 静态列表 —— 需与全局编辑器绑定保持同步。 */
 export const DEFAULT_KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { keys: 'Shift-Tab', description: 'Toggle plan mode' },
   { keys: 'Ctrl-G', description: 'Edit in external editor ($VISUAL / $EDITOR)' },
@@ -47,7 +46,7 @@ export interface HelpPanelOptions {
   readonly commands: readonly HelpPanelCommand[];
   readonly shortcuts?: readonly KeyboardShortcut[];
   readonly onClose: () => void;
-  /** Terminal height — used to decide whether to show the hint tail. */
+  /** 终端高度 —— 用于决定是否显示提示尾部。 */
   readonly maxVisible?: number;
 }
 
@@ -77,7 +76,7 @@ export class HelpPanelComponent extends Container implements Focusable {
       return;
     }
     if (matchesKey(data, Key.down)) {
-      this.scrollTop += 1; // render clamps
+      this.scrollTop += 1; // 渲染时会截断
       return;
     }
     if (matchesKey(data, Key.pageUp)) {
@@ -108,14 +107,14 @@ export class HelpPanelComponent extends Container implements Focusable {
       accent('─'.repeat(width)),
       currentTheme.boldFg('primary', ' help ') + muted('· Esc / Enter / q to cancel · ↑↓ scroll'),
       '',
-      // Greeting
+      // 问候语
       `  ${dim('Sure, Kimi is ready to help! Just send a message to get started.')}`,
       '',
-      // Section: keyboard shortcuts
+      // 分区：键盘快捷键
       `  ${currentTheme.bold('Keyboard shortcuts')}`,
       ...shortcuts.map((s) => `    ${kbdColor(s.keys.padEnd(kbdWidth))}  ${dim(s.description)}`),
       '',
-      // Section: slash commands
+      // 分区：斜杠命令
       `  ${currentTheme.bold('Slash commands')}`,
       ...sortedCmds.map((cmd, i) => {
         const label = cmdLabels[i] ?? `/${cmd.name}`;
@@ -125,7 +124,7 @@ export class HelpPanelComponent extends Container implements Focusable {
       accent('─'.repeat(width)),
     ];
 
-    // Apply scroll windowing — keep the borders visible.
+    // 应用滚动窗口 —— 保持边框可见。
     const content = lines.slice(1, lines.length - 1);
     const maxVisible = Math.max(5, this.opts.maxVisible ?? 24);
     if (content.length > maxVisible) {

@@ -1,11 +1,9 @@
 /**
- * Detects errors that mean the controlling terminal (stdout/stderr pty) is
- * effectively gone — for example after the parent shell crashed, the tmux
- * server vanished, or an SSH connection dropped without delivering SIGHUP.
+ * 检测表示控制终端（stdout/stderr pty）实际上已消失的错误——例如
+ * 父 shell 崩溃、tmux 服务器消失或 SSH 连接断开但未发送 SIGHUP 之后的情况。
  *
- * Continuing to write to a dead terminal would re-fire the same error on every
- * render tick and pin a CPU core. Callers should respond by skipping any
- * cleanup that touches stdout/stderr and exiting immediately.
+ * 继续向已断开的终端写入会在每个渲染周期重复触发相同错误，并导致 CPU 核心被占满。
+ * 调用方应跳过任何涉及 stdout/stderr 的清理操作并立即退出。
  */
 const DEAD_TERMINAL_ERROR_CODES = new Set<string>(['EIO', 'EPIPE', 'ENOTCONN']);
 

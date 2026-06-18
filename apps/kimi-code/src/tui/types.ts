@@ -46,10 +46,10 @@ export interface AppState {
   availableModels: Record<string, ModelAlias>;
   availableProviders: Record<string, ProviderConfig>;
   sessionTitle: string | null;
-  /** Current goal snapshot for the footer badge; null/undefined when no active goal. */
+  /** 当前目标快照，用于底部状态栏徽章；无活跃目标时为 null/undefined。 */
   goal?: GoalSnapshot | null;
   mcpServersSummary: string | null;
-  /** Optional banner shown below the welcome panel; null means no banner to render. */
+  /** 欢迎面板下方显示的可选横幅；null 表示不渲染横幅。 */
   banner?: BannerState | null;
 }
 
@@ -65,9 +65,8 @@ export interface ToolCallBlockData {
   subagent?: SubagentReplayBlockData;
   step?: number;
   turnId?: string;
-  /** Set when the step ended (e.g. max_tokens) before the tool call's
-   *  arguments finished streaming. Renderer flips the header verb to
-   *  "Truncated" and stops showing the in-progress argument preview. */
+  /** 当步骤在工具调用参数流式传输完成之前结束时设置（例如 max_tokens）。
+   *  渲染器将标题动词切换为"Truncated"并停止显示进行中的参数预览。 */
   truncated?: boolean;
 }
 
@@ -188,7 +187,7 @@ export const INITIAL_LIVE_PANE: LivePaneState = {
 };
 
 // ---------------------------------------------------------------------------
-// TUI startup / options types (extracted from kimi-tui.ts)
+// TUI 启动/选项类型（从 kimi-tui.ts 中提取）
 // ---------------------------------------------------------------------------
 
 export interface TUIStartupOptions {

@@ -1,16 +1,15 @@
 /**
- * Builds the line content for the `/goal` status box. The lines are rendered
- * inside a {@link UsagePanelComponent} (the same bordered box as `/usage`), so
- * this module only owns the goal-specific layout:
+ * 为 `/goal` 状态框构建行内容。这些行渲染在 {@link UsagePanelComponent}
+ * 内部（与 `/usage` 相同的带边框框体），因此本模块仅负责目标专属的布局：
  *
- *   ▌ <objective> (blockquote left-trail, wrapped)
- *   ▌ ✓ <completion criterion>
+ *   ▌ <目标> （引用块左侧竖线，自动换行）
+ *   ▌ ✓ <完成标准>
  *
- *   Status     complete — <reason>        (terminal goals only)
+ *   Status     complete — <原因>         （仅终止目标显示）
  *   Running    4m 12s
  *   Turns      7
  *   Tokens     128.4k
- *   Stop       after 20 turns (7/20)      (or a dim "no stop condition" note)
+ *   Stop       after 20 turns (7/20)     （或暗淡的"无停止条件"提示）
  */
 
 import {
@@ -50,9 +49,8 @@ function renderLifecycleLine(label: string, width: number): string[] {
 }
 
 /**
- * The "Goal set" confirmation shown after `/goal <objective>`. The objective is
- * rendered as the following user prompt, so this message only marks the state
- * change in the transcript.
+ * `/goal <目标>` 后显示的"已设定目标"确认消息。目标作为后续的用户提示
+ * 渲染，因此此消息仅在对话记录中标记状态变更。
  */
 export class GoalSetMessageComponent implements Component {
   invalidate(): void {}
@@ -123,7 +121,7 @@ export class GoalStatusMessageComponent implements Component {
   }
 }
 
-/** Box title, e.g. ` Goal · active `. */
+/** 框体标题，例如 ` Goal · active `。 */
 export function goalPanelTitle(goal: GoalSnapshot): string {
   return ` Goal · ${goal.status} `;
 }
@@ -133,17 +131,16 @@ export function buildGoalReportLines(goal: GoalSnapshot, wrapWidth: number = WRA
   const bar = (s: string) => currentTheme.fg(statusColor, s);
   const value = (s: string) => currentTheme.fg('text', s);
   const muted = (s: string) => currentTheme.fg('textDim', s);
-  // `complete` is the terminal outcome (the completion card); everything else
-  // (active / paused / blocked) is a persisted, resumable goal that still shows
-  // its stop condition. A reason is worth surfacing for stopped / complete states.
+  // `complete` 是终止结果（完成卡片）；其他所有状态（active / paused / blocked）
+  // 是可持久化、可恢复的目标，仍然显示其停止条件。停止/完成状态值得展示原因。
   const isComplete = goal.status === 'complete';
   const reason = goal.terminalReason;
   const showReason =
     (goal.status === 'paused' && reason !== undefined) || goal.status === 'blocked' || isComplete;
   const lines: string[] = [];
 
-  // Condition as a blockquote left-trail. Reserve the visible "▌ " prefix before
-  // wrapping so the panel doesn't clip rows that exactly fit the panel interior.
+  // 目标条件作为引用块左侧竖线。在换行前预留可见的 "▌ " 前缀，
+  // 以免面板裁剪恰好适配面板内部宽度的行。
   const blockquoteWrapWidth = Math.max(1, wrapWidth - visibleWidth('▌ '));
   for (const line of wrap(goal.objective, blockquoteWrapWidth, MAX_OBJECTIVE_LINES)) {
     lines.push(`${bar('▌')} ${value(line)}`);
@@ -180,7 +177,7 @@ export function buildGoalReportLines(goal: GoalSnapshot, wrapWidth: number = WRA
   return lines;
 }
 
-/** The configured hard stop(s), or null when the goal is unbounded. */
+/** 已配置的硬停止条件，目标无界时返回 null。 */
 function formatStopRow(goal: GoalSnapshot): string | null {
   const { budget } = goal;
   const parts: string[] = [];
@@ -209,7 +206,7 @@ function statusToken(status: GoalStatus): ColorToken {
   }
 }
 
-/** Word-wrap to `width`, capped at `maxLines` (last line gets an ellipsis when clipped). */
+/** 按 `width` 自动换行，限制为 `maxLines` 行（超出时末尾添加省略号）。 */
 function wrap(text: string, width: number, maxLines: number): string[] {
   const safeWidth = Math.max(1, width);
   const lines = wrapTextWithAnsi(text.replaceAll(/\s+/g, ' ').trim(), safeWidth);

@@ -17,8 +17,7 @@ import { FsPathNotFoundError } from './fs';
 import { IFsGitService, FsGitUnavailableError, parsePorcelain, parseNumstat } from './fsGit';
 import { resolveSafePath } from './fsPathSafety';
 
-/** Cap a single file's unified diff (a runaway generated file should not blow
-    up the envelope); the response carries `truncated` so the UI can say so. */
+/** 限制单个文件的 unified diff 大小（避免生成的超大文件撑爆响应）；响应附带 `truncated` 标志以便 UI 提示。 */
 const DIFF_MAX_BYTES = 1_048_576;
 
 const PR_SPAWN_TIMEOUT_MS = 5_000;
@@ -76,12 +75,10 @@ export class FsGitService extends Disposable implements IFsGitService {
 
     const result = parsePorcelain(porcRes.stdout, filterSet);
 
-    // Aggregate line stats against HEAD. Only worth a second spawn when the
-    // tree is dirty AND there is a HEAD to diff against (a repo with no commits
-    // yet has neither side); otherwise the stats are 0. Dirtiness is read from
-    // the UNFILTERED porcelain and the numstat is NOT scoped by `req.paths` —
-    // the header counter reflects the whole working tree, matching kimi-cli's
-    // git status line.
+    // 对 HEAD 汇总行级统计。仅在工作树有变更且存在 HEAD 可对比时才值得发起第二次 spawn
+    //（无提交的仓库没有可对比的两端）；否则统计值为 0。脏状态从未过滤的 porcelain
+    // 读取，numstat 未按 `req.paths` 限定范围 — 头部计数器反映整个工作树，
+    // 与 kimi-cli 的 git status 行一致。
     const dirty = porcRes.stdout
       .split('\n')
       .some((line) => line.length > 0 && !line.startsWith('## '));
@@ -159,13 +156,13 @@ export class FsGitService extends Disposable implements IFsGitService {
     }
     const untracked = statusRes.stdout.startsWith('??');
 
-    // A repo with no commits yet has no HEAD to diff against — every changed
-    // file is all-new there, same as the untracked case.
+    // 尚无提交的仓库没有 HEAD 可对比 — 所有变更文件均为全新内容，
+    // 与未跟踪文件情况相同。
     const headRes = await runCommand('git', ['rev-parse', '--verify', '--quiet', 'HEAD'], realCwd);
     const hasHead = headRes.exitCode === 0;
 
-    // An untracked file has no HEAD side; diff it against /dev/null so the UI
-    // gets an all-added hunk. `git diff --no-index` exits 1 when files differ.
+    // 未跟踪文件没有 HEAD 侧内容；与 /dev/null 做 diff 使 UI 获得
+    // 全新增的 hunk。`git diff --no-index` 在文件不同时退出码为 1。
     let diffRes: RunResult;
     if (untracked || !hasHead) {
       diffRes = await runCommand(
@@ -192,8 +189,7 @@ export class FsGitService extends Disposable implements IFsGitService {
         );
       }
       if (diffRes.stdout.length === 0 && statusRes.stdout.length === 0) {
-        // Not changed at all — distinguish "clean file" (empty diff is fine)
-        // from a path that doesn't exist anywhere.
+        // 无任何变更 — 区分"干净文件"（空 diff 是正常的）和不存在的路径。
         const exists = await fs
           .stat(safe.absolute)
           .then(() => true)

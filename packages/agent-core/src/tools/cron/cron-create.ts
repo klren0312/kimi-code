@@ -1,26 +1,21 @@
 /**
- * CronCreateTool — schedule a prompt to be re-injected into this session
- * at a future wall-clock time, either once (`recurring: false`) or on a
- * cron cadence (`recurring: true`, the default).
+ * CronCreateTool — 调度一个 prompt 在未来的墙钟时间重新注入到当前会话，
+ * 可以是一次性的（`recurring: false`）或按 cron 周期重复的
+ * （`recurring: true`，默认）。
  *
- * Tasks live in `SessionCronStore` and are mirrored to
- * `<sessionDir>/cron/<id>.json` via `CronManager.addTask`, so a
- * `kimi resume` of the same session reloads them and the scheduler
- * picks up where it left off (fires that fell during downtime are
- * collapsed into a single delivery with `coalescedCount`). Tasks do
- * NOT carry over into a brand-new session.
+ * 任务保存在 `SessionCronStore` 中，并通过 `CronManager.addTask` 镜像到
+ * `<sessionDir>/cron/<id>.json`，因此 `kimi resume` 同一会话时会重新加载
+ * 它们，调度器从上次中断处继续（停机期间错过的触发会合并为单次递送，
+ * 带有 `coalescedCount`）。任务不会延续到全新会话。
  *
- * The tool itself is pure validation + bookkeeping; the firing /
- * coalesce / jitter logic lives in `CronScheduler` (one layer below)
- * and `CronManager` (one layer up). This file only knows how to:
+ * 工具本身是纯验证 + 记账；触发 / 合并 / 抖动逻辑在下一层的
+ * `CronScheduler` 和上一层的 `CronManager` 中。此文件只知道：
  *
- *   1. validate the request (killswitch, cron parse, 5-year window,
- *      session cap, byte-length cap);
- *   2. add it to the manager (which writes through to disk on success);
- *   3. report back the post-jitter `nextFireAt` and a human-readable
- *      schedule for the model's benefit;
- *   4. emit `cron_scheduled` telemetry through the manager (the tool
- *      does **not** reach into `manager.agent.telemetry` directly).
+ *   1. 验证请求（开关、cron 解析、5 年窗口、会话上限、字节长度上限）；
+ *   2. 将其添加到管理器（成功时直写磁盘）；
+ *   3. 返回抖动后的 `nextFireAt` 和人类可读的调度信息供模型使用；
+ *   4. 通过管理器发送 `cron_scheduled` 遥测事件（工具**不会**直接
+ *      访问 `manager.agent.telemetry`）。
  */
 
 import { z } from 'zod';
@@ -44,40 +39,35 @@ import {
 import { formatLocalIsoWithOffset } from './time-format';
 import CRON_CREATE_DESCRIPTION from './cron-create.md?raw';
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── 常量 ────────────────────────────────────────────────────────
 
 /**
- * Session-level cap on the number of live cron tasks. Exported so tests
- * can pre-fill the store without re-deriving the magic number.
+ * 会话级活跃 cron 任务数量上限。导出以便测试可以预填充存储
+ * 而无需重新推导魔术数字。
  */
 export const MAX_CRON_JOBS_PER_SESSION = 50;
 
 /**
- * Hard ceiling on `prompt` byte length (UTF-8). The zod `.max(...)`
- * upstream is in code units, which underflows multi-byte input
- * (`'汉'.length === 1` even though it is 3 bytes); we re-check using
- * `Buffer.byteLength` so the budget reflects the actual on-the-wire
- * size the model will eventually see.
+ * `prompt` 字节长度的硬上限（UTF-8）。上游 zod `.max(...)` 以
+ * 代码单元计数，对多字节输入不足（`'汉'.length === 1` 但实际为 3 字节）；
+ * 我们使用 `Buffer.byteLength` 重新检查，使预算反映模型最终看到的
+ * 实际线上大小。
  */
 const MAX_PROMPT_BYTES = 8 * 1024;
 
 /**
- * Maximum forward distance allowed for a one-shot (`recurring: false`)
- * cron's first fire. The canonical footgun is following the tool docs
- * and pinning today's day/month for a "remind me at X today"
- * reminder — if submission lands seconds past the target minute,
- * `computeNextCronRun` rolls the match to next year (~365 days),
- * which is still inside the 5-year `hasFireWithinYears` window, and
- * the user gets a year-late notification instead of an error. 350
- * days is tight enough to catch the rollover (365 ± epsilon) while
- * still leaving room for legitimate "schedule for late this year"
- * pinning from early-year submissions. A user who genuinely wants a
- * one-shot 11+ months out is better served by a natural-language
- * date in the prompt body than by stretching the cron field semantics.
+ * 一次性（`recurring: false`）cron 首次触发允许的最大前向距离。
+ * 典型的陷阱是按照工具文档锁定今天的日期/月份来设置"今天 X 点提醒我" —
+ * 如果提交恰好在目标分钟之后几秒到达，`computeNextCronRun` 会将匹配
+ * 滚到明年（约 365 天），仍在 5 年 `hasFireWithinYears` 窗口内，
+ * 用户会收到迟到一年的通知而非错误。350 天足以捕获回滚（365 ± ε），
+ * 同时为年初提交的"安排在年底"合法锁定留出空间。真正需要 11 个月以上
+ * 一次性任务的用户，在 prompt 正文中使用自然语言日期比扩展 cron
+ * 字段语义更合适。
  */
 const ONE_SHOT_MAX_FUTURE_MS = 350 * 24 * 60 * 60 * 1000;
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const CronCreateInputSchema = z.object({
   cron: z
@@ -101,7 +91,7 @@ export const CronCreateInputSchema = z.object({
 
 export type CronCreateInput = z.Infer<typeof CronCreateInputSchema>;
 
-// ── Output shape (internal) ─────────────────────────────────────────
+// ── 输出结构（内部） ─────────────────────────────────────────
 
 interface CronCreateOutput {
   readonly id: string;
@@ -111,7 +101,7 @@ interface CronCreateOutput {
   readonly nextFireAt: number | null;
 }
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class CronCreateTool implements BuiltinTool<CronCreateInput> {
   readonly name = 'CronCreate' as const;
@@ -123,9 +113,8 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
   constructor(private readonly manager: CronManager) {}
 
   resolveExecution(args: CronCreateInput): ToolExecution {
-    // 1. Global killswitch — checked first so a flipped env stops all
-    //    further work, including the cron parse which can throw on
-    //    legitimately-malformed input.
+    // 1. 全局开关 — 先检查以便翻转的环境变量停止所有后续工作，
+    //    包括可能对合法畸形输入抛异常的 cron 解析。
     if (process.env['KIMI_DISABLE_CRON'] === '1') {
       return {
         isError: true,
@@ -133,19 +122,14 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       };
     }
 
-    // 2. Normalize whitespace BEFORE parsing so `parsed.raw` (which
-    //    `cronToHuman` falls back to for non-template shapes) is the
-    //    single-line form. Otherwise tabs/newlines from the raw input
-    //    leak into the rendered `humanSchedule:` row and break the
-    //    one-key-per-line tool output format. Parse errors still report
-    //    against canonical field positions; only whitespace is
-    //    degraded, not semantics.
+    // 2. 在解析之前规范化空白，使 `parsed.raw`（`cronToHuman` 对
+    //    非模板形状回退使用）为单行形式。否则原始输入中的制表符/换行符
+    //    会泄露到渲染的 `humanSchedule:` 行中，破坏每行一个键的工具输出格式。
+    //    解析错误仍报告规范字段位置；只有空白被降级，语义不受影响。
     const normalizedCron = args.cron.trim().split(/\s+/).join(' ');
 
-    // 3. Parse the cron expression. Any parse failure is a user error
-    //    rather than an internal one, so we surface the message
-    //    verbatim — the parser is already careful to name the
-    //    offending field.
+    // 3. 解析 cron 表达式。任何解析失败都是用户错误而非内部错误，
+    //    因此原样展示消息 — 解析器已经注意命名了有问题的字段。
     let parsed: ParsedCronExpression;
     try {
       parsed = parseCronExpression(normalizedCron);
@@ -158,12 +142,10 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       };
     }
 
-    // 4. Reject "legal but never fires within 5 years" — the same
-    //    bound the scheduler uses internally to refuse to spin.
-    //    `0 0 31 2 *` is the canonical example. The exact `nowMs` does
-    //    not matter for this judgment (it only changes the search
-    //    window by < 5 years), so we read it here at prepare time and
-    //    re-read inside `execute()` for the actual schedule anchor.
+    // 4. 拒绝"合法但 5 年内不会触发" — 与调度器内部拒绝自旋的界限相同。
+    //    `0 0 31 2 *` 是典型例子。精确的 `nowMs` 对此判断无关紧要
+    //    （它只会改变搜索窗口不到 5 年），因此在准备时读取一次，
+    //    在 `execute()` 内重新读取作为实际调度锚点。
     const nowAtPrepare = this.manager.clocks.wallNow();
     if (!hasFireWithinYears(parsed, 5, nowAtPrepare)) {
       return {
@@ -174,10 +156,9 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       };
     }
 
-    // 5. Session-level cap — preliminary check. We re-check inside
-    //    `execute()` because manual-approval mode can delay execution
-    //    long enough for parallel CronCreate calls to all pass this
-    //    gate and then collectively breach the cap on insert.
+    // 5. 会话级上限 — 预检查。在 `execute()` 内重新检查，因为
+    //    手动批准模式可能延迟执行足够久，使并行的 CronCreate 调用
+    //    全部通过此门控，然后在插入时共同突破上限。
     if (this.manager.store.list().length >= MAX_CRON_JOBS_PER_SESSION) {
       return {
         isError: true,
@@ -187,9 +168,8 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       };
     }
 
-    // 6. Byte-length cap. zod's `.max()` counts code units, which is
-    //    not the budget we actually want for a multi-byte prompt; the
-    //    Buffer.byteLength check makes the 8 KiB intent literal.
+    // 6. 字节长度上限。zod 的 `.max()` 计算代码单元，这不是多字节
+    //    prompt 实际需要的预算；Buffer.byteLength 检查使 8 KiB 意图精确。
     const byteLen = Buffer.byteLength(args.prompt, 'utf8');
     if (byteLen > MAX_PROMPT_BYTES) {
       return {
@@ -200,21 +180,17 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       };
     }
 
-    // `recurring` is defaulted to true upstream; we re-derive the
-    // boolean (rather than trusting the post-default arg) to match the
-    // canonical "recurring iff not explicitly false" convention used
-    // everywhere else in the cron stack.
+    // `recurring` 在上游默认为 true；我们重新推导布尔值（而非信任
+    // 默认后的参数）以匹配 cron 栈中其他地方使用的规范
+    // "除非显式为否则为重复"约定。
     const recurring = args.recurring !== false;
 
-    // 7. One-shot "rolled to next year" guard. The tool docs recommend
-    //    pinning today's dom/month for "remind me at X today"; if
-    //    submission lands seconds past the target minute,
-    //    `computeNextCronRun` returns next year's match, the 5-year
-    //    window above accepts it, and the user's reminder fires a
-    //    year late. Reject when the first ideal fire is more than
-    //    ~one year out — for a 5-field cron this can only mean the
-    //    pinned date already passed this year. Recurring tasks are
-    //    unaffected; they re-fire as expected.
+    // 7. 一次性"滚到明年"防护。工具文档建议对"今天 X 点提醒我"
+    //    锁定今天的日期/月份；如果提交恰好在目标分钟之后几秒到达，
+    //    `computeNextCronRun` 返回明年的匹配，上面的 5 年窗口接受它，
+    //    用户的提醒会晚一年触发。当首次理想触发超过约一年时拒绝 —
+    //    对于 5 字段 cron 这只能意味着锁定日期今年已过。重复任务
+    //    不受影响；它们会按预期重新触发。
     if (!recurring) {
       const firstFire = computeNextCronRun(parsed, nowAtPrepare);
       if (
@@ -236,12 +212,10 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
       description: recurring
         ? `Scheduling cron ${normalizedCron}`
         : `Scheduling one-shot ${normalizedCron}`,
-      // Scope `session` approval to this exact payload. Without the
-      // payload in the rule, a single approved CronCreate would
-      // authorize any future scheduled prompt for the rest of the
-      // session — including ones the user never saw before approving.
-      // Matches the Bash / Write / Edit convention of including the
-      // command / path in the literal rule pattern.
+      // 将 `session` 批准范围限定到此精确负载。如果规则中不包含负载，
+      // 单次批准的 CronCreate 会在会话剩余时间内授权任何未来的
+      // 调度 prompt — 包括用户批准前从未见过的内容。
+      // 与 Bash / Write / Edit 在字面规则模式中包含命令/路径的约定一致。
       approvalRule: literalRulePattern(
         this.name,
         JSON.stringify({
@@ -251,17 +225,14 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
         }),
       ),
       execute: async () => {
-        // Anchor the schedule to the moment of execution, not the
-        // moment of preparation. Manual-approval mode can leave
-        // resolveExecution() and execute() minutes apart; inserting
-        // with a stale `nowMs` would let the scheduler treat a fresh
-        // one-shot as already overdue and fire it on the next tick
-        // with a phantom `coalescedCount > 1`.
+        // 将调度锚定到执行时刻，而非准备时刻。手动批准模式可能使
+        // resolveExecution() 和 execute() 相隔数分钟；使用过期的
+        // `nowMs` 插入会让调度器将新的一次性任务视为已逾期，
+        // 在下一次 tick 中触发并带有虚假的 `coalescedCount > 1`。
         const nowMs = this.manager.clocks.wallNow();
 
-        // Re-check the session cap against the live store size so two
-        // concurrently-prepared CronCreate calls cannot collectively
-        // breach it after both passed the prepare-time check.
+        // 根据实际存储大小重新检查会话上限，防止两个并发准备的
+        // CronCreate 调用在都通过准备时检查后共同突破上限。
         if (this.manager.store.list().length >= MAX_CRON_JOBS_PER_SESSION) {
           return {
             isError: true,
@@ -277,10 +248,9 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
           recurring,
         });
 
-        // Post-jitter next-fire for the response. `computeNextCronRun`
-        // returns `null` if there's no fire in the 5-year window (we
-        // already rejected that above, but be defensive — the jitter
-        // helper would then have nothing to shift).
+        // 响应中用于展示的抖动后下次触发时间。`computeNextCronRun`
+        // 在 5 年窗口内无触发时返回 `null`（上面已拒绝，但保持防御性 —
+        // 抖动辅助函数届时无内容可偏移）。
         const ideal = computeNextCronRun(parsed, nowMs);
         const nextFireAt =
           ideal === null
@@ -291,9 +261,8 @@ export class CronCreateTool implements BuiltinTool<CronCreateInput> {
 
         const humanSchedule = cronToHuman(parsed);
 
-        // Telemetry goes through the manager so the tool stays out of
-        // `manager.agent.telemetry`. CronDelete (P1.6) will use the
-        // symmetric `emitDeleted`.
+        // 遥测通过管理器进行，使工具不接触 `manager.agent.telemetry`。
+        // CronDelete（P1.6）将使用对称的 `emitDeleted`。
         this.manager.emitScheduled(task);
 
         const output: CronCreateOutput = {

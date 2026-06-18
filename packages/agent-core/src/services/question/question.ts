@@ -1,48 +1,44 @@
 /**
- * Question service interface + protocol adapter.
+ * 问题服务接口 + 协议适配器。
  *
- * **Service interface** (`IQuestionService`): Reverse-RPC one-shot broker
- * role — routes `QuestionRequest`s coming out of `KimiCore` to a waiter
- * (web client over WS, mock handler in tests) and resolves the
- * promise when the response arrives — or `dismiss()`-es it if the user
- * closes the panel (SCHEMAS.md §6.3).
+ * **服务接口**（`IQuestionService`）：Reverse-RPC 一次性代理角色——
+ * 将 `KimiCore` 产出的 `QuestionRequest` 路由到等待方（通过 WS 的 web 客户端、
+ * 测试中的 mock 处理器），并在响应到达时 resolve promise——或在用户关闭面板时
+ * 执行 `dismiss()`（SCHEMAS.md §6.3）。
  *
- * Role: one-shot broker — see `packages/services/AGENTS.md`. Kept under the
- * `Service` suffix per the package-wide convention; the broker semantics
- * lives in the interface shape (`request` + `resolve` + `dismiss`) and the
- * docstring, not in the type name.
+ * 角色：一次性代理——参见 `packages/services/AGENTS.md`。按包范围约定保留 `Service`
+ * 后缀；代理语义存在于接口形状（`request` + `resolve` + `dismiss`）和文档中，
+ * 而非类型名称中。
  *
- * **Shape note:** the service returns the in-process
- * `QuestionResult = null | QuestionAnswers | QuestionResponse` (see
- * `packages/agent-core/src/rpc/sdk-api.ts:48`). SCHEMAS.md §6.2/§6.4 defines
- * a protocol-level `QuestionResponse` with a 5-kind discriminated union
- * (`single` / `multi` / `other` / `multi_with_other` / `skipped`); the
- * protocol↔in-process adapter lives at the daemon boundary, NOT inside the
- * service interface. This keeps the SDK side of the adapter untouched and
- * confines protocol shape decisions to one place.
+ * **形状说明：** 服务返回进程内
+ * `QuestionResult = null | QuestionAnswers | QuestionResponse`（见
+ * `packages/agent-core/src/rpc/sdk-api.ts:48`）。SCHEMAS.md §6.2/§6.4 定义了
+ * 协议层 `QuestionResponse`，含 5 种判别联合体
+ *（`single` / `multi` / `other` / `multi_with_other` / `skipped`）；
+ * 协议↔进程内适配器位于守护进程边界，而非服务接口内部。这使适配器的 SDK 侧
+ * 不受影响，并将协议形状决策限制在一个位置。
  *
- * **Adapter** (`toBrokerRequest` / `toAgentCoreResponse` / `dismissedResult`):
- * Bridges two representations of the same question interaction:
+ * **适配器**（`toBrokerRequest` / `toAgentCoreResponse` / `dismissedResult`）：
+ * 桥接同一问题交互的两种表示：
  *
- *   1. **In-process SDK shape** (agent-core, camelCase) — what
- *      `BridgeClientAPI` sees from `KimiCore.requestQuestion(...)`. See
- *      `packages/agent-core/src/rpc/sdk-api.ts:50-54`:
+ *   1. **进程内 SDK 形状**（agent-core，驼峰式）——`BridgeClientAPI` 从
+ *      `KimiCore.requestQuestion(...)` 获取的内容。见
+ *      `packages/agent-core/src/rpc/sdk-api.ts:50-54`：
  *        `QuestionRequest { turnId?, toolCallId?, questions: QuestionItem[] }`
- *      where `QuestionItem` has `question, header?, body?, options[],
- *      multiSelect?, otherLabel?, otherDescription?`.
- *      `QuestionResult = null | QuestionAnswers | QuestionResponse`,
- *      `QuestionAnswers = Record<string, string | true>`.
+ *      其中 `QuestionItem` 含 `question, header?, body?, options[],
+ *      multiSelect?, otherLabel?, otherDescription?`。
+ *      `QuestionResult = null | QuestionAnswers | QuestionResponse`，
+ *      `QuestionAnswers = Record<string, string | true>`。
  *
- *   2. **Protocol wire shape** (snake_case, with daemon-allocated metadata) —
- *      defined in `packages/protocol/src/question.ts`. 5-kind discriminated
- *      union for answers: `single | multi | other | multi_with_other | skipped`.
+ *   2. **协议线协议形状**（下划线式，含守护进程分配的元数据）——
+ *      定义在 `packages/protocol/src/question.ts`。5 种判别联合体：
+ *      `single | multi | other | multi_with_other | skipped`。
  *
- * **Synthesizing stable ids** (SDK has no per-item / per-option `id`):
- *   - `QuestionItem.id`     ← `q_<index>` (e.g. `q_0`, `q_1`, ...)
- *   - `QuestionOption.id`   ← `opt_<parent_idx>_<option_idx>` (e.g. `opt_0_0`)
+ * **合成稳定 id**（SDK 没有按项/按选项的 `id`）：
+ *   - `QuestionItem.id`     ← `q_<index>`（如 `q_0`、`q_1`、...）
+ *   - `QuestionOption.id`   ← `opt_<parent_idx>_<option_idx>`（如 `opt_0_0`）
  *
- * **Anti-corruption**: this is the ONLY place protocol↔SDK shape translation
- * happens for question.
+ * **防腐层**：这是问题交互中协议↔SDK 形状转换的唯一位置。
  */
 
 import { createDecorator } from '../../di';
@@ -55,37 +51,36 @@ import type {
 } from '@moonshot-ai/protocol';
 import type {} from '@moonshot-ai/protocol'; // type-only marker — keep protocol dep referenced
 
-// Re-export for service-side consumers.
+// 为服务端消费者重新导出。
 export type { QuestionRequest, QuestionResult };
 
 export interface IQuestionService {
   readonly _serviceBrand: undefined;
 
   /**
-   * Called by the adapter when KimiCore needs the user to answer a question.
-   * Resolves with the in-process `QuestionResult` (null = no handler / fully
-   * dismissed). Concrete impls own timeout policy.
+   * 当 KimiCore 需要用户回答问题时由适配器调用。
+   * resolve 为进程内 `QuestionResult`（null = 无处理器/完全取消）。
+   * 具体实现负责超时策略。
    */
   request(req: InProcessQuestionRequest & { sessionId: string; agentId: string }): Promise<QuestionResult>;
 
   /**
-   * Called by the answer-side (REST handler / TUI / mock) to settle a pending
-   * `request()` with user answers. `id` matches `QuestionRequest`'s correlation
-   * id (`turnId`+`toolCallId` today; SCHEMAS.md §6.2's `question_id` once the
-   * protocol exposes it).
+   * 由应答端（REST 处理器/TUI/mock）调用，以用户回答结果结算待处理的 `request()`。
+   * `id` 匹配 `QuestionRequest` 的关联 id（当前为 `turnId`+`toolCallId`；
+   * 协议暴露后将使用 SCHEMAS.md §6.2 的 `question_id`）。
    */
   resolve(id: string, response: QuestionResult): void;
 
   /**
-   * Called when the user dismisses the panel without answering (ESC / close).
-   * Concrete impls resolve the pending `request()` with the equivalent of
-   * `dismissedQuestionResult()` (`packages/agent-core` — see SCHEMAS.md §6.3).
+   * 当用户未回答即关闭面板时调用（ESC/关闭）。
+   * 具体实现用 `dismissedQuestionResult()` 的等价值结算待处理的 `request()`
+   *（`packages/agent-core`——见 SCHEMAS.md §6.3）。
    */
   dismiss(id: string): void;
 
   /**
-   * Returns the protocol-shaped pending question requests for a session.
-   * Used by the session status lifecycle to detect `awaiting_question`.
+   * 返回会话的协议形状待处理问题请求列表。
+   * 会话状态生命周期用于检测 `awaiting_question` 状态。
    */
   listPending(sessionId: string): readonly ProtocolQuestionRequest[];
 }
@@ -94,24 +89,24 @@ export interface IQuestionService {
 export const IQuestionService = createDecorator<IQuestionService>('questionService');
 
 // ---------------------------------------------------------------------------
-// Adapter helpers (moved from adapter/question-adapter.ts)
+// 适配器辅助函数（从 adapter/question-adapter.ts 迁移）
 // ---------------------------------------------------------------------------
 
 export interface QuestionToBrokerRequestParams {
-  /** Daemon-minted ULID identifying this question interaction. */
+  /** 守护进程分配的 ULID，标识此问题交互。 */
   readonly questionId: string;
-  /** Session the question lives in. */
+  /** 问题所属的会话。 */
   readonly sessionId: string;
-  /** `createdAt` ISO string; broker passes `new Date().toISOString()`. */
+  /** `createdAt` ISO 字符串；代理传递 `new Date().toISOString()`。 */
   readonly createdAt: string;
-  /** `expiresAt` ISO string; broker computes `createdAt + 60s`. */
+  /** `expiresAt` ISO 字符串；代理计算 `createdAt + 60s`。 */
   readonly expiresAt: string;
 }
 
 /**
- * Build a protocol option from an SDK option. SDK has only `label?:string` +
- * `description?:string`; we synthesize `id` from parent and child indices so
- * `toAgentCoreAnswers` can map back through `Record<qid, string>`.
+ * 从 SDK 选项构建协议选项。SDK 只有 `label?:string` + `description?:string`；
+ * 我们从父级和子级索引合成 `id`，以便 `toAgentCoreAnswers` 能通过
+ * `Record<qid, string>` 反向映射。
  */
 function buildOption(
   opt: { readonly label: string; readonly description?: string },
@@ -126,8 +121,8 @@ function buildOption(
 }
 
 /**
- * Build a protocol question item from an SDK item + its position. The
- * synthesized `id` (`q_<parentIdx>`) is the key the SDK answers Record uses.
+ * 从 SDK 项 + 其位置构建协议问题项。
+ * 合成的 `id`（`q_<parentIdx>`）是 SDK 答案 Record 使用的键。
  */
 function buildItem(
   item: InProcessQuestionItem,
@@ -142,11 +137,10 @@ function buildItem(
   if (item.header !== undefined) out.header = item.header;
   if (item.body !== undefined) out.body = item.body;
   if (item.multiSelect !== undefined) out.multi_select = item.multiSelect;
-  // SDK has no `allowOther` field — `otherLabel` / `otherDescription` exist
-  // and we expose them on the wire alongside an inferred `allow_other: true`
-  // when either tag is set. (SDK semantics: presence of `otherLabel` enables
-  // the "Other" affordance; we surface that explicitly on the wire so client
-  // renderers don't have to infer.)
+  // SDK 没有 `allowOther` 字段——存在 `otherLabel` / `otherDescription`，
+  // 当任一标签存在时，我们在线协议上暴露它们并推断 `allow_other: true`。
+  //（SDK 语义：`otherLabel` 存在即启用"其他"功能；我们在线协议上显式呈现，
+  // 以避免客户端渲染器自行推断。）
   const hasOtherAffordance =
     item.otherLabel !== undefined || item.otherDescription !== undefined;
   if (hasOtherAffordance) out.allow_other = true;
@@ -156,7 +150,7 @@ function buildItem(
 }
 
 /**
- * In-process SDK request + daemon-allocated metadata → protocol wire shape.
+ * 进程内 SDK 请求 + 守护进程分配的元数据 → 协议线协议形状。
  */
 export function toBrokerRequest(
   req: InProcessQuestionRequest,
@@ -175,15 +169,15 @@ export function toBrokerRequest(
 }
 
 /**
- * Protocol REST response body → in-process SDK `QuestionResponse` (with
- * `answers` flattened to `Record<string, string | true>`).
+ * 协议 REST 响应体 → 进程内 SDK `QuestionResponse`
+ *（`answers` 展平为 `Record<string, string | true>`）。
  *
- * Normalization rules from SCHEMAS §6.4:
+ * 来自 SCHEMAS §6.4 的规范化规则：
  *   - single            → option_id
  *   - multi             → option_ids.join(',')
  *   - other             → text
  *   - multi_with_other  → [...option_ids, other_text].join(',')
- *   - skipped           → OMIT entry
+ *   - skipped           → 省略该条目
  */
 export function toAgentCoreResponse(
   resp: ProtocolQuestionResponse,
@@ -204,11 +198,10 @@ export function toAgentCoreResponse(
         flattened[qid] = [...ans.option_ids, ans.other_text].join(',');
         break;
       case 'skipped':
-        // Omitted from the record — matches SCHEMAS §6.4 ("if skipped continue").
+        // 从记录中省略——符合 SCHEMAS §6.4（"if skipped continue"）。
         break;
       default: {
-        // Defensive: never-reached if Zod schema is the SOT, but TS narrowing
-        // is exhaustive so this is unreachable.
+        // 防御性：如果 Zod schema 是 SOT 则永远不会到达，但 TS 窄化是穷举的，所以此处不可达。
         const _exhaustive: never = ans;
         void _exhaustive;
       }
@@ -216,10 +209,9 @@ export function toAgentCoreResponse(
   }
   const out: InProcessQuestionResponse = { answers: flattened };
   if (resp.method !== undefined) {
-    // SCHEMAS §6.2 protocol allows 'click' as a method; agent-core's in-process
-    // `QuestionAnswerMethod` is `'enter' | 'space' | 'number_key'` (NO 'click').
-    // Drop 'click' on the in-process side to preserve type safety; the wire
-    // form keeps it for clients that want to surface the affordance used.
+    // SCHEMAS §6.2 协议允许 'click' 作为 method；agent-core 的进程内
+    // `QuestionAnswerMethod` 为 `'enter' | 'space' | 'number_key'`（不含 'click'）。
+    // 在进程内侧丢弃 'click' 以保持类型安全；线协议保留它供客户端呈现用户使用的交互方式。
     if (resp.method !== 'click') {
       (out as { method?: typeof resp.method }).method = resp.method;
     }
@@ -228,9 +220,8 @@ export function toAgentCoreResponse(
 }
 
 /**
- * Convenience: SDK semantics for "dismiss the entire question group" is the
- * `null` QuestionResult. Exposed as a helper so daemon code reads
- * intentionally rather than litter `null` constants.
+ * 便捷函数：SDK 中"取消整个问题组"的语义是 `null` QuestionResult。
+ * 作为辅助函数暴露，使守护进程代码能以意图明确的方式读取，而非到处散落 `null` 常量。
  */
 export function dismissedResult(): null {
   return null;

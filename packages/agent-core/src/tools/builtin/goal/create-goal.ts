@@ -1,7 +1,7 @@
 /**
- * CreateGoalTool — lets the main agent start an explicit goal on the user's
- * behalf. The goal becomes durable, structured state owned by the agent's
- * GoalMode, not text parsed from a slash command.
+ * CreateGoalTool — 让主代理代表用户启动一个显式目标。
+ * 目标成为代理 GoalMode 拥有的持久化、结构化状态，
+ * 而非从斜杠命令解析的文本。
  */
 
 import type { Agent } from '#/agent';

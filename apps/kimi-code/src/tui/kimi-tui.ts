@@ -160,7 +160,7 @@ export interface KimiTUIStartupInput {
   readonly workDir: string;
   readonly startupNotice?: string;
   readonly migrationPlan?: MigrationPlan | null;
-  /** When true, run only the migration screen, then exit (the `kimi migrate` command). */
+  /** 为 true 时仅运行迁移屏幕，然后退出（`kimi migrate` 命令）。 */
   readonly migrateOnly?: boolean;
 }
 
@@ -242,12 +242,11 @@ export class KimiTUI {
   readonly tasksBrowserController: TasksBrowserController;
   readonly editorKeyboard: EditorKeyboardController;
 
-  // The currently-mounted approval panel, if any. Kept so the full-screen
-  // preview viewer can restore focus to the exact same instance (and its
-  // selection / feedback state) when it closes.
+  // 当前挂载的审批面板（如有）。保留该引用以便全屏预览查看器
+  // 关闭时可以恢复焦点到同一个实例（及其选中/反馈状态）。
   private activeApprovalPanel: ApprovalPanelComponent | undefined;
-  // Active full-screen approval preview. While set, the root UI's normal
-  // children are stashed in `savedChildren`; closing restores them.
+  // 当前活跃的全屏审批预览。设置期间，根 UI 的正常子组件
+  // 暂存在 `savedChildren` 中；关闭时会恢复。
   private approvalPreview:
     | {
         component: ApprovalPreviewViewer;
@@ -256,7 +255,7 @@ export class KimiTUI {
       }
     | undefined;
 
-  // Map of pending approval request IDs to their resolve callbacks
+  // 待处理审批请求 ID 到其回调函数的映射
   private pendingApprovals = new Map<string, (response: ApprovalPanelResponse) => void>();
 
   public onExit?: (exitCode?: number) => Promise<void>;
@@ -305,7 +304,7 @@ export class KimiTUI {
       }),
     );
 
-    // Register web viewer approval callback (always register, check enabled at runtime)
+    // 注册 Web 查看器审批回调（始终注册，运行时检查是否启用）
     setApprovalResponseCallback((requestId, approved, scope) => {
       const pending = this.pendingApprovals.get(requestId);
       if (pending) {
@@ -318,7 +317,7 @@ export class KimiTUI {
         } else {
           pending({ response: 'rejected' });
         }
-        // Hide the panel since we got a response
+        // 收到响应后隐藏面板
         this.hideApprovalPanel();
       }
     });
@@ -334,7 +333,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Autocomplete & Skill Commands
+  // 自动补全与技能命令
   // =========================================================================
 
   private getSlashCommands(): readonly KimiSlashCommand[] {
@@ -393,16 +392,16 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Lifecycle
+  // 生命周期
   // =========================================================================
 
   async start(): Promise<void> {
-    // Signal handlers must be installed before raw mode to avoid EIO loops.
+    // 信号处理器必须在启用原始模式之前安装，以避免 EIO 循环。
     this.registerSignalHandlers();
-    // Outer try rolls back signal listeners on startup failure.
+    // 外层 try 在启动失败时回滚信号监听器。
     try {
       if (this.migrationPlan !== null) {
-        // Migration needs the event loop running first (pi-tui component).
+        // 迁移需要先启动事件循环（pi-tui 组件）。
         this.startEventLoop();
         try {
           const migrationResult = await this.runMigrationScreen(this.migrationPlan);
@@ -464,7 +463,7 @@ export class KimiTUI {
         },
       });
     } catch {
-      // Best-effort: banner display state should never block startup.
+      // 尽力而为：横幅显示状态不应阻塞启动。
     }
   }
 
@@ -490,7 +489,7 @@ export class KimiTUI {
   private async initMainTui(): Promise<boolean> {
     const shouldReplayHistory = await this.init();
 
-    // Mount only after init() succeeds; see mountFooter().
+    // 仅在 init() 成功后挂载；参见 mountFooter()。
     this.mountFooter();
     this.renderWelcome();
     void this.loadBanner();
@@ -519,7 +518,7 @@ export class KimiTUI {
         this.setupAutocomplete();
       })
       .catch(() => {
-        // Best-effort background bootstrap: autocomplete keeps using the filesystem fallback.
+        // 尽力而为的后台引导：自动补全继续使用文件系统回退方案。
       });
   }
 
@@ -536,7 +535,7 @@ export class KimiTUI {
         this.showStatus(`Skipped refreshing ${f.provider}: ${f.reason}`, 'warning');
       }
     } catch {
-      // Best-effort: startup must not crash on background refresh failures.
+      // 尽力而为：启动不应因后台刷新失败而崩溃。
     }
   }
 
@@ -684,8 +683,8 @@ export class KimiTUI {
     }
   }
 
-  // SIGHUP / dead-terminal EIO → emergencyTerminalExit (no cleanup, avoids
-  // EIO write-loop that can pin a CPU core). SIGTERM → normal stop().
+  // SIGHUP / 终端死亡 EIO → emergencyTerminalExit（不执行清理，避免
+  // EIO 写循环导致 CPU 核心被占满）。SIGTERM → 正常 stop()。
   private registerSignalHandlers(): void {
     this.unregisterSignalHandlers();
 
@@ -700,8 +699,8 @@ export class KimiTUI {
           this.emergencyTerminalExit();
           return;
         }
-        // Registering a SIGTERM listener disables Node's default exit(143),
-        // so we must reinstate it after stop() or on failure.
+        // 注册 SIGTERM 监听器会禁用 Node 默认的 exit(143) 行为，
+        // 因此必须在 stop() 之后或失败时手动恢复。
         this.stop(143).then(
           () => {
             process.exit(143);
@@ -738,7 +737,7 @@ export class KimiTUI {
     for (const cleanup of handlers) cleanup();
   }
 
-  // Exit codes follow POSIX 128+signum: 129 = SIGHUP, 143 = SIGTERM.
+  // 退出码遵循 POSIX 128+信号编号规则：129 = SIGHUP，143 = SIGTERM。
   private emergencyTerminalExit(exitCode = 129): never {
     this.isShuttingDown = true;
     this.unregisterSignalHandlers();
@@ -760,14 +759,13 @@ export class KimiTUI {
     ui.addChild(this.state.queueContainer);
     ui.addChild(this.state.btwPanelContainer);
     ui.addChild(this.state.editorContainer);
-    // Footer is mounted later (mountFooter), not here.
+    // Footer 稍后挂载（mountFooter），不在此处。
   }
 
-  // Footer is the only chrome with content before a session is ready, so
-  // mounting it at construction lets a stray pre-start render leak it to the
-  // terminal — e.g. above the error when resuming a missing session. Mount it
-  // only once init() succeeds. FooterComponent isn't a Container, so wrap it to
-  // pick up the same outer gutter as the panels above.
+  // Footer 是会话就绪前唯一有内容的固定 UI 元素，因此
+  // 在构造时挂载会导致启动前的意外渲染泄露到终端——例如恢复缺失会话时
+  // 出现在错误信息上方。仅在 init() 成功后挂载。FooterComponent 不是
+  // Container，因此需要包装以获得与上方面板相同的外边距。
   private mountFooter(): void {
     const footerWrap = new GutterContainer(CHROME_GUTTER, CHROME_GUTTER);
     footerWrap.addChild(this.state.footer);
@@ -775,7 +773,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Input Dispatch
+  // 输入分发
   // =========================================================================
 
   handlePlanToggle(next: boolean): void {
@@ -855,7 +853,7 @@ export class KimiTUI {
       }
       this.lastHistoryContent = entries.at(-1)?.content;
     } catch {
-      // best-effort
+      // 尽力而为
     }
   }
 
@@ -881,7 +879,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Session Requests / Queues
+  // 会话请求 / 队列
   // =========================================================================
 
   private enqueueMessage(text: string, options?: SendMessageOptions): void {
@@ -1007,7 +1005,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // State & Accessors
+  // 状态与访问器
   // =========================================================================
 
   setStartupReady(): void {
@@ -1092,7 +1090,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Session Runtime
+  // 会话运行时
   // =========================================================================
 
   requireSession(): Session {
@@ -1142,10 +1140,9 @@ export class KimiTUI {
     });
   }
 
-  // Apply --auto/--yolo/--plan startup flags to a resumed session. The resumed
-  // session may already be in plan mode from its persisted records, and
-  // re-entering plan mode throws, so only enable it when it is not active yet.
-  // setPermission is idempotent and needs no such guard.
+  // 将 --auto/--yolo/--plan 启动标志应用到恢复的会话。恢复的会话
+  // 可能已从持久化记录中处于计划模式，重复进入计划模式会抛出异常，
+  // 因此仅在尚未激活时才启用。setPermission 是幂等的，无需此保护。
   private async applyStartupModesToResumedSession(session: Session): Promise<void> {
     const { startup } = this.options;
     if (startup.auto) {
@@ -1161,9 +1158,9 @@ export class KimiTUI {
     }
   }
 
-  // Re-apply startup flags that the user explicitly passed on the command line.
-  // syncRuntimeState and session-replay hydration can both read stale persisted
-  // values, so this guarantees the footer reflects the CLI intent.
+  // 重新应用用户在命令行显式传递的启动标志。
+  // syncRuntimeState 和会话回放水合都可能读取过时的持久化值，
+  // 因此此方法确保底栏反映 CLI 的实际意图。
   private applyStartupPermissionAndPlanToAppState(): void {
     const { startup } = this.options;
     if (startup.auto) {
@@ -1176,7 +1173,7 @@ export class KimiTUI {
     }
   }
 
-  // Plan mode is set by createSession — do not re-enter it here.
+  // 计划模式已由 createSession 设置——此处不再重复进入。
   private async activateRuntime(): Promise<void> {
     const session = this.requireSession();
     await session.setPermission(this.state.appState.permissionMode);
@@ -1233,7 +1230,7 @@ export class KimiTUI {
         this.hasSessionContent(),
       );
     } catch {
-      /* silently ignore */
+      /* 静默忽略 */
     } finally {
       this.state.loadingSessions = false;
     }
@@ -1311,7 +1308,7 @@ export class KimiTUI {
     try {
       await this.refreshSkillCommands(this.session);
     } catch {
-      /* keep the switched session usable even if dynamic skills fail */
+      /* 即使动态技能加载失败也保持切换后的会话可用 */
     }
     this.clearTranscriptAndRedraw();
     try {
@@ -1347,7 +1344,7 @@ export class KimiTUI {
     try {
       await this.refreshSkillCommands(session);
     } catch {
-      /* keep the reloaded session usable even if dynamic skills fail */
+      /* 即使动态技能加载失败也保持重新加载的会话可用 */
     }
     this.sessionEventHandler.startSubscription();
     const resumeState = session.getResumeState();
@@ -1387,7 +1384,7 @@ export class KimiTUI {
     try {
       await this.refreshSkillCommands(this.session);
     } catch {
-      /* keep the new session usable even if dynamic skills fail */
+      /* 即使动态技能加载失败也保持新会话可用 */
     }
     this.sessionEventHandler.startSubscription();
     this.clearTranscriptAndRedraw();
@@ -1395,7 +1392,7 @@ export class KimiTUI {
     void this.showConfigWarningsIfAny();
   }
 
-  /** Surface config.toml load warnings (degraded or kept-previous config) in the status bar. */
+  /** 在状态栏显示 config.toml 加载警告（降级或保留了旧配置）。 */
   private async showConfigWarningsIfAny(): Promise<void> {
     try {
       const { warnings } = await this.harness.getConfigDiagnostics();
@@ -1403,12 +1400,12 @@ export class KimiTUI {
         this.showStatus(warning, 'warning');
       }
     } catch {
-      /* diagnostics are best-effort */
+      /* 诊断为尽力而为 */
     }
   }
 
   // =========================================================================
-  // Transcript Rendering
+  // 对话记录渲染
   // =========================================================================
 
   private createTranscriptComponent(entry: TranscriptEntry): Component | null {
@@ -1611,7 +1608,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Panes / Presentation State
+  // 面板 / 展示状态
   // =========================================================================
 
   updateActivityPane(): void {
@@ -1746,8 +1743,8 @@ export class KimiTUI {
     currentTheme.setPalette(palette);
     this.setAppState({ theme: themeName });
     this.updateEditorBorderHighlight();
-    // Force every historical message to re-render so Markdown/Text caches
-    // (which hold old ANSI colour codes) are cleared.
+    // 强制所有历史消息重新渲染，以清除 Markdown/Text 缓存
+    //（其中保存了旧的 ANSI 颜色代码）。
     this.state.transcriptContainer.invalidate();
     this.state.ui.requestRender(true);
   }
@@ -1772,8 +1769,8 @@ export class KimiTUI {
     if (currentTheme.palette === palette) return;
     currentTheme.setPalette(palette);
     this.updateEditorBorderHighlight();
-    // Repaint already-rendered transcript entries (status/markdown caches hold
-    // old ANSI codes), matching applyTheme()'s behaviour.
+    // 重新绘制已渲染的对话条目（状态/Markdown 缓存保存了
+    // 旧的 ANSI 代码），与 applyTheme() 的行为一致。
     this.state.transcriptContainer.invalidate();
     this.state.ui.requestRender(true);
   }
@@ -1838,7 +1835,7 @@ export class KimiTUI {
   }
 
   // =========================================================================
-  // Dialogs / Selectors
+  // 对话框 / 选择器
   // =========================================================================
 
   mountEditorReplacement(panel: Component & Focusable): void {
@@ -1880,12 +1877,12 @@ export class KimiTUI {
     });
     this.restoreEditor();
     if (result.decision === 'never') {
-      // Persist the skip marker `detectPendingMigration` checks, so "Never ask
-      // again" actually stops the prompt from reappearing every launch.
+      // 持久化 `detectPendingMigration` 检查的跳过标记，使"不再询问"
+      // 真正阻止提示在每次启动时重新出现。
       try {
         writeFileSync(join(this.harness.homeDir, '.skip-migration-from-kimi-cli'), '', 'utf-8');
       } catch {
-        // Non-blocking: a failed marker write must never crash startup.
+        // 非阻塞：标记写入失败绝不能导致启动崩溃。
       }
     }
     return result;
@@ -1999,9 +1996,9 @@ export class KimiTUI {
     readonly onCtrlC?: () => void;
     readonly onCtrlD?: () => void;
     readonly initialSelectedSessionId?: string;
-    // CLI mode flags (--auto/--yolo/--plan) target the session picked at
-    // startup (bare --session); later /sessions switches keep the picked
-    // session's own persisted modes.
+    // CLI 模式标志（--auto/--yolo/--plan）针对启动时选择的会话
+    // （裸 --session）；之后的 /sessions 切换保持所选会话自身的
+    // 持久化模式。
     readonly applyStartupModes?: boolean;
   }): void {
     this.state.activeDialog = 'session-picker';
@@ -2056,16 +2053,16 @@ export class KimiTUI {
       body: payload.tool_name,
     });
 
-    // Broadcast approval request to web viewer
+    // 向 Web 查看器广播审批请求
     if (isLlmCommunicationLogEnabled()) {
       const toolInput = payload.description || payload.action || payload.tool_name;
       triggerApprovalRequest(payload.tool_name, toolInput, payload.id);
     }
 
-    // Store callback for web viewer approval
+    // 存储 Web 查看器审批回调
     const handleResponse = (response: ApprovalPanelResponse) => {
       this.pendingApprovals.delete(payload.id);
-      // Broadcast approval result to web viewer
+      // 向 Web 查看器广播审批结果
       if (isLlmCommunicationLogEnabled()) {
         const approved = response.response === 'approved' || response.response === 'approved_for_session';
         triggerApprovalResult(payload.id, approved, response.response === 'approved_for_session' ? 'session' : undefined);
@@ -2073,7 +2070,7 @@ export class KimiTUI {
       this.approvalController.respond(adaptPanelResponse(response));
     };
 
-    // Store callback for web viewer approval (always store, check enabled at runtime)
+    // 存储 Web 查看器审批回调（始终存储，运行时检查是否启用）
     this.pendingApprovals.set(payload.id, handleResponse);
 
     const panel = new ApprovalPanelComponent(
@@ -2091,19 +2088,18 @@ export class KimiTUI {
   }
 
   private hideApprovalPanel(): void {
-    // If the full-screen preview is open, fold it back first so the saved-
-    // children stack stays consistent with what mountEditorReplacement set up.
+    // 如果全屏预览处于打开状态，先将其折叠回去，以确保已保存的
+    // 子组件栈与 mountEditorReplacement 设置的一致。
     if (this.approvalPreview !== undefined) this.closeApprovalPreview();
     this.activeApprovalPanel = undefined;
     this.patchLivePane({ pendingApproval: null });
     this.restoreEditor();
   }
 
-  // Mounts the full-screen approval preview viewer on top of the current
-  // approval panel. Uses the same nested-takeover pattern as
-  // openTaskOutputViewer: we snapshot the root container's children, swap
-  // in the viewer, and restore on close. The approval panel instance is
-  // kept around in `activeApprovalPanel` so its selection state survives.
+  // 在当前审批面板上方挂载全屏审批预览查看器。使用与
+  // openTaskOutputViewer 相同的嵌套接管模式：快照根容器的子组件，
+  // 替换为查看器，关闭时恢复。审批面板实例保留在
+  // `activeApprovalPanel` 中，以保留其选中状态。
   private openApprovalPreview(panel: ApprovalPanelComponent, block: ApprovalPreviewBlock): void {
     if (this.approvalPreview !== undefined) return;
     const savedChildren = [...this.state.ui.children];

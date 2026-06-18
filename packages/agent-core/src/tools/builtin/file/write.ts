@@ -1,8 +1,8 @@
 /**
- * WriteTool — overwrite or append to a file.
+ * WriteTool — 覆盖或追加写入文件。
  *
- * Creates the file if it does not exist; parent directory must already exist.
- * Path access policy is resolved before any Kaos I/O.
+ * 文件不存在时创建；父目录必须已存在。
+ * 路径访问策略在任何 Kaos I/O 之前解析。
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
@@ -18,9 +18,9 @@ import { literalRulePattern, matchesPathRuleSubject } from '../../support/rule-m
 import type { WorkspaceConfig } from '../../support/workspace';
 import WRITE_DESCRIPTION from './write.md?raw';
 
-/** Mask isolating the file-type bits of a stat mode. */
+/** stat 模式中隔离文件类型位的掩码。 */
 const S_IFMT = 0o170000;
-/** File-type bits of a directory. */
+/** 目录的文件类型位。 */
 const S_IFDIR = 0o040000;
 
 export const WriteInputSchema = z.object({
@@ -43,7 +43,7 @@ export const WriteInputSchema = z.object({
 });
 
 export const WriteOutputSchema = z.object({
-  /** Number of UTF-8 bytes written to disk by this call. */
+  /** 此次调用写入磁盘的 UTF-8 字节数。 */
   bytesWritten: z.number().int().nonnegative(),
 });
 
@@ -94,9 +94,8 @@ export class WriteTool implements BuiltinTool<WriteInput> {
       } else {
         await this.kaos.writeText(safePath, args.content);
       }
-      // Report the number of UTF-8 bytes this call wrote to disk. The string
-      // length would only equal the byte count for pure ASCII content, so it
-      // is not used here.
+      // 报告此次调用写入磁盘的 UTF-8 字节数。字符串长度仅对纯 ASCII
+      // 内容才等于字节数，因此此处不使用。
       const bytesWritten = Buffer.byteLength(args.content, 'utf8');
       return {
         output: `${mode === 'append' ? 'Appended' : 'Wrote'} ${String(bytesWritten)} bytes to ${args.path}`,
@@ -117,14 +116,12 @@ export class WriteTool implements BuiltinTool<WriteInput> {
   }
 
   /**
-   * Best-effort check that the parent directory exists and is a directory.
+   * 尽力检查父目录是否存在且为目录。
    *
-   * The path schema documents this precondition; probing it up front turns a
-   * bare `ENOENT` from the underlying write into an actionable message.
-   * Returns an error string when the precondition is definitively violated,
-   * or `undefined` otherwise. Any other `stat` failure (permissions, an
-   * environment without `stat`) is treated as inconclusive: the check is
-   * skipped and the write proceeds, surfacing the real I/O error if any.
+   * 路径 schema 文档记录了此前提条件；预先探测将底层写入的裸 `ENOENT`
+   * 转化为可操作的消息。当前提条件确定被违反时返回错误字符串，
+   * 否则返回 `undefined`。任何其他 `stat` 失败（权限、无 `stat` 的环境）
+   * 被视为不确定：跳过检查并继续写入，如有真实 I/O 错误则暴露。
    */
   private async checkParentDirectory(safePath: string): Promise<string | undefined> {
     const parent = dirname(safePath);

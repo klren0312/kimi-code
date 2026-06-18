@@ -1,17 +1,15 @@
 /**
- * Module-global service registry. Modules (or top-level files) register their
- * service implementations at import-time via `registerSingleton`; the daemon
- * bootstrap then seeds the root `ServiceCollection` from
- * `getSingletonServiceDescriptors()`.
+ * 模块级全局服务注册表。模块（或顶层文件）通过 `registerSingleton` 在导入时
+ * 注册服务实现；守护进程启动时从 `getSingletonServiceDescriptors()` 收集
+ * 根 `ServiceCollection` 的种子。
  *
- * Modelled after VSCode's `extensions.ts` — same shape, same intent.
+ * 模仿自 VSCode 的 `extensions.ts` — 相同的结构和用途。
  *
- * Registry shape: `Array<[ServiceIdentifier<any>, SyncDescriptor<any>]>`. Each
- * entry pairs an id with the `SyncDescriptor` that captures both the
- * constructor + static args AND the `supportsDelayedInstantiation` flag.
- * Registrations are appended as-is. Override semantics live in the
- * `ServiceCollection` stage that consumes the registry, matching VS Code's
- * permissive module-load registry.
+ * 注册表结构：`Array<[ServiceIdentifier<any>, SyncDescriptor<any>]>`。每个条目
+ * 将 id 与 `SyncDescriptor` 配对，`SyncDescriptor` 捕获构造函数 + 静态参数
+ * 以及 `supportsDelayedInstantiation` 标志。注册按原样追加。覆盖语义由
+ * 消费注册表的 `ServiceCollection` 阶段决定，与 VS Code 宽松的模块加载
+ * 注册表一致。
  */
 
 import { SyncDescriptor } from './descriptors';
@@ -26,22 +24,19 @@ export enum InstantiationType {
 }
 
 /**
- * Register a service implementation under its identifier. Typically called
- * at module top-level.
+ * 在标识符下注册服务实现。通常在模块顶层调用。
  *
- * Two call shapes are supported:
+ * 支持两种调用形式：
  *
- * - `registerSingleton(id, ctor, instantiationType?)` — the back-compat ctor
- *   overload. Internally wraps `ctor` in `new SyncDescriptor(ctor, [],
- *   supportsDelayedInstantiation)` where
- *   `supportsDelayedInstantiation = Boolean(instantiationType)`.
- * - `registerSingleton(id, descriptor)` — the descriptor overload. Stores the
- *   descriptor as-is; the caller owns `staticArguments` and
- *   `supportsDelayedInstantiation`.
+ * - `registerSingleton(id, ctor, instantiationType?)` — 向后兼容的构造函数
+ *   重载。内部将 `ctor` 包装为 `new SyncDescriptor(ctor, [],
+ *   supportsDelayedInstantiation)`，其中
+ *   `supportsDelayedInstantiation = Boolean(instantiationType)`。
+ * - `registerSingleton(id, descriptor)` — 描述符重载。按原样存储描述符；
+ *   调用方拥有 `staticArguments` 和 `supportsDelayedInstantiation`。
  *
- * If `id` was previously registered, the new entry is appended. Consumers
- * that seed a `ServiceCollection` decide the effective binding by insertion
- * order.
+ * 如果 `id` 已被注册，则追加新条目。构建 `ServiceCollection` 的消费者
+ * 按插入顺序决定有效绑定。
  */
 export function registerSingleton<T, Services extends BrandedService[]>(
   id: ServiceIdentifier<T>,
@@ -74,15 +69,14 @@ export function registerSingleton<T, Services extends BrandedService[]>(
 }
 
 /**
- * Return the registry as a list suitable for `ServiceCollection`
- * construction.
+ * 返回注册表列表，适用于构建 `ServiceCollection`。
  *
- * Shape: `ReadonlyArray<readonly [ServiceIdentifier<any>, SyncDescriptor<any>]>`
- * — two-tuple, matching VS Code's `getSingletonServiceDescriptors()`. The
- * `supportsDelayedInstantiation` flag travels on the descriptor itself, not
- * as a separate registry slot.
+ * 结构：`ReadonlyArray<readonly [ServiceIdentifier<any>, SyncDescriptor<any>]>`
+ * — 二元组，与 VS Code 的 `getSingletonServiceDescriptors()` 一致。
+ * `supportsDelayedInstantiation` 标志在描述符本身上，而非作为注册表的
+ * 独立槽位。
  *
- * The returned array is the live registry, matching VS Code.
+ * 返回的数组是活的注册表引用，与 VS Code 一致。
  */
 export function getSingletonServiceDescriptors(): ReadonlyArray<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,9 +86,8 @@ export function getSingletonServiceDescriptors(): ReadonlyArray<
 }
 
 /**
- * Test-only escape hatch: empty the registry. Real code must never call this
- * — module-load registrations are intended to be permanent for the lifetime
- * of the process.
+ * 仅用于测试的逃逸口：清空注册表。正式代码绝不能调用此函数 —
+ * 模块加载时的注册在进程生命周期内应是永久的。
  */
 export function _clearRegistryForTests(): void {
   _registry.length = 0;

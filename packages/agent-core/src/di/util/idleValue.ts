@@ -1,18 +1,16 @@
 /**
- * `GlobalIdleValue<T>` — defers an executor until the first `value` access
- * (or the next browser idle callback / `setTimeout` fallback). Used by
- * `InstantiationService._createServiceInstance` to back
- * `supportsDelayedInstantiation: true` services: the Proxy returned to
- * callers triggers `idle.value` on first non-`onDid*` access, which runs
- * the real construction.
+ * `GlobalIdleValue<T>` — 将执行器的运行延迟到首次访问 `value` 时
+ * （或下一个浏览器空闲回调 / `setTimeout` 回退）。用于
+ * `InstantiationService._createServiceInstance` 以支持
+ * `supportsDelayedInstantiation: true` 的服务：返回给调用方的 Proxy
+ * 在首次非 `onDid*` 访问时触发 `idle.value`，从而执行真正的构造。
  *
- * Vendored from krow `packages/core/src/base/async.ts:57-97` (which is the
- * VSCode original). Node-safe: falls back to `setTimeout` when
- * `requestIdleCallback` is unavailable (the typical Node environment).
+ * 从 krow `packages/core/src/base/async.ts:57-97` 移植而来（即 VSCode
+ * 原始版本）。兼容 Node：当 `requestIdleCallback` 不可用时回退到
+ * `setTimeout`（典型的 Node 环境）。
  *
- * Only `GlobalIdleValue` is exported — `runWhenGlobalIdle` is internal to
- * this module because the DI subsystem is the only consumer; if another
- * package later needs it, lift it then.
+ * 仅导出 `GlobalIdleValue` — `runWhenGlobalIdle` 为本模块内部函数，
+ * 因为 DI 子系统是唯一消费者；如果后续其他包需要，再提升即可。
  */
 
 import type { IDisposable } from '../lifecycle';
@@ -23,10 +21,9 @@ interface IdleDeadline {
 }
 
 /**
- * Run `callback` the next time the host is idle. Returns a disposable that
- * cancels the pending callback if disposed before it fires. Uses
- * `requestIdleCallback` when available; otherwise schedules a `setTimeout`
- * polyfill that simulates a one-frame deadline (15 ms).
+ * 在宿主下次空闲时运行 `callback`。返回一个 disposable，如果在回调触发前
+ * 释放则取消待执行的回调。可用时使用 `requestIdleCallback`；否则调度一个
+ * `setTimeout` polyfill，模拟单帧截止时间（15ms）。
  */
 function runWhenGlobalIdle(
   callback: (idle: IdleDeadline) => void,
@@ -54,13 +51,13 @@ function runWhenGlobalIdle(
       },
     };
   } else {
-    // Polyfill for environments without requestIdleCallback (e.g. Node.js).
+    // 针对没有 requestIdleCallback 的环境（如 Node.js）的 polyfill。
     let disposed = false;
     const handle = setTimeout(() => {
       if (disposed) {
         return;
       }
-      const end = Date.now() + 15; // one frame at ~64fps
+      const end = Date.now() + 15; // 约 64fps 下的一帧时长
       const deadline: IdleDeadline = {
         didTimeout: true,
         timeRemaining() {
@@ -82,14 +79,13 @@ function runWhenGlobalIdle(
 }
 
 /**
- * Lazy box around an executor `() => T`. The executor is scheduled to run on
- * the next idle tick, but reading `.value` BEFORE the idle tick fires
- * cancels the schedule and runs the executor synchronously — then caches
- * the result (or rethrows the captured error) on every subsequent access.
+ * 对执行器 `() => T` 的惰性包装。执行器被调度在下一个空闲 tick 时运行，
+ * 但在空闲 tick 触发前读取 `.value` 会取消调度并同步执行执行器 — 然后
+ * 缓存结果（或在后续每次访问时重新抛出捕获的错误）。
  *
- * `isInitialized` lets the Proxy distinguish "real instance exists" from
- * "still pending" so `onDid*`/`onWill*` event subscriptions can be parked
- * in an early-listener list and replayed on materialisation.
+ * `isInitialized` 让 Proxy 可以区分"真实实例已存在"和"仍在等待中"，
+ * 这样 `onDid*`/`onWill*` 事件订阅可以被暂存到早期监听器列表中，
+ * 并在实例化时重放。
  */
 export class GlobalIdleValue<T> {
   private readonly _executor: () => void;

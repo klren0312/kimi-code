@@ -1,17 +1,16 @@
 /**
- * LocalFetchURLProvider — host-side URL fetcher.
+ * LocalFetchURLProvider — 宿主端 URL 抓取器。
  *
- * Flow:
- *   1. GET the URL with a Chrome-like UA.
- *   2. Reject HTTP >= 400 with the status code in the message.
- *   3. Reject responses larger than `maxBytes` (content-length first,
- *      then measured body length as a defensive second check).
- *   4. `text/plain` / `text/markdown` → passthrough verbatim.
- *   5. Otherwise (assumed HTML) → run Readability over a linkedom
- *      document. Return `# ${title}\n\n${text}` (title omitted when
- *      absent). If extraction yields no meaningful text, fall back to
- *      common content containers (`<article>` / `<main>` / `<body>`)
- *      before throwing a "meaningful content" error.
+ * 流程：
+ *   1. 使用类 Chrome UA 的 GET 请求获取 URL。
+ *   2. HTTP >= 400 时以状态码拒绝。
+ *   3. 响应超过 `maxBytes` 时拒绝（先检查 content-length，
+ *      再以实际 body 长度作为防御性二次校验）。
+ *   4. `text/plain` / `text/markdown` → 原样透传。
+ *   5. 其他（视为 HTML）→ 对 linkedom 文档运行 Readability。
+ *      返回 `# ${title}\n\n${text}`（标题不存在时省略）。
+ *      若提取未获得有意义文本，回退到常见内容容器
+ *      （`<article>` / `<main>` / `<body>`），然后抛出"有意义内容"错误。
  */
 
 import { Readability } from '@mozilla/readability';
@@ -19,15 +18,13 @@ import { parseHTML as rawParseHTML } from 'linkedom';
 
 import { HttpFetchError, type UrlFetcher, type UrlFetchResult } from '../builtin';
 
-// Readability's .d.ts references the global `Document` type, but this
-// package compiles with `lib: ES2023` (no DOM). Extracting the
-// constructor parameter type keeps us off the global `Document` name
-// while still accepting whatever Readability wants.
+// Readability 的 .d.ts 引用了全局 `Document` 类型，但本包编译时
+// 使用 `lib: ES2023`（无 DOM）。提取构造函数参数类型可避免
+// 引入全局 `Document` 名称，同时仍接受 Readability 所需的类型。
 type ReadabilityDocument = ConstructorParameters<typeof Readability>[0];
 
-// linkedom's published types depend on DOM libs we don't load. Declare
-// the minimal surface we actually use so the rest of the file stays
-// type-safe without pulling lib.dom.d.ts into the host build.
+// linkedom 的发布类型依赖于我们未加载的 DOM 库。声明我们实际使用的
+// 最小接口，使文件其余部分在不引入 lib.dom.d.ts 的情况下保持类型安全。
 interface DomElementLike {
   textContent: string | null;
   querySelector(selector: string): DomElementLike | null;
@@ -48,23 +45,20 @@ export interface LocalFetchURLProviderOptions {
   fetchImpl?: typeof fetch;
   maxBytes?: number;
   /**
-   * Allow fetching loopback / RFC 1918 / link-local / ULA addresses.
-   * Defaults to `false` — enabled only for tests and (future) explicit
-   * opt-in. Keeps an LLM that's been prompt-injected from exfiltrating
-   * AWS/GCP metadata (169.254.169.254), probing internal services
-   * (10.x, 192.168.x), or reading local daemons (127.0.0.1:*).
+   * 允许获取环回 / RFC 1918 / 链路本地 / ULA 地址。
+   * 默认为 `false` ——仅用于测试及（未来）显式启用。
+   * 防止被提示注入的 LLM 窃取 AWS/GCP 元数据（169.254.169.254）、
+   * 探测内部服务（10.x、192.168.x）或读取本地守护进程（127.0.0.1:*）。
    */
   allowPrivateAddresses?: boolean;
 }
 
 /**
- * SSRF guard — reject non-http(s) schemes and (by default) any hostname
- * that is, or parses as, a private / loopback / link-local / ULA IP
- * literal. This is a *static* check against the URL string; it does NOT
- * do DNS resolution, so a domain that resolves to a private IP via
- * DNS-rebinding is **not** caught here. That attack is a known
- * limitation; mitigations (e.g. pinning the resolved IP through to
- * fetch) are left for a follow-up.
+ * SSRF 防护 ——拒绝非 http(s) 协议以及（默认）任何属于私有 /
+ * 环回 / 链路本地 / ULA IP 字面量的主机名。这是对 URL 字符串的
+ * *静态*检查；它**不做** DNS 解析，因此通过 DNS 重绑定解析到
+ * 私有 IP 的域名**不**会被捕获。该攻击是已知限制；
+ * 缓解措施（如将解析的 IP 固定到 fetch）留待后续实现。
  */
 function assertSafeFetchTarget(url: string, allowPrivate: boolean): void {
   let parsed: URL;
@@ -77,15 +71,15 @@ function assertSafeFetchTarget(url: string, allowPrivate: boolean): void {
     throw new Error(`Unsupported URL scheme "${parsed.protocol}" — only http(s) allowed.`);
   }
   if (allowPrivate) return;
-  // URL hostname preserves surrounding `[ ]` for IPv6 literals on some
-  // Node versions (and not others). Strip them for uniform comparison.
+  // URL hostname 在某些（非全部）Node 版本上会为 IPv6 字面量
+  // 保留外围的 `[ ]`。为统一比较而剥离它们。
   const hostRaw = parsed.hostname.toLowerCase();
   const host = hostRaw.startsWith('[') && hostRaw.endsWith(']') ? hostRaw.slice(1, -1) : hostRaw;
-  // Literal "localhost" / loopback aliases.
+  // 字面量 "localhost" / 环回别名。
   if (host === 'localhost' || host.endsWith('.localhost')) {
     throw new Error(`Refusing to fetch private host: "${host}"`);
   }
-  // IPv6 loopback / ULA / link-local. Check after bracket strip.
+  // IPv6 环回 / ULA / 链路本地。在剥离方括号后检查。
   if (
     host === '::1' ||
     host === '::' ||
@@ -95,8 +89,7 @@ function assertSafeFetchTarget(url: string, allowPrivate: boolean): void {
   ) {
     throw new Error(`Refusing to fetch private host: "${host}"`);
   }
-  // IPv4 literal — only check when the hostname is a dotted-quad; normal
-  // domains will never match.
+  // IPv4 字面量 ——仅在主机名为点分四组时检查；普通域名不会匹配。
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (v4 !== null) {
     const octets = [v4[1], v4[2], v4[3], v4[4]].map(Number);
@@ -104,9 +97,9 @@ function assertSafeFetchTarget(url: string, allowPrivate: boolean): void {
       throw new Error(`Invalid IPv4 literal: "${host}"`);
     }
     const [a, b] = octets as [number, number, number, number];
-    // 127.0.0.0/8 loopback, 10.0.0.0/8, 192.168.0.0/16,
-    // 172.16.0.0/12, 169.254.0.0/16 link-local / AWS metadata,
-    // 0.0.0.0/8 "this network", 100.64.0.0/10 CGNAT.
+    // 127.0.0.0/8 环回、10.0.0.0/8、192.168.0.0/16、
+    // 172.16.0.0/12、169.254.0.0/16 链路本地 / AWS 元数据、
+    // 0.0.0.0/8 "本网络"、100.64.0.0/10 CGNAT。
     const isLoopback = a === 127;
     const isPrivate10 = a === 10;
     const isPrivate192 = a === 192 && b === 168;
@@ -150,10 +143,10 @@ export class LocalFetchURLProvider implements UrlFetcher {
     });
 
     if (response.status >= 400) {
-      // Drain the unused body so undici can release the socket back to
-      // the keep-alive pool instead of leaking it on error paths.
+      // 释放未使用的 body，使 undici 可将套接字归还
+      // keep-alive 池，而非在错误路径上泄漏。
       await response.body?.cancel().catch(() => {
-        /* already closed */
+        /* 已关闭 */
       });
       throw new HttpFetchError(
         response.status,
@@ -161,7 +154,7 @@ export class LocalFetchURLProvider implements UrlFetcher {
       );
     }
 
-    // Reject oversized responses before buffering the full body.
+    // 在缓冲整个 body 剉拒绝过大的响应。
     const contentLengthRaw = response.headers.get('content-length');
     if (contentLengthRaw !== null) {
       const cl = Number(contentLengthRaw);
@@ -174,7 +167,7 @@ export class LocalFetchURLProvider implements UrlFetcher {
 
     const body = await response.text();
 
-    // Servers may omit content-length — measure again defensively.
+    // 服务器可能省略 content-length ——防御性地再次测量。
     const actualBytes = Buffer.byteLength(body, 'utf8');
     if (actualBytes > this.maxBytes) {
       throw new Error(
@@ -191,8 +184,8 @@ export class LocalFetchURLProvider implements UrlFetcher {
   }
 
   private extractMainContent(html: string): string {
-    // Readability mutates the DOM it parses, so parse twice — once for
-    // the primary extractor and once for the fallback path.
+    // Readability 会变异其解析的 DOM，因此解析两次 ——一次用于
+    // 主提取器，一次用于回退路径。
     const primary = parseHTML(html);
     try {
       const reader = new Readability(primary.document as unknown as ReadabilityDocument, {
@@ -207,7 +200,7 @@ export class LocalFetchURLProvider implements UrlFetcher {
         }
       }
     } catch {
-      // Fall through to the container-based fallback.
+      // 回退到基于容器的提取路径。
     }
 
     const { document } = parseHTML(html);

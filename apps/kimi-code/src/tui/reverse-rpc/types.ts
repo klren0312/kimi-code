@@ -1,14 +1,14 @@
 /**
- * Reverse RPC view-layer types.
+ * 反向 RPC 视图层类型。
  *
- * These types are the contract between the UI layer and reverse RPC
- * controllers, not SDK event payloads. Approval and question adapters convert
- * core payloads into these shapes for panel components.
+ * 这些类型是 UI 层与反向 RPC 控制器之间的契约，
+ * 而非 SDK 事件载荷。审批和问题适配器将核心载荷
+ * 转换为这些形状，供面板组件使用。
  */
 
 import type { QuestionAnswerMethod } from '@moonshot-ai/kimi-code-sdk';
 
-// ── Display blocks (approval panel) ──────────────────────────────────
+// ── 显示块（审批面板）──────────────────────────────────
 
 export interface BriefDisplayBlock {
   type: 'brief';
@@ -41,7 +41,7 @@ export interface FileOpDisplayBlock {
   detail?: string | undefined;
 }
 
-/** Full file content preview for Write — a code block, not a diff. */
+/** Write 操作的完整文件内容预览 —— 代码块，而非 diff。 */
 export interface FileContentDisplayBlock {
   type: 'file_content';
   path: string;
@@ -105,7 +105,7 @@ export interface ApprovalPanelChoice {
   requires_feedback?: boolean | undefined;
 }
 
-// ── Approval / Question view payloads ────────────────────────────────
+// ── 审批 / 问题视图载荷 ────────────────────────────────
 
 export interface ApprovalPanelData {
   id: string;
@@ -140,7 +140,7 @@ export interface QuestionPanelResponse {
   readonly method?: QuestionSubmissionMethod | undefined;
 }
 
-// ── Pending state wrappers ───────────────────────────────────────────
+// ── 待处理状态包装 ───────────────────────────────────────────
 
 export interface PendingApproval {
   data: ApprovalPanelData;

@@ -44,7 +44,7 @@ export class StreamingUIController {
   readonly pendingToolCallFlushIds = new Set<string>();
 
   // ---------------------------------------------------------------------------
-  // Streaming runtime state (private — accessed via semantic methods below)
+  // 流式运行时状态（私有——通过下方的语义方法访问）
   // ---------------------------------------------------------------------------
 
   private _currentTurnId: string | undefined = undefined;
@@ -76,7 +76,7 @@ export class StreamingUIController {
   constructor(private readonly host: StreamingUIHost) {}
 
   // ---------------------------------------------------------------------------
-  // Turn context — read/write accessors
+  // 对话轮次上下文——读写访问器
   // ---------------------------------------------------------------------------
 
   getTurnContext(): { turnId: string | undefined; step: number } {
@@ -96,7 +96,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Text streaming — semantic write accessors
+  // 文本流式传输——语义写入访问器
   // ---------------------------------------------------------------------------
 
   appendThinkingDelta(delta: string): void {
@@ -133,7 +133,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Tool call state — semantic accessors
+  // 工具调用状态——语义访问器
   // ---------------------------------------------------------------------------
 
   getActiveToolCall(id: string): ToolCallBlockData | undefined {
@@ -175,48 +175,37 @@ export class StreamingUIController {
   }
 
   /**
-   * Push the actual terminal status of a background agent task into the
-   * matching `Agent` tool call component so its snapshot phase no longer
-   * trusts the spawn-success ToolResult (which would otherwise label every
-   * terminated bg agent — including `lost` ones — as `✓ Completed`).
+   * 将后台 agent 任务的实际终端状态推送至匹配的 `Agent` 工具调用组件，
+   * 使其快照阶段不再信任 spawn-success ToolResult（否则所有已终止的后台 agent——
+   * 包括 `lost` 的——都会被标记为 `✓ Completed`）。
    *
-   * Resolution policy: an `args.agentId` is treated as authoritative — we
-   * either find a card whose `getSubagentAgentId()` returns the same id
-   * (in-memory metadata for live foreground, parsed from the spawn-success
-   * `agent_id: ...` line for live backgrounded and replayed cards) or we
-   * skip. We deliberately do NOT fall back to description match when
-   * `agentId` is provided, because:
-   *   - On resume, `applyTerminalBackgroundAgentStatuses` iterates every
-   *     persisted terminal task, including ones whose tool calls fell
-   *     outside the `REPLAY_TURN_LIMIT` window. A description fallback
-   *     would let an old `lost` task stamp its status onto an unrelated
-   *     recent Agent card that happens to share `args.description`.
-   *   - During a live spawn / terminate race, the same card can briefly
-   *     appear in both `_pendingToolComponents` and `transcriptContainer`,
-   *     so a description match could double-visit the same component and
-   *     mark itself ambiguous. agentId match short-circuits on the first
-   *     hit and is immune.
+   * 解析策略：`args.agentId` 被视为权威来源——我们查找 `getSubagentAgentId()` 返回
+   * 相同 id 的卡片（实时前台的内存元数据、实时后台和回放卡片从 spawn-success 的
+   * `agent_id: ...` 行解析），或者跳过。当提供了 `agentId` 时，我们故意不回退到
+   * 描述匹配，因为：
+   *   - 恢复时，`applyTerminalBackgroundAgentStatuses` 遍历每个已持久化的终态任务，
+   *     包括那些工具调用落在 `REPLAY_TURN_LIMIT` 窗口之外的任务。描述回退会导致
+   *     旧的 `lost` 任务将其状态附加到碰巧共享 `args.description` 的不相关近期
+   *     Agent 卡片上。
+   *   - 在实时 spawn / terminate 竞态中，同一卡片可能短暂同时出现在
+   *     `_pendingToolComponents` 和 `transcriptContainer` 中，因此描述匹配可能
+   *     两次访问同一组件并标记为模糊。agentId 匹配在首次命中时短路返回，不受此影响。
    *
-   * Description fallback is kept as a best-effort path only when
-   * `agentId` is unknown — that is, on resume of pre-PR sessions whose
-   * disk records pre-date `agent_id` persistence.
+   * 描述回退仅作为 `agentId` 未知时的尽力路径——即恢复预 PR 会话时，
+   * 其磁盘记录早于 `agent_id` 持久化。
    *
-   * Search scope includes both in-flight components and already-mounted
-   * cards (some live in `transcriptContainer` standalone, others are
-   * borrowed by an `AgentGroupComponent` and reachable only via
-   * `getToolComponents()`).
+   * 搜索范围包括进行中的组件和已挂载的卡片（一些独立存在于 `transcriptContainer` 中，
+   * 其他被 `AgentGroupComponent` 借用，只能通过 `getToolComponents()` 访问）。
    *
-   * Returns true iff a component was found and updated.
+   * 找到并更新了组件时返回 true。
    */
   applyBackgroundTaskTerminalStatus(args: {
     agentId?: string | undefined;
     description: string;
     status: 'completed' | 'failed' | 'timed_out' | 'killed' | 'lost';
     /**
-     * Real failure message to surface on the card. Pass the `subagent.failed`
-     * event's `error` for live crashes — it is far more useful than the
-     * friendly generic the card falls back to. Omit on the resume / terminate
-     * path where no real error is available.
+     * 在卡片上显示的真实失败消息。实时崩溃时传入 `subagent.failed` 事件的 `error`——
+     * 比卡片回退使用的通用提示要有用得多。在恢复/终止路径中没有真实错误可用时省略。
      */
     errorText?: string | undefined;
   }): boolean {
@@ -265,9 +254,8 @@ export class StreamingUIController {
     return true;
   }
 
-  /** Registers a tool call that arrived via tool.call.started.
-   *  Clears any pending streaming state for this id, updates or creates the
-   *  component, and returns whether the call was new (no previous entry). */
+  /** 注册通过 tool.call.started 到达的工具调用。
+   *  清除此 id 的待处理流式状态，更新或创建组件，返回该调用是否为新的（无先前记录）。 */
   registerToolCall(toolCall: ToolCallBlockData): boolean {
     const existing = this._activeToolCalls.get(toolCall.id);
     this._activeToolCalls.set(toolCall.id, toolCall);
@@ -285,7 +273,7 @@ export class StreamingUIController {
     return existing === undefined;
   }
 
-  /** Accumulates a streaming tool-call argument delta. */
+  /** 累积流式工具调用参数增量。 */
   accumulateToolCallDelta(
     id: string,
     eventName: string | undefined,
@@ -312,8 +300,8 @@ export class StreamingUIController {
     };
   }
 
-  /** Completes a tool call: delivers the result and removes tracking state.
-   *  Returns the matched ToolCallBlockData, or undefined if no call was tracked. */
+  /** 完成工具调用：交付结果并移除跟踪状态。
+   *  返回匹配的 ToolCallBlockData，如果没有跟踪到调用则返回 undefined。 */
   completeToolResult(toolCallId: string, result: ToolResultBlockData): ToolCallBlockData | undefined {
     const matchedCall = this._activeToolCalls.get(toolCallId);
     if (matchedCall !== undefined) {
@@ -324,8 +312,8 @@ export class StreamingUIController {
     return matchedCall;
   }
 
-  /** Marks in-flight tool calls as truncated when a step hits max_tokens.
-   *  Returns the count of tool calls that were truncated. */
+  /** 当步骤触发 max_tokens 时，将进行中的工具调用标记为截断。
+   *  返回被截断的工具调用数量。 */
   markStepTruncated(turnId: string, step: number): number {
     let count = 0;
     for (const toolCall of this._activeToolCalls.values()) {
@@ -344,7 +332,7 @@ export class StreamingUIController {
     return count;
   }
 
-  /** Tears down replay-specific state after session history has been rendered. */
+  /** 会话历史渲染完成后，清理回放相关的状态。 */
   cleanupAfterReplay(completedToolCallIds: Set<string>): void {
     this._activeToolCalls.clear();
     for (const toolCallId of completedToolCallIds) {
@@ -360,7 +348,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Dispose helpers (moved from KimiTUI)
+  // 资源释放辅助方法（从 KimiTUI 迁移而来）
   // ---------------------------------------------------------------------------
 
   disposeActiveThinkingComponent(): void {
@@ -385,7 +373,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Flush control
+  // 刷新控制
   // ---------------------------------------------------------------------------
 
   hasPending(): boolean {
@@ -462,7 +450,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Text streaming
+  // 文本流式传输
   // ---------------------------------------------------------------------------
 
   flushThinkingToTranscript(nextMode: LivePaneState['mode'] = 'idle'): void {
@@ -539,7 +527,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Live Render Hooks
+  // 实时渲染钩子
   // ---------------------------------------------------------------------------
 
   onStreamingTextStart(): void {
@@ -699,7 +687,7 @@ export class StreamingUIController {
   }
 
   // ---------------------------------------------------------------------------
-  // Tool call grouping
+  // 工具调用分组
   // ---------------------------------------------------------------------------
 
   private flushToolCallPreview(id: string): void {

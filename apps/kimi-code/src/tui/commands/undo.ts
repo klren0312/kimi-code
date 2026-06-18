@@ -26,7 +26,7 @@ import { nextTranscriptId } from '../utils/transcript-id';
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// Undo command
+// 撤销命令
 // ---------------------------------------------------------------------------
 
 interface UndoAvailability {

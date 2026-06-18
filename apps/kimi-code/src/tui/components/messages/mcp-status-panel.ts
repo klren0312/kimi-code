@@ -56,13 +56,11 @@ function formatToolsAvailable(count: number): string {
 }
 
 /**
- * Collapse a (possibly multi-line) MCP error into a single line. The status
- * panel renders each returned string as exactly one boxed row (see
- * `UsagePanelComponent.render`), so an embedded newline — e.g. the
- * `\nstderr: ...` a failed stdio server appends — would drop the trailing
- * text to column 0 and punch through the rounded border. Folding every run
- * of whitespace to a single space keeps the error on one row, which the
- * panel then truncates to the available width.
+ * 将（可能为多行的）MCP 错误折叠为单行。状态面板将每个返回的字符串
+ * 渲染为恰好一行带边框的行（参见 `UsagePanelComponent.render`），因此
+ * 内嵌的换行符——例如失败的 stdio 服务器追加的 `\nstderr: ...`——
+ * 会导致后续文本跌落到第 0 列并穿透圆角边框。将所有连续空白折叠为
+ * 单个空格可保持错误信息在同一行内，面板随后会按可用宽度截断显示。
  */
 function formatErrorLine(error: string): string {
   return error.trim().replaceAll(/\s+/g, ' ');

@@ -135,6 +135,7 @@ function opts(overrides: Partial<Parameters<typeof runPrompt>[0]> = {}) {
     outputFormat: undefined,
     prompt: 'say hello',
     skillsDirs: [],
+    logLlm: false,
     ...overrides,
   };
 }

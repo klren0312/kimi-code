@@ -1,5 +1,5 @@
 /**
- * `TaskService` — implementation of `ITaskService`.
+ * `TaskService` — `ITaskService` 的实现。
  */
 
 import { Disposable, InstantiationType, registerSingleton } from '../../di';
@@ -63,7 +63,7 @@ export class TaskService extends Disposable implements ITaskService {
           output = { preview, bytes: Buffer.byteLength(preview, 'utf-8') };
         }
       } catch {
-        // Output may not be available yet; fall back to task metadata only.
+        // 输出可能尚未可用，仅回退到任务元数据。
       }
     }
 
@@ -72,9 +72,8 @@ export class TaskService extends Disposable implements ITaskService {
 
   async cancel(sessionId: string, taskId: string): Promise<{ cancelled: true }> {
     await this._requireSession(sessionId);
-    // Pre-fetch so we can distinguish the 40406 (not found) and 40904 (already
-    // finished) cases deterministically — agent-core's `stopBackground` is a
-    // fire-and-forget call that doesn't surface this.
+    // 预取以便确定性地区分 40406（未找到）和 40904（已完成）场景 —
+    // agent-core 的 `stopBackground` 是 fire-and-forget 调用，不会暴露此信息。
     const raw = await this._getAllRaw(sessionId);
     const found = raw.find((t) => t.taskId === taskId);
     if (found === undefined) {
@@ -92,7 +91,7 @@ export class TaskService extends Disposable implements ITaskService {
     return { cancelled: true };
   }
 
-  // --- internals ------------------------------------------------------------
+  // --- 内部方法 ------------------------------------------------------------
 
   private async _requireSession(sessionId: string): Promise<void> {
     const all = await this.core.rpc.listSessions({});
@@ -110,13 +109,12 @@ export class TaskService extends Disposable implements ITaskService {
         agentId: MAIN_AGENT_ID,
       });
     } catch {
-      // Session not loaded; treat as empty.
+      // Session 未加载，视为空列表。
       return [];
     }
   }
 }
 
-// Self-register under the global singleton registry. All ctor deps are
-// `@I…`-injected; `staticArguments = []`. `supportsDelayedInstantiation =
-// false` preserves current reverse-dispose semantics.
+// 在全局单例注册表中自注册。所有构造函数依赖通过 `@I…` 注入；`staticArguments = []`。
+// `supportsDelayedInstantiation = false` 保留当前反向释放语义。
 registerSingleton(ITaskService, TaskService, InstantiationType.Delayed);

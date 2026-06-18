@@ -1,41 +1,36 @@
 /**
- * MCP tool-call result → ExecutableTool output pipeline.
+ * MCP 工具调用结果 → ExecutableTool 输出流水线。
  *
- * Owns the full path from "MCP protocol content blocks" to "what the agent
- * loop feeds back to the model":
- *  1. Convert each {@link MCPContentBlock} to a kosong `ContentPart`
- *     (dropping unsupported shapes).
- *  2. Wrap media-only outputs in `<mcp_tool_result name="…">` tags so the
- *     model can attribute binary output when several tools return media.
- *     Mirrors the in-tree `ReadMediaFile` convention.
- *  3. Apply size limits: text/think share a 100K character budget; binary
- *     parts (image/audio/video URLs) each carry an independent 10 MB cap and
- *     collapse to a notice when oversize, so a single screenshot cannot
- *     evict every text part.
- *  4. Collapse a single-text-part result to a plain string output; otherwise
- *     emit the `ContentPart[]` as-is.
+ * 拥有从"MCP 协议内容块"到"代理循环反馈给模型的内容"的完整路径：
+ *  1. 将每个 {@link MCPContentBlock} 转换为 kosong `ContentPart`
+ *    （丢弃不支持的形状）。
+ *  2. 将纯媒体输出包裹在 `<mcp_tool_result name="…">` 标签中，
+ *     以便模型在多个工具返回媒体时能归属二进制输出。
+ *     与仓库内的 `ReadMediaFile` 惯例保持一致。
+ *  3. 应用大小限制：文本/思考共享 100K 字符预算；二进制部分
+ *   （image/audio/video URL）各有独立的 10 MB 上限，超时时折叠为通知，
+ *     以免单张截图驱逐所有文本部分。
+ *  4. 将单文本部分结果折叠为纯字符串输出；否则按原样发出 `ContentPart[]`。
  *
- * `mcpResultToExecutableOutput` is the single entry point; the per-step
- * helpers stay private so callers cannot bypass the limits.
+ * `mcpResultToExecutableOutput` 是唯一的入口；各步骤辅助函数保持私有，
+ * 以防止调用方绕过限制。
  */
 
 import type { ContentPart } from '@moonshot-ai/kosong';
 
 import type { MCPContentBlock, MCPToolResult } from './types';
 
-// MCP servers can produce arbitrarily large outputs; cap what we feed back to
-// the model so a single chatty server does not blow up the context window. The
-// notice text is fed to the model verbatim so it can react (e.g. paginate),
-// which is why the limits live in the agent layer rather than in kosong.
+// MCP 服务器可以产生任意大的输出；限制反馈给模型的大小，以免单个健谈的
+// 服务器耗尽上下文窗口。通知文本原样传给模型，以便其做出响应（如分页），
+// 这就是为什么限制放在代理层而非 kosong 中。
 export const MCP_MAX_OUTPUT_CHARS = 100_000;
 const MCP_OUTPUT_TRUNCATED_TEXT = `\n\n[Output truncated: exceeded ${String(
   MCP_MAX_OUTPUT_CHARS,
 )} character limit. Use pagination or more specific queries to get remaining content.]`;
 
-// Binary parts (image_url / audio_url / video_url) have an independent per-part
-// byte cap and do NOT share the text character budget. base64 length is not a
-// useful proxy for multimodal model cost, and a single screenshot is enough to
-// evict every text part if both compete for the same 100k budget.
+// 二进制部分（image_url / audio_url / video_url）有独立的每部分字节上限，
+// 不共享文本字符预算。base64 长度不是多模态模型成本的有效代理，
+// 如果两者竞争同一个 100k 预算，单张截图就足以驱逐所有文本部分。
 export const MCP_MAX_BINARY_PART_BYTES = 10 * 1024 * 1024;
 const MCP_MAX_BINARY_PART_CHARS = Math.ceil((MCP_MAX_BINARY_PART_BYTES * 4) / 3);
 
@@ -46,10 +41,10 @@ function binaryPartTooLargeNotice(kind: 'image' | 'audio' | 'video', urlLength: 
 }
 
 /**
- * Convert a single MCP content block into a kosong {@link ContentPart}.
+ * 将单个 MCP 内容块转换为 kosong {@link ContentPart}。
  *
- * Returns `null` for block types that cannot be represented (e.g. unknown
- * resource shapes) so the caller can drop them.
+ * 对于无法表示的块类型（如未知的资源形状）返回 `null`，
+ * 以便调用方可以丢弃它们。
  */
 export function convertMCPContentBlock(block: MCPContentBlock): ContentPart | null {
   if (block.type === 'text' && typeof block.text === 'string') {
@@ -72,8 +67,8 @@ export function convertMCPContentBlock(block: MCPContentBlock): ContentPart | nu
     };
   }
 
-  // EmbeddedResource: payload is nested under `resource`, as
-  // TextResourceContents (`text`) or BlobResourceContents (`blob`).
+  // EmbeddedResource：嵌套在 `resource` 下的载荷，为 TextResourceContents
+  // （`text`）或 BlobResourceContents（`blob`）。
   if (block.type === 'resource' && typeof block.resource === 'object' && block.resource !== null) {
     const res = block.resource;
     if (typeof res.text === 'string') {
@@ -104,7 +99,7 @@ export function convertMCPContentBlock(block: MCPContentBlock): ContentPart | nu
     return null;
   }
 
-  // ResourceLink: URL reference, not an inline blob.
+  // ResourceLink：URL 引用，而非内联 blob。
   if (block.type === 'resource_link' && typeof block.uri === 'string') {
     const mimeType = block.mimeType ?? 'application/octet-stream';
     if (mimeType.startsWith('image/')) {
@@ -123,12 +118,11 @@ export function convertMCPContentBlock(block: MCPContentBlock): ContentPart | nu
 }
 
 /**
- * Convert an `MCPToolResult` into the success-shape `ExecutableToolResult`
- * output the agent loop expects.
+ * 将 `MCPToolResult` 转换为代理循环期望的成功形态 `ExecutableToolResult` 输出。
  *
- * `qualifiedToolName` is the agent-side qualified name (e.g.
- * `mcp__github__create_pr`) — embedded into the `<mcp_tool_result name="…">`
- * wrap when the result is media-only, so the model can attribute binary parts.
+ * `qualifiedToolName` 是代理侧的限定名称（如 `mcp__github__create_pr`）——
+ * 当结果为纯媒体时嵌入到 `<mcp_tool_result name="…">` 包裹中，
+ * 以便模型归属二进制部分。
  */
 export function mcpResultToExecutableOutput(
   result: MCPToolResult,
@@ -149,9 +143,8 @@ export function mcpResultToExecutableOutput(
 }
 
 /**
- * If `parts` contains media but no non-empty text, surround it with
- * `<mcp_tool_result name="…">` text tags so the model can attribute the
- * binary content. Returns the input untouched otherwise.
+ * 如果 `parts` 包含媒体但没有非空文本，则用 `<mcp_tool_result name="…">`
+ * 文本标签包裹，以便模型能归属二进制内容。否则原样返回输入。
  */
 function wrapMediaOnly(parts: readonly ContentPart[], qualifiedToolName: string): ContentPart[] {
   const hasMedia = parts.some(
@@ -167,11 +160,10 @@ function wrapMediaOnly(parts: readonly ContentPart[], qualifiedToolName: string)
 }
 
 /**
- * Apply the 100K text/think budget and the per-part 10 MB binary cap.
+ * 应用 100K 文本/思考预算和每部分 10 MB 二进制上限。
  *
- * When text/think parts get truncated, the truncation notice is appended to
- * the last surviving text part — this keeps the single-text-part collapse
- * working when the entire (oversized) input is a single text block.
+ * 当文本/思考部分被截断时，截断通知追加到最后存活的文本部分——
+ * 这使得整个（超大）输入为单个文本块时，单文本部分折叠仍然有效。
  */
 function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
   let remaining = MCP_MAX_OUTPUT_CHARS;
@@ -212,9 +204,8 @@ function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
       continue;
     }
 
-    // image_url / audio_url / video_url: per-part byte cap, independent of the
-    // text character budget. Oversized parts collapse into a per-part notice so
-    // the model can pick a smaller resource instead of silently losing the blob.
+    // image_url / audio_url / video_url：每部分字节上限，独立于文本字符预算。
+    // 超大部分折叠为每部分通知，以便模型可以选择更小的资源而非静默丢失 blob。
     const url =
       part.type === 'image_url'
         ? part.imageUrl.url
@@ -237,9 +228,9 @@ function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
 }
 
 function appendTruncationNotice(out: ContentPart[]): void {
-  // Merge the notice into the last text part so the very common
-  // "single oversized text" case still collapses to a plain string. Falls
-  // back to a standalone notice part if there is no text part to merge with.
+  // 将通知合并到最后一个文本部分，使非常常见的"单个超大文本"情况
+  // 仍折叠为纯字符串。如果没有可合并的文本部分，
+  // 则回退到独立的通知部分。
   for (let i = out.length - 1; i >= 0; i--) {
     const candidate = out[i];
     if (candidate?.type === 'text') {

@@ -1,20 +1,18 @@
 /**
- * GrepTool — content search via ripgrep.
+ * GrepTool ——通过 ripgrep 进行内容搜索。
  *
- * Shells out to `rg` through Kaos. Supports glob/type filtering, context
- * lines, output modes, pagination, multiline, and case-insensitive search.
+ * 通过 Kaos 调用 `rg`。支持 glob/type 过滤、上下文行、输出模式、
+ * 分页、多行和大小写不敏感搜索。
  *
- * Path safety is enforced before any Kaos I/O. Explicit absolute paths outside
- * the workspace are allowed; relative paths that escape the workspace are
- * rejected.
+ * 路径安全在任何 Kaos I/O 之前强制执行。显式的工作区外绝对路径
+ * 允许访问；逃逸工作区的相对路径被拒绝。
  *
- * Output is bounded and post-processed before it reaches the model:
- *   - timeout and ambient abort both terminate the rg subprocess;
- *   - stdout/stderr are capped while streams continue draining;
- *   - hidden files are searched, but VCS metadata and common sensitive glob
- *     patterns are prefiltered where possible;
- *   - parsed path records are filtered again after rg returns, using the active
- *     backend path class.
+ * 输出在到达模型前经过有界和后处理：
+ *   - 超时和环境中止都会终止 rg 子进程；
+ *   - stdout/stderr 在流继续排空时被限制大小；
+ *   - 隐藏文件会被搜索，但 VCS 元数据和常见敏感 glob 模式
+ *     会尽可能预过滤；
+ *   - rg 返回后使用活跃的后端路径类再次过滤已解析的路径记录。
  */
 
 import type { Readable } from 'node:stream';
@@ -141,17 +139,16 @@ async function disposeProcess(proc: KaosProcess): Promise<void> {
   try {
     await proc.dispose();
   } catch {
-    /* best-effort cleanup */
+    /* 尽力清理 */
   }
 }
-// Column cap applied to non-content output modes only; `content` mode returns
-// matching lines in full so the cap is intentionally skipped there.
+// 列宽限制仅应用于非内容输出模式；`content` 模式返回完整匹配行，
+// 因此在此处有意跳过限制。
 const RG_MAX_COLUMNS = 500;
 const DEFAULT_HEAD_LIMIT = 250;
 const MTIME_STAT_CONCURRENCY = 32;
 const VCS_DIRECTORIES_TO_EXCLUDE = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'] as const;
-// This is a conservative prefilter. The authoritative sensitive-file check
-// still happens on parsed rg records after execution.
+// 这是保守的预过滤。权威的敏感文件检查仍在执行后对已解析的 rg 记录进行。
 const SENSITIVE_KEY_BASENAMES = ['id_rsa', 'id_ed25519', 'id_ecdsa'] as const;
 const SENSITIVE_KEY_GLOBS_TO_EXCLUDE = SENSITIVE_KEY_BASENAMES.flatMap((name) => [
   `**/${name}`,
@@ -167,14 +164,14 @@ const SENSITIVE_GLOBS_TO_EXCLUDE = [
   '**/.gcp/credentials/**',
 ] as const;
 
-// Line formats produced by ripgrep:
-//   content match with --null:   "file.py<NUL>10:matched text"
-//   context line with --null:    "file.py<NUL>9-context text"
-//   count_matches with --null:   "file.py<NUL>2"
-//   non-NUL content fallback:    "file.py:10:matched text"
-//   context divider: "--"
-// Runtime rg output uses NUL as the path boundary; the regex handles
-// line-oriented output without NUL delimiters.
+// ripgrep 产生的行格式：
+//   含 --null 的内容匹配：  "file.py<NUL>10:matched text"
+//   含 --null 的上下文行：  "file.py<NUL>9-context text"
+//   含 --null 的计数匹配：  "file.py<NUL>2"
+//   无 NUL 的内容回退：     "file.py:10:matched text"
+//   上下文分隔符：          "--"
+// 运行时 rg 输出使用 NUL 作为路径边界；正则表达式处理
+// 无 NUL 分隔符的面向行的输出。
 const CONTENT_LINE_RE = /^(.*?)([:-])(\d+)\2/;
 
 export class GrepTool implements BuiltinTool<GrepInput> {
@@ -243,8 +240,8 @@ export class GrepTool implements BuiltinTool<GrepInput> {
     const { exitCode, stderrText, bufferTruncated, stderrTruncated, timedOut } = runResult;
     let { stdoutText } = runResult;
 
-    // rg exit codes: 0 = matches, 1 = no matches, 2 = error. Timeout kills
-    // usually surface as a signal exit code; keep any complete partial records.
+    // rg 退出码：0 = 有匹配，1 = 无匹配，2 = 错误。超时终止
+    // 通常表现为信号退出码；保留所有完整的部分记录。
     if (exitCode !== 0 && exitCode !== 1 && !timedOut) {
       return {
         isError: true,
@@ -290,11 +287,11 @@ export class GrepTool implements BuiltinTool<GrepInput> {
     const limited = limitActive ? afterOffset.slice(0, headLimit) : afterOffset;
     const paginationTruncated = limitActive && afterOffset.length > headLimit;
 
-    // Human-readable annotations are appended after visible matches.
-    // In count mode, the data stream must stay pure `path:count` lines
-    // — the count summary and pagination notice move to a side channel
-    // (returned via `result.message`) so they don't contaminate it.
-    // Other modes keep these notices inline in `output`.
+    // 人类可读的注释附加在可见匹配之后。
+    // 在计数模式下，数据流必须保持纯净的 `path:count` 行
+    // ——计数摘要和分页通知移到侧通道
+    // （通过 `result.message` 返回）以免污染数据流。
+    // 其他模式将这些通知内联在 `output` 中。
     const messages: string[] = [];
     const sideChannelMessages: string[] = [];
     if (filteredSensitive.size > 0) {
@@ -412,8 +409,8 @@ async function runRipgrepOnce(
   try {
     proc = await kaos.exec(...rgArgs);
   } catch (error) {
-    // Spawn can still fail after path resolution, e.g. permissions or a
-    // corrupt binary. ENOENT gets the same actionable hint as locator failures.
+    // 路径解析后启动仍可能失败，例如权限问题或损坏的二进制文件。
+    // ENOENT 与定位器失败获得相同可操作的提示。
     const isEnoent =
       error instanceof Error &&
       'code' in error &&
@@ -434,7 +431,7 @@ async function runRipgrepOnce(
   try {
     proc.stdin.end();
   } catch {
-    /* already gone */
+    /* 已关闭 */
   }
 
   let timedOut = false;
@@ -447,7 +444,7 @@ async function runRipgrepOnce(
     try {
       await proc.kill('SIGTERM');
     } catch {
-      /* process already gone */
+      /* 进程已退出 */
     }
     const exited = proc
       .wait()
@@ -465,7 +462,7 @@ async function runRipgrepOnce(
       try {
         await proc.kill('SIGKILL');
       } catch {
-        /* ignore */
+        /* 忽略 */
       }
     }
     await disposeProcess(proc);
@@ -476,8 +473,8 @@ async function runRipgrepOnce(
     void killProc();
   };
   signal.addEventListener('abort', onAbort);
-  // AbortSignal does not replay past abort events; check once after registering
-  // the listener so already-aborted calls still run the cleanup path.
+  // AbortSignal 不会重放已过的中止事件；注册监听器后立即检查一次，
+  // 使已中止的调用仍能运行清理路径。
   if (signal.aborted) onAbort();
 
   const timeoutHandle = setTimeout(() => {
@@ -505,7 +502,7 @@ async function runRipgrepOnce(
     exitCode = code;
   } catch (error) {
     if (isPrematureCloseError(error) && (timedOut || aborted || killed)) {
-      // The disposer intentionally closes streams after a terminating signal.
+      // 析构器有意在终止信号后关闭流。
     } else {
       return {
         kind: 'tool-error',
@@ -569,7 +566,7 @@ async function sortFilesWithMatchesByMtime(
         try {
           mtime = (await kaos.stat(path)).stMtime ?? 0;
         } catch {
-          // Keep stat failures visible; use mtime=0 so they sort after known files.
+          // 保持 stat 失败可见；使用 mtime=0 使它们排在已知文件之后。
         }
       }
       return { line, mtime, index };
@@ -617,10 +614,9 @@ function buildRgArgs(
   if (singleThreaded) cmd.push('-j', '1');
   cmd.push('--hidden');
   const mode = args.output_mode ?? 'files_with_matches';
-  // `content` mode returns matching lines verbatim. Capping columns here would
-  // make rg replace any line wider than the cap with a placeholder, silently
-  // dropping the actual match text. The cap is only useful outside `content`
-  // mode, where line text is never surfaced.
+  // `content` 模式原样返回匹配行。在此处限制列宽会使 rg 将任何
+  // 超过限制的行替换为占位符，静默丢弃实际匹配文本。
+  // 列宽限制仅在 `content` 模式外有用，因为那里行文本不会展示。
   if (mode !== 'content') {
     cmd.push('--max-columns', String(RG_MAX_COLUMNS));
   }
@@ -631,9 +627,8 @@ function buildRgArgs(
 
   if (mode === 'files_with_matches') cmd.push('-l');
   else if (mode === 'count_matches') {
-    // rg omits the filename when only one file is searched, so pin it on. Without
-    // this, the per-file line collapses to a bare count and the summary parser
-    // disagrees with the displayed number.
+    // rg 在仅搜索单个文件时省略文件名，因此强制开启。
+    // 否则每文件行会坍缩为裸计数，摘要解析器与显示的数字不一致。
     cmd.push('--count-matches', '--with-filename');
   }
 
@@ -657,14 +652,14 @@ function buildRgArgs(
   if (args.multiline) cmd.push('-U', '--multiline-dotall');
   if (args.include_ignored) cmd.push('--no-ignore');
   for (const glob of SENSITIVE_GLOBS_TO_EXCLUDE) {
-    // Appended after user globs so a broad include such as `**/.env` cannot
-    // undo this first-pass exclusion. Explicit file paths are still protected
-    // by the post-processing filter because rg intentionally searches them.
+    // 附加在用户 glob 之后，使宽泛的包含如 `**/.env` 无法
+    // 撤消此首遍排除。显式文件路径仍受后处理过滤保护，
+    // 因为 rg 会有意搜索它们。
     cmd.push('--glob', `!${glob}`);
   }
-  // Do not forward `head_limit` to `rg --max-count`: omitted means "use the
-  // tool default", head_limit=0 means "unlimited", while `rg --max-count 0`
-  // means "zero matches per file". Pagination happens in post-processing.
+  // 不将 `head_limit` 转发给 `rg --max-count`：省略表示"使用工具默认值"，
+  // head_limit=0 表示"无限制"，而 `rg --max-count 0` 表示
+  // "每个文件零匹配"。分页在后处理中完成。
 
   cmd.push('--', args.pattern, ...searchPaths);
   return cmd;
@@ -673,7 +668,7 @@ function buildRgArgs(
 function splitRgLines(text: string): string[] {
   if (text === '') return [];
   const lines = text.split('\n');
-  // Strip the trailing empty line left by a final newline.
+  // 移除末尾换行留下的尾部空行。
   while (lines.length > 0 && lines.at(-1) === '') {
     lines.pop();
   }
@@ -765,9 +760,9 @@ function formatDisplayLine(
 }
 
 /**
- * If `candidate` is under `base`, return the portion after `base/`.
- * Otherwise return `candidate` unchanged. Both arguments should be
- * canonical absolute paths in the active backend path class.
+ * 如果 `candidate` 在 `base` 下面，返回 `base/` 之后的部分。
+ * 否则原样返回 `candidate`。两个参数都应是活跃后端路径类中
+ * 的规范绝对路径。
  */
 function relativizeIfUnder(candidate: string, base: string, pathClass: PathClass): string {
   const normCandidate = normalize(candidate);

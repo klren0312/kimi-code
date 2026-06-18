@@ -561,7 +561,7 @@ function marketplaceEntryDescription(entry: PluginMarketplaceEntry): string {
       ? ` · ${entry.keywords.join(', ')}`
       : '';
   const tierSuffix = entry.description !== undefined ? ` · ${tier}` : '';
-  // The version now lives in the status badge, so it is omitted here to avoid duplication.
+  // 版本号现在显示在状态徽标中，此处省略以避免重复。
   return `${description} · id ${entry.id}${tierSuffix}${keywords}`;
 }
 

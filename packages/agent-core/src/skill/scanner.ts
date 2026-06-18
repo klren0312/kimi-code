@@ -5,23 +5,23 @@ import { SkillParseError, UnsupportedSkillTypeError, parseSkillFromFile } from '
 import type { SkillDefinition, SkillRoot, SkillSource, SkippedSkill } from './types';
 import { normalizeSkillName } from './types';
 
-// Relative to brandHomeDir, which already IS the brand data dir (~/.kimi-code or
-// $KIMI_CODE_HOME) — no '.kimi-code' segment here, or it would nest twice.
+// 相对于 brandHomeDir，它已经是品牌数据目录（~/.kimi-code 或
+// $KIMI_CODE_HOME）—— 这里不需要 '.kimi-code' 段，否则会导致双重嵌套。
 const USER_BRAND_DIRS = ['skills'] as const;
 const USER_GENERIC_DIRS = ['.agents/skills'] as const;
 const PROJECT_BRAND_DIRS = ['.kimi-code/skills'] as const;
 const PROJECT_GENERIC_DIRS = ['.agents/skills'] as const;
 
-// Bounds recursion so a directory symlink cycle inside a skill root cannot
-// loop forever. Real skill trees are 1-3 levels deep.
+// 限制递归深度，防止技能根目录中的目录符号链接循环导致无限遍历。
+// 实际的技能树通常只有 1-3 层深度。
 const MAX_SKILL_SCAN_DEPTH = 8;
 
 export interface SkillPathContext {
   readonly userHomeDir: string;
   /**
-   * Brand data dir — `KIMI_CODE_HOME`, or `<userHomeDir>/.kimi-code` by default.
-   * User brand skills live directly under here as `skills/`, so this path
-   * carries no `.kimi-code` segment of its own (that would double the prefix).
+   * 品牌数据目录 —— `KIMI_CODE_HOME`，或默认 `<userHomeDir>/.kimi-code`。
+   * 用户品牌技能直接在 `skills/` 下，因此此路径本身不包含 `.kimi-code` 段
+   * （否则会导致前缀重复）。
    */
   readonly brandHomeDir?: string;
   readonly workDir: string;
@@ -151,8 +151,8 @@ export async function discoverSkills(
 
     let entries: readonly string[];
     try {
-      // Sorted so first-wins collision resolution across sibling directories
-      // is deterministic rather than dependent on filesystem readdir order.
+      // 排序确保跨同级目录的先到先得冲突解决是确定性的，
+      // 而不是依赖于文件系统的 readdir 顺序。
       entries = [...(await readdir(dirPath))].toSorted();
     } catch (error) {
       warn(`Failed to read skill directory ${dirPath}`, error);
@@ -163,8 +163,8 @@ export async function discoverSkills(
     const subdirs: string[] = [];
     for (const entry of entries) {
       const entryPath = path.join(dirPath, entry);
-      // A directory holding SKILL.md is a skill bundle: register it, then keep
-      // descending so nested SKILL.md bundles remain discoverable as sub-skills.
+      // 包含 SKILL.md 的目录是一个技能包：注册它，然后继续向下遍历，
+      // 以便嵌套的 SKILL.md 包可以作为子技能被发现。
       if (await isFile(path.join(entryPath, 'SKILL.md'))) {
         directorySkills.add(entry);
       }
@@ -190,12 +190,12 @@ export async function discoverSkills(
       }
     }
 
-    // Flat .md skills count only at a root's top level; deeper .md files are
-    // skill payload (e.g. references/foo.md), not skills.
+    // 扁平 .md 技能仅在根目录的顶层生效；更深层的 .md 文件是技能负载
+    // （例如 references/foo.md），不是技能。
     if (isTopLevel) {
-      // A SKILL.md placed directly at a plugin skill root (e.g. plugin root fallback)
-      // is treated as a single skill bundle. This only applies to plugin-derived roots,
-      // not to user/project skill directories.
+      // 直接放在插件技能根目录的 SKILL.md（例如插件根目录回退场景）
+      // 被视为单个技能包。这仅适用于插件派生的根目录，
+      // 不适用于用户/项目技能目录。
       if (root.plugin !== undefined) {
         const rootSkillMd = path.join(dirPath, 'SKILL.md');
         if (await isFile(rootSkillMd)) {

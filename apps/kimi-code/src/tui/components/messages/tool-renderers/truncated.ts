@@ -18,10 +18,10 @@ export function trimTrailingEmptyLines(lines: string[]): string[] {
 }
 
 /**
- * Component that renders tool output with wrap-aware line truncation.
- * Uses pi-tui's Text component to compute actual visual wrapped lines,
- * then caps at PREVIEW_LINES. This handles long single-line output (e.g.
- * JSON blobs) that would otherwise wrap to dozens of visual rows.
+ * 带换行感知行截断的工具输出渲染组件。
+ * 使用 pi-tui 的 Text 组件计算实际的可视换行行数，
+ * 然后限制在 PREVIEW_LINES 行以内。这处理了长单行输出
+ * （如 JSON 数据块），否则会换行成数十个可视行。
  */
 export class TruncatedOutputComponent implements Component {
   private textComponent: Text;
@@ -38,11 +38,11 @@ export class TruncatedOutputComponent implements Component {
       isError: boolean | undefined;
       maxLines?: number;
       indent?: number;
-      // When false, the truncation footer omits the "ctrl+o to expand" promise
-      // (for contexts whose output is fixed-truncated and never expands).
+      // 为 false 时，截断底部省略"ctrl+o to expand"提示
+      // （用于输出固定截断且从不展开的场景）。
       expandHint?: boolean;
-      // When true, collapsed rendering keeps the latest visual rows instead of
-      // the first rows. This is useful for live output from a running command.
+      // 为 true 时，折叠渲染保留最新的可视行而非前几行。
+      // 适用于正在运行的命令的实时输出。
       tail?: boolean;
     },
   ) {
@@ -60,7 +60,7 @@ export class TruncatedOutputComponent implements Component {
   }
 
   invalidate(): void {
-    // Text component caches wrapped lines; invalidate on terminal resize.
+    // Text 组件缓存换行结果；终端大小变化时需刷新。
     this.textComponent.invalidate();
   }
 

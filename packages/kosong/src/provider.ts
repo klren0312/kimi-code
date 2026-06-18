@@ -3,36 +3,33 @@ import type { Tool } from './tool';
 import type { TokenUsage } from './usage';
 
 /**
- * Normalized thinking effort level used across providers.
+ * 跨提供者使用的标准化思维努力级别。
  *
- * Values above `high` are provider/model-specific and may be clamped by the
- * adapter when the native API has no matching level. OpenAI maps `max` to its
- * `xhigh` ceiling; Kimi and Gemini cap `xhigh`/`max` at `high`; Anthropic
- * supports `xhigh`/`max` only on selected models and otherwise clamps to
- * `high`.
+ * 高于 `high` 的值是提供者/模型特定的，当原生 API 没有匹配的级别时，
+ * 适配器可能会将其限制。OpenAI 将 `max` 映射到其 `xhigh` 上限；
+ * Kimi 和 Gemini 将 `xhigh`/`max` 限制在 `high`；Anthropic
+ * 仅在部分模型上支持 `xhigh`/`max`，否则限制为 `high`。
  */
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
- * Normalized finish-reason signal indicating why a generation stopped.
+ * 标准化的完成原因信号，指示生成停止的原因。
  *
- * Each provider's native stop value is mapped to one of these, and the
- * unmapped original string is preserved in `rawFinishReason` as an escape
- * hatch. `null` means the provider did not emit a finish_reason (e.g. the
- * stream was cut off before the final event).
+ * 每个提供者的原生停止值都会映射到这些值之一，未映射的原始字符串
+ * 保存在 `rawFinishReason` 中作为逃生通道。`null` 表示提供者未
+ * 发出 finish_reason（例如流在最终事件之前被截断）。
  *
- * - `'completed'`: normal completion (OpenAI `'stop'`, Anthropic
- *   `'end_turn'` / `'stop_sequence'`, Gemini `'STOP'`).
- * - `'tool_calls'`: generation paused so the caller can dispatch tool
- *   calls and feed their results back. Note that the OpenAI Responses API
- *   and Google GenAI report `'completed'` here; only the Chat
- *   Completions–style providers and Anthropic surface a dedicated value.
- * - `'truncated'`: token budget exhausted (OpenAI `'length'`, Anthropic
- *   `'max_tokens'`, Gemini `'MAX_TOKENS'`, Responses `'max_output_tokens'`).
- * - `'filtered'`: content filter or safety policy blocked the response.
- * - `'paused'`: Anthropic-specific `'pause_turn'`.
- * - `'other'`: recognized non-null reason that does not fit the categories
- *   above.
+ * - `'completed'`：正常完成（OpenAI `'stop'`、Anthropic
+ *   `'end_turn'` / `'stop_sequence'`、Gemini `'STOP'`）。
+ * - `'tool_calls'`：生成暂停，以便调用方可以分发工具调用并将其
+ *   结果反馈。注意 OpenAI Responses API 和 Google GenAI 在此处
+ *   报告 `'completed'`；只有 Chat Completions 风格的提供者和
+ *   Anthropic 会显示专用值。
+ * - `'truncated'`：token 预算耗尽（OpenAI `'length'`、Anthropic
+ *   `'max_tokens'`、Gemini `'MAX_TOKENS'`、Responses `'max_output_tokens'`）。
+ * - `'filtered'`：内容过滤器或安全策略阻止了响应。
+ * - `'paused'`：Anthropic 特定的 `'pause_turn'`。
+ * - `'other'`：已识别但不属于上述类别的非空原因。
  */
 export type FinishReason =
   | 'completed'
@@ -43,75 +40,72 @@ export type FinishReason =
   | 'other';
 
 /**
- * An async-iterable stream of message parts produced by a single LLM response.
+ * 由单个 LLM 响应产生的消息片段的异步可迭代流。
  *
- * Consumers iterate over the stream with `for await..of` to receive
- * {@link StreamedMessagePart} chunks. After the iteration completes, the
- * {@link id}, {@link usage}, {@link finishReason}, and
- * {@link rawFinishReason} properties reflect the final values reported by
- * the provider.
+ * 消费者使用 `for await..of` 迭代流以接收
+ * {@link StreamedMessagePart} 块。迭代完成后，
+ * {@link id}、{@link usage}、{@link finishReason} 和
+ * {@link rawFinishReason} 属性反映提供者报告的最终值。
  */
 export interface StreamedMessage {
   [Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart>;
-  /** Provider-assigned response identifier, or `null` if not available. */
+  /** 提供者分配的响应标识符，如果不可用则为 `null`。 */
   readonly id: string | null;
-  /** Token usage statistics, populated after the stream completes. */
+  /** Token 用量统计，在流完成后填充。 */
   readonly usage: TokenUsage | null;
   /**
-   * Normalized finish reason, populated after the stream completes.
+   * 标准化的完成原因，在流完成后填充。
    *
-   * `null` if the provider did not emit a finish_reason (for example, the
-   * stream was interrupted before the final event arrived).
+   * 如果提供者未发出 finish_reason（例如流在最终事件到达之前
+   * 被中断），则为 `null`。
    */
   readonly finishReason: FinishReason | null;
   /**
-   * Raw provider-specific finish_reason string, preserved verbatim as an
-   * escape hatch for callers that need the original wire value.
+   * 原始的提供者特定 finish_reason 字符串，按原样保留，作为
+   * 需要原始线路值的调用方的逃生通道。
    *
-   * `null` if the provider did not emit a finish_reason.
+   * 如果提供者未发出 finish_reason，则为 `null`。
    */
   readonly rawFinishReason: string | null;
 }
 
 /**
- * Options that can be forwarded to a single {@link ChatProvider.generate} call.
+ * 可以转发给单个 {@link ChatProvider.generate} 调用的选项。
  */
 export interface ProviderRequestAuth {
-  /** Bearer/API token resolved for this specific provider request. */
+  /** 为此特定提供者请求解析的 Bearer/API token。 */
   apiKey?: string;
-  /** Request-scoped headers. These override constructor-level default headers. */
+  /** 请求级别的头信息。这些会覆盖构造函数级别的默认头信息。 */
   headers?: Record<string, string>;
 }
 
 export interface GenerateOptions {
   /**
-   * An {@link AbortSignal} that, when aborted, requests cancellation of the
-   * in-flight generate call. Providers that accept a signal will forward it
-   * to their underlying HTTP client; the generate loop in
-   * {@link generate | generate()} also checks the signal between streamed
-   * parts.
+   * 一个 {@link AbortSignal}，当被中止时，请求取消正在进行的
+   * generate 调用。接受信号的提供者会将其转发给底层的 HTTP 客户端；
+   * {@link generate | generate()} 中的生成循环也会在流式部分之间
+   * 检查该信号。
    */
   signal?: AbortSignal;
   /**
-   * Request-scoped provider auth. Hosts should resolve this immediately before
-   * each request/retry so providers never retain mutable credential state.
+   * 请求级别的提供者认证。宿主应在每次请求/重试之前立即解析此值，
+   * 以确保提供者永远不会保留可变的凭据状态。
    */
   auth?: ProviderRequestAuth;
   /**
-   * Host-side instrumentation hook fired immediately before invoking the
-   * provider adapter's generate call.
+   * 宿主端的插桩钩子，在调用提供者适配器的 generate 调用之前立即触发。
    */
   onRequestStart?: () => void;
   /**
-   * Host-side instrumentation hook fired after the provider stream is fully
-   * drained, before post-processing the assembled response.
+   * 宿主端的插桩钩子，在提供者流完全排空之后、在后处理组装好的
+   * 响应之前触发。
    */
   onStreamEnd?: () => void;
 }
 
 /**
- * In-memory video bytes for providers that require an uploaded file
- * reference instead of an inline data URL.
+ * 内存中的视频字节数据，用于需要上传文件引用（而非内联数据 URL）
+ * 的提供者。
  */
 export interface VideoUploadInput {
   readonly data: Uint8Array;
@@ -120,27 +114,27 @@ export interface VideoUploadInput {
 }
 
 /**
- * Unified interface for an LLM chat provider.
+ * LLM 聊天提供者的统一接口。
  *
- * Each provider implementation (Kimi, OpenAI, Anthropic, Google GenAI, etc.)
- * converts the common {@link Message} / {@link Tool} types into the
- * provider-specific wire format, streams back a {@link StreamedMessage}, and
- * exposes configuration helpers such as {@link withThinking}.
+ * 每个提供者实现（Kimi、OpenAI、Anthropic、Google GenAI 等）
+ * 将通用的 {@link Message} / {@link Tool} 类型转换为提供者特定的
+ * 线路格式，流式返回 {@link StreamedMessage}，并暴露配置辅助方法
+ * 如 {@link withThinking}。
  */
 export interface ChatProvider {
-  /** Short identifier for the provider backend (e.g. `"kimi"`, `"anthropic"`). */
+  /** 提供者后端的短标识符（例如 `"kimi"`、`"anthropic"`）。 */
   readonly name: string;
-  /** Model name passed to the upstream API (e.g. `"moonshot-v1-auto"`). */
+  /** 传递给上游 API 的模型名称（例如 `"moonshot-v1-auto"`）。 */
   readonly modelName: string;
-  /** Current thinking-effort level, or `null` if thinking is not configured. */
+  /** 当前的思维努力级别，如果未配置思维则为 `null`。 */
   readonly thinkingEffort: ThinkingEffort | null;
   /**
-   * Send a conversation to the LLM and return a streamed response.
+   * 向 LLM 发送对话并返回流式响应。
    *
-   * @param systemPrompt - System-level instruction prepended to the request.
-   * @param tools - Tool definitions the model may invoke.
-   * @param history - The conversation history (user, assistant, tool messages).
-   * @param options - Optional per-call settings such as an {@link AbortSignal}.
+   * @param systemPrompt - 预置到请求中的系统级指令。
+   * @param tools - 模型可能调用的工具定义。
+   * @param history - 对话历史（用户、助手、工具消息）。
+   * @param options - 可选的每次调用设置，如 {@link AbortSignal}。
    */
   generate(
     systemPrompt: string,
@@ -148,18 +142,17 @@ export interface ChatProvider {
     history: Message[],
     options?: GenerateOptions,
   ): Promise<StreamedMessage>;
-  /** Return a shallow copy of this provider with the given thinking effort. */
+  /** 返回此提供者的浅拷贝，设置给定的思维努力级别。 */
   withThinking(effort: ThinkingEffort): ChatProvider;
   /**
-   * Return a shallow copy of this provider with the per-request completion
-   * budget clamped to `maxCompletionTokens`. Optional because not every
-   * backend benefits from a client-computed cap.
+   * 返回此提供者的浅拷贝，将每次请求的完成预算限制为
+   * `maxCompletionTokens`。为可选方法，因为并非每个后端都受益于
+   * 客户端计算的上限。
    *
-   * Implementations MUST NOT mutate or replace internal HTTP clients on the
-   * returned clone — the clone is expected to share transport state with the
-   * original. See `KimiChatProvider._clone()` for the rationale.
+   * 实现不得在返回的克隆上修改或替换内部 HTTP 客户端——克隆应
+   * 与原始实例共享传输状态。参见 `KimiChatProvider._clone()` 了解原因。
    */
   withMaxCompletionTokens?(maxCompletionTokens: number): ChatProvider;
-  /** Upload a video and return a content part that can be sent to this provider. */
+  /** 上传视频并返回可发送给此提供者的内容部分。 */
   uploadVideo?(input: string | VideoUploadInput, options?: GenerateOptions): Promise<VideoURLPart>;
 }

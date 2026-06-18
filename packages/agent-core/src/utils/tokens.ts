@@ -3,12 +3,12 @@ import type { ContentPart, Message, Tool } from '@moonshot-ai/kosong';
 const messageTokenEstimateCache = new WeakMap<Message, number>();
 
 /**
- * Estimate token count from text using a character-based heuristic.
- *   - ASCII (~4 chars per token)
- *   - CJK and other non-ASCII (~1 char per token)
- * The estimate is transient — the next LLM call returns the real count
- * and supersedes this value. Used to keep `tokenCountWithPending`
- * monotonic between LLM round-trips without paying for a tokenizer.
+ * 基于字符的启发式方法估算文本的 token 数量。
+ *   - ASCII（约 4 个字符/token）
+ *   - CJK 和其他非 ASCII（约 1 个字符/token）
+ * 估算值是临时的——下一次 LLM 调用会返回真实计数并取代此值。
+ * 用于在 LLM 往返之间保持 `tokenCountWithPending` 单调递增，
+ * 无需支付分词器的开销。
  */
 export function estimateTokens(text: string): number {
   let asciiCount = 0;

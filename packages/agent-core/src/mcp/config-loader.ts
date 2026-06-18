@@ -37,15 +37,15 @@ export interface LoadMcpServersInput {
 }
 
 /**
- * Load MCP server declarations from the user-global `~/.kimi-code/mcp.json`,
- * the project-root `<project root>/.mcp.json`, and the project-local
- * `<cwd>/.kimi-code/mcp.json`. Entries in later files override earlier files
- * with the same key, so a repo can specialise or replace a shared definition,
- * and Kimi-specific project config wins over the Claude-compatible root file.
+ * 从用户全局 `~/.kimi-code/mcp.json`、项目根目录
+ * `<project root>/.mcp.json` 和项目本地 `<cwd>/.kimi-code/mcp.json`
+ * 加载 MCP 服务器声明。后加载的文件中同名条目会覆盖先前的条目，
+ * 因此仓库可以特化或替换共享定义，且 Kimi 特有的项目配置
+ * 优先于 Claude 兼容的根文件。
  *
- * Note: project-local entries may spawn stdio commands at session start, so
- * opening a session inside an untrusted checkout will execute whatever its
- * `mcp.json` declares. Only enable this in repos you trust.
+ * 注意：项目本地条目可能在会话启动时生成 stdio 命令，
+ * 因此在不受信任的检出中打开会话将执行其 `mcp.json` 中声明的任何内容。
+ * 仅在信任的仓库中启用此功能。
  */
 export async function loadMcpServers(
   input: LoadMcpServersInput,

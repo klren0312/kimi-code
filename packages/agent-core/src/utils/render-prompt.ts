@@ -1,16 +1,14 @@
 import nunjucks from 'nunjucks';
 
 /**
- * Shared prompt template renderer.
+ * 共享的提示词模板渲染器。
  *
- * All prompt templates (system prompt, tool descriptions, compaction
- * instruction, ...) use nunjucks `{{ var }}` / `{% if %}` syntax and render
- * through this one function.
+ * 所有提示词模板（系统提示词、工具描述、压缩指令……）使用 nunjucks
+ * `{{ var }}` / `{% if %}` 语法，通过此函数统一渲染。
  *
- * - `autoescape: false` — prompt text is not HTML; `<`, `>`, `&` must pass
- *   through verbatim.
- * - `throwOnUndefined: true` — a missing variable is a loud error, never a
- *   silently leaked `{{ placeholder }}` in the text sent to the model.
+ * - `autoescape: false`——提示词文本不是 HTML；`<`、`>`、`&` 必须原样传递。
+ * - `throwOnUndefined: true`——缺失变量是明确的错误，绝不会在发送给模型的
+ *   文本中静默泄漏 `{{ placeholder }}`。
  */
 const env = new nunjucks.Environment(null, { autoescape: false, throwOnUndefined: true });
 

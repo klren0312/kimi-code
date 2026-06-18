@@ -2,15 +2,16 @@ import type { GoalSnapshot } from '../goal';
 import { DynamicInjector } from './injector';
 
 /**
- * Injects the current goal into the main agent's context once per turn, at the
- * continuation boundary (see `InjectionManager.injectGoal`), not per model step.
- * The objective is treated as user-provided task data wrapped in
- * `<untrusted_objective>` — it describes the work but does not override
- * higher-priority instructions (system/developer messages, tool schemas,
- * permission rules, host controls).
+ * 主代理的目标上下文注入器。
  *
- * This injector never enforces budgets; the goal driver (`TurnFlow.driveGoal`)
- * owns hard continuation stops.
+ * 在续行边界（参见 `InjectionManager.injectGoal`）每轮注入一次当前目标，
+ * 而非每个模型步骤。目标被视为用户提供的任务数据，包裹在
+ * `<untrusted_objective>` 中 — 它描述工作内容但不覆盖更高优先级的指令
+ * （系统/开发者消息、工具 schema、权限规则、宿主控制）。
+ *
+ * 此注入器从不强制预算；目标驱动器（`TurnFlow.driveGoal`）负责硬续行终止。
+ *
+ * @module goal
  */
 export class GoalInjector extends DynamicInjector {
   protected override readonly injectionVariant = 'goal';
@@ -19,13 +20,13 @@ export class GoalInjector extends DynamicInjector {
     const store = this.agent.goal;
     const goal = store.getGoal().goal;
     if (goal === null) return undefined;
-    // Three intensity levels by status:
-    // - `active`: full reminder + budget guidance; the goal driver is running turns.
-    // - `blocked`: a light, non-demanding note so the model stays aware of the
-    //   (possibly just-edited) goal and can help unstick it if the user asks.
-    // - `paused`: a light guardrail so the model knows the goal exists but must
-    //   not work on it unless the user explicitly asks.
-    // `complete` never reaches here (it clears the record).
+    // 三种强度级别按状态区分：
+    // - `active`：完整提醒 + 预算指导；目标驱动正在运行 Turn。
+    // - `blocked`：轻量的非强制性提示，使模型保持对（可能刚编辑的）目标的感知，
+    //   并在用户要求时帮助解除阻碍。
+    // - `paused`：轻量的防护栏，使模型知道目标存在但不得执行，
+    //   除非用户明确要求。
+    // `complete` 不会到达此处（它会清除记录）。
     if (goal.status === 'active') return buildGoalReminder(goal);
     if (goal.status === 'blocked') return buildBlockedNote(goal);
     if (goal.status === 'paused') return buildPausedNote(goal);
@@ -34,10 +35,9 @@ export class GoalInjector extends DynamicInjector {
 }
 
 /**
- * Light context for a `blocked` goal. Unlike the active reminder it makes no
- * demands and carries no budget guidance — it just keeps the current objective
- * visible so an edit takes effect next turn and the model can help unstick the
- * goal if the user asks, otherwise handle requests normally.
+ * `blocked` 状态目标的轻量上下文。与活跃提醒不同，它不做任何要求
+ * 也不携带预算指导 — 仅保持当前目标可见，以便编辑在下一轮生效，
+ * 并且模型可以在用户请求时帮助解除阻碍，否则正常处理请求。
  */
 function buildBlockedNote(goal: GoalSnapshot): string {
   const reason = goal.terminalReason;
@@ -62,9 +62,9 @@ function buildBlockedNote(goal: GoalSnapshot): string {
 }
 
 /**
- * Light context for a `paused` goal. It keeps the objective visible enough to
- * prevent accidental goal leakage into unrelated work, and gives the model the
- * explicit lifecycle action to take when the user asks to continue the goal.
+ * `paused` 状态目标的轻量上下文。保持目标足够可见，以防止意外将目标
+ * 泄漏到不相关的工作中，并为模型提供用户要求继续目标时应采取的
+ * 明确生命周期操作。
  */
 function buildPausedNote(goal: GoalSnapshot): string {
   const reason = goal.terminalReason;
@@ -90,6 +90,10 @@ function buildPausedNote(goal: GoalSnapshot): string {
   return lines.join('\n');
 }
 
+/**
+ * 构建 `active` 状态目标的完整提醒。包含目标、完成标准、进度统计、
+ * 预算状态以及迭代式目标驱动工作的行为指导。
+ */
 function buildGoalReminder(goal: GoalSnapshot): string {
   const lines: string[] = [];
   lines.push('You are working under an active goal (goal mode).');
@@ -155,7 +159,10 @@ function buildGoalReminder(goal: GoalSnapshot): string {
   return lines.join('\n');
 }
 
-/** Highest budget-usage fraction across the set hard budgets (turns/tokens/time). */
+/**
+ * 计算所有已配置硬预算（轮次、令牌、挂钟时间）中最高的使用比例（0–1+）。
+ * 由 {@link budgetBandGuidance} 用于决定是否推动模型向收敛方向靠拢。
+ */
 function maxBudgetFraction(goal: GoalSnapshot): number {
   const { budget } = goal;
   const fractions: number[] = [];
@@ -171,18 +178,26 @@ function maxBudgetFraction(goal: GoalSnapshot): number {
   return fractions.length === 0 ? 0 : Math.max(...fractions);
 }
 
+/**
+ * 返回一行预算指导消息。使用率 ≥75% 时指导内容敦促收敛；否则鼓励稳步推进。
+ * 没有显式的超预算区间，因为目标驱动会在下一个续行轮次之前自动阻塞，
+ * 所以模型永远不会看到超预算状态。
+ */
 function budgetBandGuidance(goal: GoalSnapshot): string {
   const fraction = maxBudgetFraction(goal);
-  // No separate over-budget band: the goal driver auto-blocks the goal when a
-  // hard budget is reached (before the next continuation turn), so an "over
-  // budget, report a terminal state" instruction would never be acted on. We
-  // only nudge the model to converge as it nears a budget.
+  // 没有单独的超预算区间：目标驱动在硬预算达到时自动阻塞目标
+  // （在下一个续行 Turn 之前），因此"超预算，报告终端状态"的指令
+  // 永远不会被执行。我们仅在接近预算时推动模型收敛。
   if (fraction >= 0.75) {
     return 'Budget guidance: you are nearing a budget. Converge on the objective and avoid starting new discretionary work.';
   }
   return 'Budget guidance: you are within budget. Make steady, focused progress toward the objective.';
 }
 
+/**
+ * 转义用户提供的目标文本中的 `&`、`<` 和 `>`，以便安全地嵌入到
+ * `<untrusted_objective>` 类 XML 标签中而不破坏周围的标记。
+ */
 function escapeUntrustedText(text: string): string {
   return text
     .replaceAll('&', '&amp;')
@@ -190,6 +205,10 @@ function escapeUntrustedText(text: string): string {
     .replaceAll('>', '&gt;');
 }
 
+/**
+ * 将毫秒持续时间格式化为人类可读的字符串（如 "45s" 或 "2m30s"），
+ * 用于在目标进度行中显示。
+ */
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   if (totalSeconds < 60) return `${totalSeconds}s`;

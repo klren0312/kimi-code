@@ -1,7 +1,7 @@
 import type { FinishReason } from './provider';
 
 /**
- * Base error for all chat provider errors.
+ * 所有聊天提供者错误的基类。
  */
 export class ChatProviderError extends Error {
   constructor(message: string) {
@@ -11,7 +11,7 @@ export class ChatProviderError extends Error {
 }
 
 /**
- * Network-level connection failure.
+ * 网络级别的连接失败。
  */
 export class APIConnectionError extends ChatProviderError {
   constructor(message: string) {
@@ -21,7 +21,7 @@ export class APIConnectionError extends ChatProviderError {
 }
 
 /**
- * Request timed out.
+ * 请求超时。
  */
 export class APITimeoutError extends ChatProviderError {
   constructor(message: string) {
@@ -31,7 +31,7 @@ export class APITimeoutError extends ChatProviderError {
 }
 
 /**
- * HTTP status error from the API.
+ * API 返回的 HTTP 状态错误。
  */
 export class APIStatusError extends ChatProviderError {
   readonly statusCode: number;
@@ -46,8 +46,7 @@ export class APIStatusError extends ChatProviderError {
 }
 
 /**
- * HTTP status error that specifically means the request exceeded the model
- * context window.
+ * 特指请求超出模型上下文窗口的 HTTP 状态错误。
  */
 export class APIContextOverflowError extends APIStatusError {
   constructor(statusCode: number, message: string, requestId?: string | null) {
@@ -57,8 +56,7 @@ export class APIContextOverflowError extends APIStatusError {
 }
 
 /**
- * HTTP status error that specifically means the provider rate-limited the
- * request.
+ * 特指提供者对请求进行了速率限制的 HTTP 状态错误。
  */
 export class APIProviderRateLimitError extends APIStatusError {
   constructor(message: string, requestId?: string | null) {
@@ -68,7 +66,7 @@ export class APIProviderRateLimitError extends APIStatusError {
 }
 
 /**
- * The API returned an empty response (no content, no tool calls).
+ * API 返回了空响应（无内容、无工具调用）。
  */
 export class APIEmptyResponseError extends ChatProviderError {
   readonly finishReason: FinishReason | null;

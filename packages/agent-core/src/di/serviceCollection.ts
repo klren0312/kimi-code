@@ -1,8 +1,8 @@
 /**
- * `ServiceCollection` is the unordered map of service-id → (descriptor | instance)
- * used to seed an `InstantiationService`. It's a thin wrapper over `Map` whose
- * value type is `SyncDescriptor<T> | T` — the container decides which based on
- * `instanceof SyncDescriptor`.
+ * `ServiceCollection` 是用于种子化 `InstantiationService` 的无序映射，
+ * 映射关系为 服务标识符 → (描述符 | 实例)。它是对 `Map` 的轻量包装，
+ * 值类型为 `SyncDescriptor<T> | T` — 容器通过 `instanceof SyncDescriptor`
+ * 决定取哪个。
  */
 
 import type { SyncDescriptor } from './descriptors';
@@ -22,8 +22,7 @@ export class ServiceCollection {
   }
 
   /**
-   * Set an entry. Returns the previous value (or `undefined` if the id was
-   * not previously set).
+   * 设置一个条目。返回之前的值（如果该 id 之前未设置则返回 `undefined`）。
    */
   set<T>(
     id: ServiceIdentifier<T>,
@@ -43,7 +42,7 @@ export class ServiceCollection {
     return this._entries.get(id) as T | SyncDescriptor<T> | undefined;
   }
 
-  /** Iterate all entries. Order is insertion-order (Map semantics). */
+  /** 遍历所有条目。顺序为插入顺序（Map 语义）。 */
   forEach(
     callback: (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

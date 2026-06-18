@@ -1,9 +1,9 @@
 /**
- * Footer/status bar — multi-line status display at the bottom of the TUI.
+ * 页脚/状态栏 —— TUI 底部的多行状态显示。
  *
- * Layout:
- *   Line 1: [yolo] [plan] <model> <cwd>  <git-badge>  <shortcut hints>
- *   Line 2: context: XX.X% (tokens/max)
+ * 布局：
+ *   第 1 行：[yolo] [plan] <模型> <工作目录>  <git 徽章>  <快捷键提示>
+ *   第 2 行：context: XX.X% (tokens/max)
  */
 
 import type { Component } from '@earendil-works/pi-tui';
@@ -26,27 +26,26 @@ import { safeUsageRatio } from '#/utils/usage/usage-format';
 const MAX_CWD_SEGMENTS = 3;
 const GOAL_TIMER_INTERVAL_MS = 1_000;
 
-// Toolbar tips — rotates every 10s. Most tips are short and pair up (two
-// joined by " | ") when space allows; tips flagged `solo` are long or
-// important enough to take the whole slot on their own. A `priority` weight
-// makes a tip recur more often in the rotation (default 1). Width is always
-// the final arbiter (a pair that doesn't fit falls back to its first tip).
+// 工具栏提示 —— 每 10 秒轮换一次。大多数提示较短，在空间允许时成对显示
+// （两个提示以 " | " 连接）；标记为 `solo` 的提示因较长或较重要而单独占满
+// 一个位置。`priority` 权重使提示在轮换中出现更频繁（默认为 1）。宽度始终
+// 是最终裁决者（放不下的提示对会回退到第一个提示）。
 //
-// This is deliberately code-level configuration: edit the interval and the
-// TOOLBAR_TIPS array below to change what the footer advertises.
+// 这是故意在代码层面配置的：修改下方的间隔时间和 TOOLBAR_TIPS 数组即可
+// 更改页脚展示的内容。
 const TIP_ROTATE_INTERVAL_MS = 10_000;
 const TIP_SEPARATOR = ' | ';
 
 export interface ToolbarTip {
   readonly text: string;
   /**
-   * Long/important tips render on their own. They never pair with a
-   * neighbour and never appear as the second half of someone else's pair.
+   * 较长/较重要的提示会单独渲染。它们不会与相邻提示配对，
+   * 也不会作为其他人配对的第二部分出现。
    */
   readonly solo?: boolean;
   /**
-   * Rotation weight: a higher value makes the tip recur more often. Defaults
-   * to 1. Used to give newer/important features more airtime.
+   * 轮换权重：值越高，提示出现越频繁。默认为 1。
+   * 用于给予较新/较重要的功能更多展示时间。
    */
   readonly priority?: number;
 }
@@ -72,11 +71,10 @@ const TOOLBAR_TIPS: readonly ToolbarTip[] = [
 ];
 
 /**
- * Expand tips into a rotation sequence using smooth weighted round-robin
- * (the nginx SWRR algorithm). Higher-`priority` tips appear more often while
- * staying evenly spread, so a tip generally does not land next to its own
- * duplicate. Deterministic and computed once at module load. Exported for
- * unit testing.
+ * 使用平滑加权轮询（nginx SWRR 算法）将提示展开为轮换序列。
+ * `priority` 值较高的提示出现更频繁，同时保持均匀分布，
+ * 因此提示通常不会与其自身副本相邻。结果是确定性的，
+ * 在模块加载时计算一次。导出供单元测试使用。
  */
 export function buildWeightedTips(tips: readonly ToolbarTip[]): readonly ToolbarTip[] {
   const items = tips.map((t) => ({
@@ -105,12 +103,11 @@ function currentTipIndex(): number {
 }
 
 /**
- * Pick the tip(s) for a rotation index over the weighted ROTATION sequence.
- * `primary` is always shown when it fits; `pair` (primary + next tip joined
- * by the separator) is offered for wide terminals. Pairing is skipped when
- * the current/next tip is `solo` or when the neighbour is a duplicate of the
- * current tip (which can happen at the wrap boundary), keeping long/important
- * tips on their own and avoiding "X | X".
+ * 为轮换序列中的某个索引选取提示。`primary` 在适配时始终显示；
+ * `pair`（primary + 下一个提示以分隔符连接）在宽终端中提供。
+ * 当当前/下一个提示标记为 `solo` 或相邻提示与当前提示重复时
+ * （可能发生在序列回绕边界处），跳过配对，使较长/较重要的
+ * 提示保持独立，并避免出现 "X | X" 的情况。
  */
 function tipsForIndex(index: number): { primary: string; pair: string | null } {
   const n = ROTATION.length;
@@ -124,9 +121,10 @@ function tipsForIndex(index: number): { primary: string; pair: string | null } {
 }
 
 /**
- * Footer goal badge, e.g. `[goal ● active · 4m · 7 turns]`. Only shown for a
- * live (active/paused) goal; terminal/no goal -> no badge. Turn count is a raw
- * count unless an explicit turn budget is set, in which case it shows used/limit.
+ * 页脚目标徽章，例如 `[goal ● active · 4m · 7 turns]`。
+ * 仅在活跃（active/paused/blocked）目标时显示；无目标时不显示徽章。
+ * 回合计数为原始计数，除非设置了明确的回合预算，
+ * 此时显示已使用/限制的格式。
  */
 function formatGoalBadge(
   goal: AppState['goal'],
@@ -134,8 +132,8 @@ function formatGoalBadge(
   wallClockMs?: number,
 ): string | null {
   if (goal === null || goal === undefined) return null;
-  // Show the badge for every persisted, resumable status. `complete` clears the
-  // goal, so it never reaches here; only the unset case returns null.
+  // 为每个已持久化、可恢复的状态显示徽章。`complete` 会清除目标，
+  // 因此不会到达此处；只有未设置的情况才返回 null。
   if (goal.status !== 'active' && goal.status !== 'paused' && goal.status !== 'blocked') {
     return null;
   }
@@ -226,11 +224,10 @@ export class FooterComponent implements Component {
   private goalObservedAtMs = Date.now();
   private goalTimer: ReturnType<typeof setInterval> | null = null;
   /**
-   * Non-terminal background-task counts split by kind so the footer can
-   * render two distinct badges. `bashTasks` covers `bash-*` BPM tasks
-   * spawned via `Shell run_in_background=true`; `agentTasks` covers
-   * `agent-*` BPM tasks (background subagents). Either zero hides its
-   * respective badge.
+   * 非终态的后台任务计数，按类型分组，以便页脚渲染两种不同的徽章。
+   * `bashTasks` 涵盖通过 `Shell run_in_background=true` 生成的 `bash-*` BPM 任务；
+   * `agentTasks` 涵盖 `agent-*` BPM 任务（后台子代理）。
+   * 任一计数为零时隐藏其对应的徽章。
    */
   private backgroundBashTaskCount = 0;
   private backgroundAgentCount = 0;
@@ -255,19 +252,18 @@ export class FooterComponent implements Component {
   }
 
   /**
-   * Short-lived hint that replaces the rotating toolbar tips on line 1.
-   * Used by the exit-confirmation double-tap flow to show "Press Ctrl+C
-   * again to exit" without requiring a toast/overlay subsystem.
-   * Pass `null` to clear.
+   * 短暂提示，替换第 1 行的轮换工具栏提示。
+   * 用于退出确认的双击流程，显示"再按一次 Ctrl+C 退出"，
+   * 而不需要 toast/覆盖层子系统。
+   * 传入 `null` 清除提示。
    */
   setTransientHint(hint: string | null): void {
     this.transientHint = hint;
   }
 
   /**
-   * Sync both background-task badges with live counts. Each non-zero
-   * count produces its own bracketed badge on line 1; zeros hide them
-   * independently.
+   * 同步两个后台任务徽章的实时计数。每个非零计数
+   * 在第 1 行生成各自的括号徽章；为零时各自独立隐藏。
    */
   setBackgroundCounts(counts: { bashTasks: number; agentTasks: number }): void {
     this.backgroundBashTaskCount = Math.max(0, counts.bashTasks);
@@ -280,7 +276,7 @@ export class FooterComponent implements Component {
     const colors = currentTheme.palette;
     const state = this.state;
 
-    // ── Line 1: mode badges + model + [N task(s) running] + [N agent(s) running] + cwd + git + hints ──
+    // ── 第 1 行：模式徽章 + 模型 + [N task(s) running] + [N agent(s) running] + 工作目录 + git + 提示 ──
     const left: string[] = [];
     const modes: string[] = [];
     if (state.permissionMode === 'auto') modes.push(chalk.hex(colors.warning).bold('auto'));
@@ -303,9 +299,8 @@ export class FooterComponent implements Component {
       left.push(renderedModelLabel);
     }
 
-    // Background-task badges sit immediately before cwd. `bash-*` tasks
-    // (shell processes) and `agent-*` tasks (background subagents) get
-    // separate badges so the user can distinguish them at a glance.
+    // 后台任务徽章紧接在工作目录之前。`bash-*` 任务（shell 进程）
+    // 和 `agent-*` 任务（后台子代理）各有独立徽章，方便用户一目了然地辨别。
     if (this.backgroundBashTaskCount > 0) {
       const noun = this.backgroundBashTaskCount === 1 ? 'task' : 'tasks';
       left.push(
@@ -330,7 +325,7 @@ export class FooterComponent implements Component {
     const leftLine = left.join('  ');
     const leftWidth = visibleWidth(leftLine);
 
-    // Rotating hint tips, fill remaining space on line 1.
+    // 轮换提示，填充第 1 行的剩余空间。
     const { primary, pair } = tipsForIndex(currentTipIndex());
     const gap = 2;
     const remaining = Math.max(0, width - leftWidth - gap);
@@ -351,7 +346,7 @@ export class FooterComponent implements Component {
       line1 = truncateToWidth(leftLine, width, '…');
     }
 
-    // ── Line 2: transient hint (bottom-left) + context (right) ──
+    // ── 第 2 行：短暂提示（左下角）+ 上下文（右侧）──
     const contextText = formatContextStatus(
       state.contextUsage,
       state.contextTokens,

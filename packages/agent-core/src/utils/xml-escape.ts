@@ -1,4 +1,4 @@
-/** Escape XML content — escapes both tag and attribute boundary chars (& < > ") */
+/** 转义 XML 内容——同时转义标签和属性边界字符（& < > "） */
 export function escapeXml(input: string): string {
   return input
     .replaceAll('&', '&amp;')
@@ -7,12 +7,12 @@ export function escapeXml(input: string): string {
     .replaceAll('"', '&quot;');
 }
 
-/** Escape XML attribute value — only escapes attribute boundary chars (& "), not tag chars */
+/** 转义 XML 属性值——仅转义属性边界字符（& "），不转义标签字符 */
 export function escapeXmlAttr(input: string): string {
   return input.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }
 
-/** Escape tag delimiters only — prevents XML tag injection without corrupting Markdown (& " stay literal) */
+/** 仅转义标签分隔符——防止 XML 标签注入而不破坏 Markdown（& " 保持原样） */
 export function escapeXmlTags(input: string): string {
   return input.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }

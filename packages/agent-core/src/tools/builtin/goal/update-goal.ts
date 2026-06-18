@@ -1,13 +1,11 @@
 /**
- * UpdateGoalTool — the model's single lever over the goal lifecycle. It updates
- * the goal's status directly; the turn driver reads the status at each turn
- * boundary and stops (`complete` / `blocked` / `paused`) or keeps going
- * (`active`).
+ * UpdateGoalTool — 模型对目标生命周期的唯一控制手段。它直接更新目标的状态；
+ * 轮次驱动器在每个轮次边界读取状态并停止（`complete` / `blocked` / `paused`）
+ * 或继续运行（`active`）。
  *
- * The argument is intentionally just a status enum — no reason or evidence. The
- * model explains itself in its own reply; the status is the machine-readable
- * signal. The tool is only offered to the model while a goal exists (see the
- * `loopTools` filter in the tool manager).
+ * 参数故意只是一个状态枚举 — 没有原因或证据。模型在自己的回复中解释；
+ * 状态是机器可读的信号。该工具仅在目标存在时提供给模型（参见工具管理器中的
+ * `loopTools` 过滤器）。
  */
 
 import type { Agent } from '#/agent';
@@ -57,11 +55,10 @@ export class UpdateGoalTool implements BuiltinTool<UpdateGoalToolInput> {
         }
         if (args.status === 'complete') {
           const completed = await goal.markComplete({}, 'model');
-          // `complete` is transient: markComplete announces then clears the
-          // record. Store the summary request as a system reminder, so the next
-          // provider request ends with a user message after the UpdateGoal tool
-          // result. Anthropic-compatible providers reject trailing assistant
-          // messages as unsupported prefill.
+          // `complete` 是瞬态的：markComplete 宣布后清除记录。
+          // 将摘要请求存储为系统提醒，以便下一个 provider 请求在
+          // UpdateGoal 工具结果后以用户消息结束。Anthropic 兼容的 provider
+          // 拒绝不支持的前填充的尾部 assistant 消息。
           if (completed !== null) {
             this.agent.context.appendSystemReminder(buildGoalCompletionSummaryPrompt(completed), {
               kind: 'system_trigger',

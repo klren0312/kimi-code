@@ -1,23 +1,21 @@
 /**
- * Decode raw stdin bytes into a comparable printable character.
+ * 将原始 stdin 字节解码为可比较的可打印字符。
  *
- * When a terminal (e.g. the VSCode integrated terminal) enables the Kitty
- * keyboard protocol disambiguate flag, ordinary printable keys are sent as
- * CSI-u sequences: pressing `r` arrives as "\x1b[114u", pressing `q` as
- * "\x1b[113u". A bare `data === 'q'` comparison inside a Container's
- * `handleInput` therefore never matches under Kitty-mode terminals.
+ * 当终端（例如 VSCode 集成终端）启用了 Kitty 键盘协议消歧标志时，
+ * 普通可打印键会以 CSI-u 序列发送：按 `r` 会收到 "\x1b[114u"，
+ * 按 `q` 会收到 "\x1b[113u"。因此在 Kitty 模式终端下，Container 的
+ * `handleInput` 中直接使用 `data === 'q'` 比较永远不会匹配。
  *
- * Rules:
- * - Every bare-literal printable-character comparison (letters, digits,
- *   space, punctuation) must go through this function first.
- * - Functional keys (arrows, Enter, Tab, Esc, ...) continue to use
- *   `matchesKey(data, Key.*)`; pi-tui's `matchesKey` already handles Kitty.
- * - Control characters (codepoint < 32, e.g. ctrl-b, ctrl-f) may still
- *   compare against the raw `data` — `decodeKittyPrintable` rejects them.
+ * 规则：
+ * - 所有裸字面量可打印字符比较（字母、数字、空格、标点）必须先通过此函数处理。
+ * - 功能键（方向键、Enter、Tab、Esc 等）继续使用 `matchesKey(data, Key.*)`；
+ *   pi-tui 的 `matchesKey` 已经处理了 Kitty 协议。
+ * - 控制字符（码位 < 32，如 ctrl-b、ctrl-f）仍可直接与原始 `data` 比较
+ *   ——`decodeKittyPrintable` 会拒绝它们。
  *
- * The module's existence is itself the "don't forget to decode" constraint:
- * `test/tui/printable-key-guard.test.ts` scans every `handleInput` under
- * `tui/components/**` and rejects bare-literal comparisons.
+ * 此模块的存在本身就是"不要忘记解码"的约束：
+ * `test/tui/printable-key-guard.test.ts` 会扫描 `tui/components/**` 下的每个
+ * `handleInput`，并拒绝裸字面量比较。
  */
 
 import { decodeKittyPrintable } from '@earendil-works/pi-tui';
@@ -27,9 +25,8 @@ export function printableChar(data: string): string {
 }
 
 /**
- * True when a decoded key is a single printable character safe to append to a
- * text query (e.g. a search box). Rejects C0 control chars, DEL, and any
- * multi-codepoint escape sequence. Space is accepted.
+ * 当解码后的键是单个可打印字符、可以安全地追加到文本查询（如搜索框）时返回 true。
+ * 拒绝 C0 控制字符、DEL 以及任何多码位转义序列。空格是被接受的。
  */
 export function isPrintableChar(ch: string): boolean {
   if (ch.length !== 1) return false;

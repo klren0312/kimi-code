@@ -24,13 +24,12 @@ import type { StatResult } from './types';
 const isWindows: boolean = process.platform === 'win32';
 
 /**
- * Build the `(dev, ino)` cycle-detection key used by `_globWalk`'s
- * visited set. Returns `null` when `ino` is 0, which Node returns on
- * filesystems that don't carry inodes (Windows FAT/exFAT, some SMB/NFS
- * mounts). A null key signals "no reliable identity for this dir" so
- * the caller skips visited tracking for that descent — cycle safety
- * is weakened on those filesystems, but normal walking works instead
- * of every directory colliding on the shared key `"<dev>:0"`.
+ * 构建 `_globWalk` 访问集合所使用的 `(dev, ino)` 环检测键。
+ * 当 `ino` 为 0 时返回 `null`，这在不支持 inode 的文件系统上会出现
+ * （Windows FAT/exFAT、部分 SMB/NFS 挂载）。返回 null 表示
+ * "该目录没有可靠的身份标识"，调用方会跳过该下降路径的访问追踪
+ * —— 在这些文件系统上环安全性会减弱，但正常遍历仍可工作，
+ * 而不是所有目录都撞在同一个共享键 `"<dev>:0"` 上。
  */
 function cycleKey(s: { dev: number; ino: number }): string | null {
   if (s.ino === 0) return null;
@@ -79,18 +78,17 @@ class LocalProcess implements KaosProcess {
   }
 
   kill(signal?: NodeJS.Signals): Promise<void> {
-    // Reject if the process never actually started (spawn failed).
-    // pid <= 0 indicates ChildProcess.pid was undefined, which happens
-    // when spawn() fails to find/execute the command. Calling
-    // process.kill(-1, ...) on POSIX would signal the entire process
-    // group, potentially killing unrelated processes.
+    // 如果进程从未真正启动（spawn 失败），则直接返回。
+    // pid <= 0 表示 ChildProcess.pid 为 undefined，这在 spawn()
+    // 找不到/无法执行命令时会发生。在 POSIX 上对 -1 调用
+    // process.kill(-1, ...) 会向整个进程组发信号，可能误杀无关进程。
     if (this.pid <= 0) {
       return Promise.resolve();
     }
 
-    // On Windows, `ChildProcess.kill()` only signals the shell parent, leaving
-    // grandchildren alive. Use `taskkill /T` so the caller's graceful and force
-    // kill phases apply to the whole process tree.
+    // 在 Windows 上，`ChildProcess.kill()` 只会向 shell 父进程发信号，
+    // 子进程的子进程仍然存活。使用 `taskkill /T` 可以让调用方的优雅终止
+    // 和强制终止阶段作用于整个进程树。
     if (isWindows) {
       const useForce = signal === 'SIGKILL';
       const taskkillArgs = useForce
@@ -109,26 +107,25 @@ class LocalProcess implements KaosProcess {
       });
     }
 
-    // On POSIX, `detached:true` makes the child a process-group leader
-    // (pgid === pid). A plain `ChildProcess.kill()` still only signals the
-    // direct child, so a shell like `bash -c 'sleep 100 & sleep 100'` leaves
-    // grandchildren orphaned. `process.kill(-pid, signal)` signals the group
-    // (negative pid = process-group id under POSIX kill(2)).
+    // 在 POSIX 上，`detached:true` 使子进程成为进程组领导者
+    // （pgid === pid）。普通的 `ChildProcess.kill()` 仍然只向直接子进程
+    // 发信号，因此像 `bash -c 'sleep 100 & sleep 100'` 这样的 shell 会留下
+    // 孤立的孙进程。`process.kill(-pid, signal)` 向整个进程组发信号
+    // （负 pid = POSIX kill(2) 下的进程组 id）。
     try {
       process.kill(-this.pid, signal ?? 'SIGTERM');
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
-      // ESRCH = group already gone (child exited + reaped between
-      // `wait()` racing spawn + this call). Treat as successful kill.
+      // ESRCH = 进程组已经退出（子进程在 `wait()` 与此次调用之间
+      // 竞争 spawn 并已退出并被回收）。视为成功终止。
       if (err.code === 'ESRCH') return Promise.resolve();
-      // EPERM is typically a misconfiguration (e.g. non-detached
-      // spawn earlier in the file); fall back to direct `.kill()` so
-      // we at least signal the direct child instead of throwing.
+      // EPERM 通常是配置错误（例如文件前面使用了非 detached 方式的 spawn）；
+      // 回退到直接调用 `.kill()`，这样至少能向直接子进程发信号，而不是抛出异常。
       if (err.code === 'EPERM') {
         try {
           this._child.kill(signal ?? 'SIGTERM');
         } catch {
-          /* best effort */
+          /* 尽力而为 */
         }
         return Promise.resolve();
       }
@@ -147,12 +144,12 @@ class LocalProcess implements KaosProcess {
 }
 
 /**
- * A KAOS implementation that directly interacts with the local filesystem.
+ * 直接与本地文件系统交互的 KAOS 实现。
  *
- * Note: LocalKaos maintains its own per-instance working directory (`_cwd`)
- * rather than mutating `process.cwd()`. This lets multiple LocalKaos instances
- * coexist with independent cwds (e.g. when switching contexts via
- * `runWithKaos`) without cross-polluting each other's relative-path resolution.
+ * 注意：LocalKaos 维护自己的实例级工作目录（`_cwd`），
+ * 而非修改 `process.cwd()`。这使得多个 LocalKaos 实例可以
+ * 各自拥有独立的工作目录（例如通过 `runWithKaos` 切换上下文时），
+ * 而不会相互污染相对路径解析。
  */
 export class LocalKaos implements Kaos {
   readonly name: string = 'local';
@@ -165,21 +162,20 @@ export class LocalKaos implements Kaos {
     cwd?: string,
     envLayers: readonly Record<string, string>[] = [],
   ) {
-    // After construction we never touch `process.cwd()` / `process.chdir()`
-    // — all path resolution goes through `this._cwd`. The default seeds
-    // from `process.cwd()` but callers can pin to anything via `withCwd`
-    // (or supplying `cwd` directly).
+    // 构造之后不再触碰 `process.cwd()` / `process.chdir()`
+    // —— 所有路径解析都通过 `this._cwd` 进行。默认值从
+    // `process.cwd()` 获取，但调用方可以通过 `withCwd`（或直接
+    // 提供 `cwd` 参数）将其固定为任意路径。
     this._cwd = normalize(cwd ?? process.cwd());
     this.osEnv = osEnv;
     this._envLayers = envLayers;
   }
 
   /**
-   * Construct a fresh `LocalKaos` after probing the host environment.
+   * 探测宿主环境后创建一个新的 `LocalKaos` 实例。
    *
-   * Each call returns a new instance with its own `_cwd`; concurrent
-   * callers can therefore operate on independent working directories
-   * without polluting one another.
+   * 每次调用都返回一个拥有独立 `_cwd` 的新实例；并发调用者
+   * 因此可以在各自独立的工作目录上操作，互不干扰。
    */
   static async create(): Promise<LocalKaos> {
     const osEnv = await detectEnvironmentFromNode();
@@ -216,13 +212,12 @@ export class LocalKaos implements Kaos {
   }
 
   /**
-   * Change the working directory of this LocalKaos instance.
+   * 更改此 LocalKaos 实例的工作目录。
    *
-   * Unlike Python's `os.chdir`, this is instance-scoped and never touches
-   * `process.cwd()`. Child processes spawned via {@link exec} inherit this
-   * instance's `_cwd`; concurrent LocalKaos instances each carry their own
-   * independent cwd. If you need Python-compatible process-global cwd,
-   * call `process.chdir(x)` directly.
+   * 与 Python 的 `os.chdir` 不同，此操作限定在实例范围内，
+   * 不会修改 `process.cwd()`。通过 {@link exec} 启动的子进程
+   * 继承此实例的 `_cwd`；并发的 LocalKaos 实例各自拥有独立的 cwd。
+   * 如果需要 Python 兼容的进程全局 cwd，请直接调用 `process.chdir(x)`。
    */
   async chdir(path: string): Promise<void> {
     const resolved = this._resolvePath(path);
@@ -255,8 +250,8 @@ export class LocalKaos implements Kaos {
     const resolved = this._resolvePath(path);
     const entries = await readdir(resolved);
     for (const entry of entries) {
-      // Use join so root paths like "/" or "C:\\" don't produce "//entry"
-      // or "C:\\\\entry" — join normalizes trailing separators correctly.
+      // 使用 join 以避免当 basePath 为根路径（如 "/" 或 "C:\\"）时
+      // 产生 "//entry" 或 "C:\\\\entry" —— join 会正确规范化尾部分隔符。
       yield join(resolved, entry);
     }
   }
@@ -269,43 +264,37 @@ export class LocalKaos implements Kaos {
     const resolved = this._resolvePath(path);
     const caseSensitive = options?.caseSensitive ?? true;
     const patternParts = pattern.split('/');
-    // Seed `visited` with basePath's own inode so that a symlink inside
-    // basePath that points back at basePath is caught on its first
-    // encounter (not on the second level — the "+1 depth" off-by-one
-    // that would otherwise leak if the caller globs directly from the
-    // loop root). `stat` failure here is tolerated: `_globWalk` will
-    // hit the same error via readdir and return empty.
+    // 将 basePath 自身的 inode 预先加入 `visited`，这样 basePath 内部的
+    // 符号链接如果指回 basePath，就能在首次遇到时就被捕获（而不是在第二层
+    // 才被捕获 —— 如果调用方直接从循环根目录进行 glob，这个 "+1 深度" 的
+    // 偏差会导致泄漏）。此处 `stat` 失败是容许的：`_globWalk` 会通过
+    // readdir 遇到同样的错误并返回空结果。
     const initVisited = new Set<string>();
     try {
       const rootStat = await stat(resolved);
       const rootKey = cycleKey(rootStat);
       if (rootKey !== null) initVisited.add(rootKey);
     } catch {
-      // base does not exist / not accessible — walker handles via its own catch
+      // basePath 不存在/不可访问 —— 遍历器会通过自身的 catch 处理
     }
     yield* this._globWalk(resolved, patternParts, caseSensitive, initVisited);
   }
 
-  // `visited` holds the `(stDev, stIno)` keys of directories on the
-  // current descent path. Before recursing into a subdirectory, we
-  // check its key against `visited`; if present we skip it (cycle
-  // detected) and otherwise recurse with a fresh Set containing the
-  // additional key. The per-recurse copy gives the check path-local
-  // semantics: two legitimate symlinks to the same target in separate
-  // branches both traverse, which is more permissive than Python stdlib
-  // while still cycle-safe.
-  // Same-directory self-recursion (e.g. `**` matching zero dirs with
-  // pattern tail) passes `visited` unchanged — no descent, no cycle
-  // risk.
+  // `visited` 保存当前下降路径上目录的 `(stDev, stIno)` 键。
+  // 在递归进入子目录之前，先检查其键是否在 `visited` 中；
+  // 如果存在则跳过（检测到环），否则使用包含新增键的新 Set
+  // 进行递归。每次递归时复制集合，使得检测具有路径局部语义：
+  // 同一目标被两个不同分支中的合法符号链接引用时，两边都会遍历，
+  // 这比 Python 标准库更宽松，同时仍然保证环安全。
+  // 同目录自递归（例如 `**` 匹配零个目录且模式有剩余部分）时
+  // 传递不变的 `visited` —— 无下降，无环风险。
   //
-  // Windows note: Node's `fs.Stats.ino` returns `0` on filesystems
-  // that don't support inodes (FAT/exFAT, some SMB/NFS mounts). If we
-  // keyed on `ino=0`, every directory on such a drive would share the
-  // key `"<dev>:0"` and the first would "visit" all others. The
-  // module-level `cycleKey` helper returns `null` in that case, which
-  // causes the call sites to skip visited tracking for that descent
-  // — cycle safety is lost on those filesystems, but normal walking
-  // works.
+  // Windows 注意：Node 的 `fs.Stats.ino` 在不支持 inode 的文件系统上
+  // 返回 `0`（FAT/exFAT、部分 SMB/NFS 挂载）。如果以 `ino=0` 作为键，
+  // 该驱动器上的每个目录都会共享同一个键 `"<dev>:0"`，第一个目录
+  // 会"访问"所有其他目录。模块级的 `cycleKey` 辅助函数在这种情况下
+  // 返回 `null`，使调用处跳过该下降路径的访问追踪 ——
+  // 在这些文件系统上失去了环安全性，但正常遍历仍可工作。
   private async *_globWalk(
     basePath: string,
     patternParts: string[],
@@ -319,25 +308,22 @@ export class LocalKaos implements Kaos {
     const [currentPattern, ...remainingParts] = patternParts;
 
     if (currentPattern === '**') {
-      // `**` matches zero or more directory components.
+      // `**` 匹配零个或多个目录层级。
       //
-      // There are exactly two cases to handle:
-      //   (a) `**` matches zero directories → continue at basePath with the
-      //       remaining pattern parts (or yield basePath itself when `**`
-      //       is the final segment).
-      //   (b) `**` matches one or more directories → recurse into each
-      //       subdirectory, keeping `**` (i.e. the full patternParts) at
-      //       the front. The "zero directories" case is then re-evaluated
-      //       at the subdirectory level by that recursive call.
+      // 正好有两种情况需要处理：
+      //   (a) `**` 匹配零个目录 → 在 basePath 处继续使用剩余模式部分
+      //       （当 `**` 是最后一个段时则 yield basePath 本身）。
+      //   (b) `**` 匹配一个或多个目录 → 递归进入每个子目录，
+      //       保留 `**`（即完整的 patternParts）在最前面。"零个目录"
+      //       的情况会在子目录层级的递归调用中被重新评估。
       //
-      // We must NOT additionally recurse with `remainingParts` on
-      // subdirectories — that would double-count every match at depth ≥ 1
-      // because case (a) inside the child recursion already yields those
-      // results.
+      // 我们不能对子目录额外用 `remainingParts` 进行递归 ——
+      // 那会导致深度 ≥ 1 的每个匹配被重复计算，因为子递归中
+      // 的情况 (a) 已经产出这些结果了。
       if (remainingParts.length > 0) {
         yield* this._globWalk(basePath, remainingParts, caseSensitive, visited);
       } else {
-        // Pattern ends with `**`: yield basePath itself (zero-dir match).
+        // 模式以 `**` 结尾：yield basePath 本身（零目录匹配）。
         yield basePath;
       }
 
@@ -349,7 +335,7 @@ export class LocalKaos implements Kaos {
       }
 
       for (const entry of entries) {
-        // Use join to avoid "//entry" when basePath is a filesystem root.
+        // 使用 join 以避免当 basePath 为文件系统根目录时产生 "//entry"。
         const fullPath = join(basePath, entry);
         let entryStat;
         try {
@@ -367,8 +353,8 @@ export class LocalKaos implements Kaos {
             key !== null ? new Set([...visited, key]) : visited,
           );
         } else if (remainingParts.length === 0) {
-          // Pattern ends with `**`: non-directory entries match too
-          // (since `**` matches "anything").
+          // 模式以 `**` 结尾：非目录条目也会匹配
+          //（因为 `**` 匹配"任意内容"）。
           yield fullPath;
         }
       }
@@ -387,7 +373,7 @@ export class LocalKaos implements Kaos {
           continue;
         }
 
-        // Use join to avoid "//entry" when basePath is a filesystem root.
+        // 使用 join 以避免当 basePath 为文件系统根目录时产生 "//entry"。
         const fullPath = join(basePath, entry);
 
         if (remainingParts.length === 0) {
@@ -489,30 +475,29 @@ export class LocalKaos implements Kaos {
     const existOk = options?.existOk ?? false;
 
     if (parents) {
-      // `fs.mkdir(..., { recursive: true })` silently succeeds when the
-      // target already exists — it does NOT raise EEXIST. To honor the
-      // `existOk: false` semantics, we must probe for existence ourselves
-      // before delegating to the recursive mkdir.
+      // `fs.mkdir(..., { recursive: true })` 在目标已存在时会静默成功 ——
+      // 它不会抛出 EEXIST。为了遵守 `existOk: false` 的语义，
+      // 必须在委托给递归 mkdir 之前自行探测是否存在。
       if (!existOk) {
         try {
           const s = await stat(resolved);
           if (s.isDirectory()) {
             throw new KaosFileExistsError(`${resolved} already exists`);
           }
-          // Path exists but is not a directory — let `mkdir` surface the
-          // appropriate error (EEXIST/ENOTDIR) below.
+          // 路径存在但不是目录 —— 让 `mkdir` 在下面抛出相应的错误
+          // （EEXIST/ENOTDIR）。
         } catch (error: unknown) {
           if (error instanceof KaosFileExistsError) throw error;
           const err = error as NodeJS.ErrnoException;
           if (err.code !== 'ENOENT') throw error;
-          // ENOENT: target doesn't exist yet — proceed to mkdir.
+          // ENOENT：目标尚不存在 —— 继续执行 mkdir。
         }
       }
       await mkdir(resolved, { recursive: true });
       return;
     }
 
-    // Non-recursive: fs.mkdir naturally throws EEXIST on collision.
+    // 非递归：fs.mkdir 在冲突时自然抛出 EEXIST。
     try {
       await mkdir(resolved);
     } catch (error: unknown) {
@@ -522,12 +507,10 @@ export class LocalKaos implements Kaos {
         'code' in error &&
         (error as NodeJS.ErrnoException).code === 'EEXIST'
       ) {
-        // `existOk` only applies when the conflicting path is itself a
-        // directory. If a regular file (or other non-directory) already
-        // occupies the path, silently returning would be a lie — the
-        // requested directory still does not exist. Surface the conflict
-        // explicitly so callers cannot mistake "file collision" for
-        // "directory already present".
+        // `existOk` 仅在冲突路径本身是目录时适用。如果一个普通文件
+        // （或其他非目录）已经占据了该路径，静默返回就是一个谎言
+        // —— 请求的目录仍然不存在。显式暴露冲突，这样调用方不会
+        // 将"文件冲突"误认为"目录已存在"。
         const s = await stat(resolved);
         if (!s.isDirectory()) {
           throw new KaosFileExistsError(`${resolved} already exists but is not a directory`);
@@ -547,10 +530,10 @@ export class LocalKaos implements Kaos {
     const child = spawn(command, restArgs, {
       cwd: this._cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      // POSIX `detached:true` makes the child a process-group leader so
-      // `LocalProcess.kill()` can signal the entire tree. No-op on Windows
-      // (`taskkill /T` handles the tree there). We do not call `child.unref()`
-      // because the parent still waits on the child's exit through `wait()`.
+      // POSIX `detached:true` 使子进程成为进程组领导者，这样
+      // `LocalProcess.kill()` 可以向整个进程树发信号。在 Windows 上无效
+      // （那里由 `taskkill /T` 处理进程树）。我们不调用 `child.unref()`
+      // 因为父进程仍然通过 `wait()` 等待子进程退出。
       detached: !isWindows,
       env: this._buildExecEnv(),
     });
@@ -589,10 +572,9 @@ export class LocalKaos implements Kaos {
   }
 }
 
-// Wait for a freshly spawned ChildProcess to either emit 'spawn' (success) or
-// 'error' (ENOENT / EACCES / etc.). Until this resolves, callers should not
-// assume the child is running — they may otherwise write to the stdin of a
-// process that never existed.
+// 等待新创建的 ChildProcess 发出 'spawn'（成功）或 'error'
+// （ENOENT / EACCES 等）。在此 Promise 解析之前，调用方不应
+// 假定子进程已在运行 —— 否则可能向一个从未存在的进程的 stdin 写入。
 function waitForSpawn(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     const onSpawn = (): void => {

@@ -1,36 +1,32 @@
 /**
- * Cron task persistence.
+ * Cron 任务持久化。
  *
- * Thin wrapper over `createPerIdJsonStore` that pins the on-disk layout
- * (`<sessionDir>/cron/<task_id>.json`), the cron-id shape (8 lowercase
- * hex chars — same shape `SessionCronStore` generates), and a shape
- * guard for `CronTask`.
+ * 对 `createPerIdJsonStore` 的薄封装，固定磁盘布局
+ * (`<sessionDir>/cron/<task_id>.json`)、cron id 格式（8 位小写
+ * 十六进制字符 — 与 `SessionCronStore` 生成的格式相同）以及
+ * `CronTask` 的形状守卫。
  *
- * No `PersistedCronTask` type: a `CronTask` is already pure plain data,
- * so the on-disk record is the in-memory record verbatim. Optional
- * `recurring` is honoured: an absent field round-trips as `undefined`,
- * which the rest of the cron stack treats as "recurring" by convention.
+ * 无 `PersistedCronTask` 类型：`CronTask` 已是纯普通数据，
+ * 因此磁盘记录是内存记录的逐字副本。可选的 `recurring` 被尊重：
+ * 缺失字段往返为 `undefined`，cron 栈其余部分按约定视为"重复"。
  *
- * The store is crash-safe (atomic write under the hood) and silently
- * ignores stray files, corrupt JSON, and records that fail the shape
- * guard — the cron stack would rather lose a malformed task than refuse
- * to boot.
+ * 存储是崩溃安全的（底层原子写入）并静默忽略杂散文件、损坏的
+ * JSON 以及未通过形状守卫的记录 — cron 栈宁可丢失格式错误的任务
+ * 也不拒绝启动。
  */
 
 import { createPerIdJsonStore, type PerIdJsonStore } from '../../utils/per-id-json-store';
 import type { CronTask } from './types';
 
 /**
- * On-disk id shape. Mirrors the regex `SessionCronStore` uses when
- * generating ids and doubles as the path-traversal guard inside the
- * generic per-id store.
+ * 磁盘 id 格式。镜像 `SessionCronStore` 生成 id 时使用的正则，
+ * 同时兼作通用逐 id 存储内的路径遍历防护。
  */
 export const CRON_ID_REGEX: RegExp = /^[0-9a-f]{8}$/;
 
 /**
- * Cheap shape guard. Run on every parsed JSON value before it is
- * surfaced from `list()` / `read()`; failing values are silently
- * dropped.
+ * 廉价形状守卫。在从 `list()` / `read()` 暴露之前对每个解析的
+ * JSON 值运行；失败的值被静默丢弃。
  */
 export function isValidCronTask(obj: unknown): obj is CronTask {
   if (typeof obj !== 'object' || obj === null) return false;
@@ -50,8 +46,8 @@ export function isValidCronTask(obj: unknown): obj is CronTask {
 }
 
 /**
- * Construct a per-id JSON store for cron tasks under `sessionDir`. The
- * store is stateless — callers can create it on demand.
+ * 在 `sessionDir` 下为 cron 任务构建逐 id JSON 存储。存储是无状态的 —
+ * 调用方可以按需创建。
  */
 export function createCronPersistStore(sessionDir: string): PerIdJsonStore<CronTask> {
   return createPerIdJsonStore<CronTask>({

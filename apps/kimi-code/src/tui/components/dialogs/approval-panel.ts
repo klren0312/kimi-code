@@ -1,7 +1,7 @@
 /**
- * ApprovalPanel — pi-tui version of the approval request UI.
+ * ApprovalPanel —— 审批请求 UI 的 pi-tui 版本。
  *
- * Container-based component with keyboard navigation.
+ * 基于容器的组件，支持键盘导航。
  */
 
 import {
@@ -32,6 +32,7 @@ export interface ApprovalPanelResponse {
   readonly selected_label?: string | undefined;
 }
 
+/** 截取文本的第一行，超过最大长度时截断并加省略号。 */
 function truncateOneLine(text: string, max: number): string {
   const firstLine = text.split('\n')[0] ?? '';
   return firstLine.length > max ? firstLine.slice(0, max - 1) + '…' : firstLine;
@@ -58,6 +59,7 @@ function makeBlockStyles(): BlockStyles {
   };
 }
 
+/** 将内容按宽度自动换行，首行和续行使用不同的前缀。 */
 function appendWrappedLine(
   lines: string[],
   firstPrefix: string,
@@ -77,6 +79,7 @@ function appendWrappedLine(
   }
 }
 
+/** 渲染 shell 命令类型的展示块。 */
 function renderShellDisplayBlock(
   block: Extract<DisplayBlock, { type: 'shell' }>,
   s: BlockStyles,
@@ -100,6 +103,7 @@ function renderShellDisplayBlock(
   return lines;
 }
 
+/** 根据展示块类型渲染对应的行。 */
 function renderDisplayBlock(
   block: DisplayBlock,
   s: BlockStyles,
@@ -173,10 +177,12 @@ function renderDisplayBlock(
   }
 }
 
+/** 规范化审批文本，统一换行符并去除首尾空白。 */
 function normalizeApprovalText(text: string): string {
   return text.replaceAll('\r\n', '\n').trim();
 }
 
+/** 检查 brief 块是否与描述文本重复，避免重复渲染。 */
 function isDuplicateBriefBlock(block: DisplayBlock, description: string): boolean {
   if (block.type !== 'brief' || block.text.trim().length === 0) return false;
   const normalizedDescription = normalizeApprovalText(description);
@@ -188,6 +194,7 @@ function isDuplicateBriefBlock(block: DisplayBlock, description: string): boolea
   return normalizeApprovalText(blockLines.slice(1).join('\n')) === normalizedDescription;
 }
 
+/** 根据工具名称生成审批面板的标题文本。 */
 function headerFor(toolName: string): string {
   switch (toolName) {
     case 'Bash':
@@ -237,6 +244,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     };
   }
 
+  /** 提交指定索引的选项及可选的反馈文本。 */
   private submit(index: number, feedback: string = ''): void {
     const option = this.choiceAt(index);
     if (!option) return;
@@ -247,6 +255,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     });
   }
 
+  /** 选择并提交指定索引的选项；若需要反馈则切换到反馈模式。 */
   private selectAndSubmit(index: number): void {
     const option = this.choiceAt(index);
     if (!option) return;
@@ -399,6 +408,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     return lines.map((line) => truncateToWidth(line, width));
   }
 
+  /** 查找第一个可预览的展示块（diff 或文件内容类型）。 */
   private findPreviewableBlock(): DiffDisplayBlock | FileContentDisplayBlock | undefined {
     for (const block of this.request.data.display) {
       if (block.type === 'diff' || block.type === 'file_content') return block;
@@ -414,6 +424,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     return this.request.data.choices.length;
   }
 
+  /** 确保当前选中索引在有效范围内。 */
   private ensureValidSelection(): void {
     const count = this.choiceCount();
     if (count === 0) {
@@ -425,6 +436,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     }
   }
 
+  /** 渲染内联反馈输入行。 */
   private renderInlineFeedbackLine(width: number, labelWithNum: string): string {
     const prefix = `${currentTheme.boldFg('accent', '▶')} ${currentTheme.boldFg('accent', labelWithNum)}  `;
     const inputWidth = Math.max(4, width - visibleWidth(prefix) + 2);
@@ -439,6 +451,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
   }
 }
 
+/** 构建数字选择提示文本（如 "1/2/3"）。 */
 function buildNumericHint(count: number): string {
   if (count <= 0) return '↵';
   return Array.from({ length: Math.min(count, 9) }, (_, idx) => String(idx + 1)).join('/');

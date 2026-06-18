@@ -102,7 +102,7 @@ function serializeValue(raw: unknown): string {
     const json = JSON.stringify(raw);
     if (json !== undefined) return json;
   } catch {
-    // fall through to a stable non-contentful fallback
+    // 回退到稳定的非内容性后备值
   }
   if (typeof raw === 'function') return raw.name === '' ? '[Function]' : `[Function: ${raw.name}]`;
   return Object.prototype.toString.call(raw);
@@ -129,7 +129,7 @@ function formatPair(key: string, raw: unknown): string {
 
 function clipBytes(text: string, maxBytes: number): string {
   if (Buffer.byteLength(text, 'utf-8') <= maxBytes) return text;
-  // Binary-search the longest prefix that fits.
+  // 二分搜索最长的适配前缀。
   let lo = 0;
   let hi = text.length;
   while (lo < hi) {

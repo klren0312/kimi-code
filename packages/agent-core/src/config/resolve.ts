@@ -28,10 +28,10 @@ export function parseBooleanEnv(value: string | undefined): boolean | undefined 
 }
 
 /**
- * Parse a floating-point environment value (e.g. `KIMI_MODEL_TEMPERATURE`).
- * Returns `undefined` when unset/blank; throws `KimiError(CONFIG_INVALID)` on a
- * non-numeric value so a typo fails fast like the other `KIMI_MODEL_*` vars.
- * No range validation — callers pass values the upstream API accepts.
+ * 解析浮点型环境变量值（如 `KIMI_MODEL_TEMPERATURE`）。
+ * 未设置/空时返回 `undefined`；非数字值时抛出 `KimiError(CONFIG_INVALID)`，
+ * 以便像其他 `KIMI_MODEL_*` 变量一样快速失败。
+ * 不做范围校验——调用方传递上游 API 接受的值即可。
  */
 export function parseFloatEnv(value: string | undefined, varName: string): number | undefined {
   const trimmed = value?.trim();

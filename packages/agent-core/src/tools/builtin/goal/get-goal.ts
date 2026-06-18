@@ -1,7 +1,7 @@
 /**
- * GetGoalTool — returns the current goal snapshot (objective, status, budgets,
- * and usage counters) so the model can decide whether to continue, report
- * completion via UpdateGoal, report a blocker, or respect a pause.
+ * GetGoalTool — 返回当前目标快照（目标、状态、预算和使用计数器），
+ * 以便模型决定是继续、通过 UpdateGoal 报告完成、报告阻塞，
+ * 还是尊重暂停状态。
  */
 
 import type { Agent } from '#/agent';

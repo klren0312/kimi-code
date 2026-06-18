@@ -9,24 +9,25 @@ import type {
 import { isUserCancellation } from '../utils/abort';
 
 /*
-Subagent batch scheduling contract:
-Normal phase:
-- Return results in input order; empty input returns an empty list.
-- Start up to 5 tasks immediately, then 1 more every 700 ms while queued work remains; active tasks do not cap this ramp.
-- Launch priority: previous agent id saved after a rate limit, explicit resume, then new spawn.
-- Readiness can be reported while the attempt is active. Ready normal launches seed the first rate-limit capacity.
-- The first provider rate limit stops the ramp and enters rate-limit phase.
+子代理批量调度契约：
+正常阶段：
+- 按输入顺序返回结果；空输入返回空列表。
+- 立即启动最多 5 个任务，之后每 700ms 启动 1 个，直到队列中没有剩余任务；活跃任务不限制此增长。
+- 启动优先级：速率限制后保存的代理 ID、显式恢复，然后是新生成。
+- 就绪状态可以在尝试活跃期间报告。已就绪的正常启动为首次速率限制提供容量。
+- 首次提供方速率限制会停止增长并进入速率限制阶段。
 
-Rate-limit phase:
-- A provider rate limit requeues while there is other unfinished work. Save the agent id for same-agent retry, emit suspended, and requeue the task at the front; its own eligibility delays are 3000 ms, 6000 ms, 12000 ms, then doubling.
-- If the rate-limited attempt is the only unfinished task, fail that task instead of suspending the whole batch forever.
-- Enter with capacity equal to ready normal launches, minimum 1; set the next global launch no earlier than 3000 ms later; then shrink capacity by 1, minimum 1. Later rate limits shrink by 1, minimum 1, at most once per 2000 ms.
-- Each pass starts at most 1 task: active attempts must be below capacity, global launch time reached, and task eligibility reached. Choose the first eligible queued task, then set next global launch to now plus the current interval. If blocked by time or queued work remains after a launch, wake at the earlier of next launch/eligibility and next capacity recovery.
-- Core recovery rule: in rate-limit phase, if work is queued and no provider rate limit happened for 3 minutes, capacity increases by 1, which can launch one more task immediately. This can happen once per quiet window; a new rate limit restarts the window. If active attempts still fill capacity, wake at the next recovery time.
+速率限制阶段：
+- 提供方速率限制会在还有其他未完成工作时重新排队。保存代理 ID 用于同代理重试，发出挂起事件，并将任务重新排到队首；其自身的资格延迟为 3000ms、6000ms、12000ms，之后翻倍。
+- 如果被速率限制的尝试是唯一未完成的任务，则直接使该任务失败，而不是永远挂起整个批次。
+- 进入时容量等于已就绪的正常启动数，最小为 1；设置下次全局启动不早于 3000ms 后；然后容量缩减 1，最小为 1。后续速率限制缩减 1，最小为 1，每 2000ms 最多缩减一次。
+- 每次通过最多启动 1 个任务：活跃尝试数必须低于容量，全局启动时间已到达，且任务资格已到达。选择第一个符合条件的排队任务，然后设置下次全局启动为当前时间加上当前间隔。如果被时间阻塞或启动后仍有排队任务，则在下一个启动/资格和下一个容量恢复的较早时间唤醒。
 
-Results and cancellation:
-- Completed, failed, aborted, and timed-out attempts occupy their input slots; when all slots have results, return the ordered list. A task timeout fails only that task and does not enter rate-limit phase or stop others.
-- The first task signal is the batch signal. User cancellation preserves existing results, marks ready or agent-known unfinished tasks aborted/started, and marks never-started tasks aborted/not_started. Non-user cancellation rejects.
+核心恢复规则：在速率限制阶段，如果队列中有工作且 3 分钟内没有发生提供方速率限制，容量增加 1，可立即启动一个更多任务。每个安静窗口仅发生一次；新的速率限制会重启该窗口。如果活跃尝试仍占满容量，则在下一个恢复时间唤醒。
+
+结果和取消：
+- 已完成、失败、已中止和超时的尝试占据其输入槽位；当所有槽位都有结果时，返回有序列表。任务超时仅使该任务失败，不会进入速率限制阶段或停止其他任务。
+- 首个任务的信号是批次信号。用户取消保留现有结果，将已就绪或代理已知的未完成任务标记为已中止/已启动，将从未启动的任务标记为已中止/未启动。非用户取消则拒绝。
 */
 
 const INITIAL_LAUNCH_LIMIT = 5;

@@ -8,9 +8,9 @@ interface GoalCompletionStats {
 }
 
 /**
- * Deterministic goal-completion text rendered by the TUI when the model marks a
- * goal `complete`. It is built from the final snapshot, so the figures
- * (turns / tokens / time) are exact and do not depend on model prose.
+ * 当模型将目标标记为 `complete` 时，由 TUI 渲染的确定性目标完成文本。
+ * 它基于最终快照构建，因此数据（轮次 / token / 时间）是精确的，
+ * 不依赖于模型的自然语言描述。
  */
 export function buildGoalCompletionMessage(goal: GoalSnapshot): string {
   return buildGoalCompletionMessageFromStats(goal);

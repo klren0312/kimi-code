@@ -264,9 +264,9 @@ function frameSeq(frame: TerminalFrame): number {
 }
 
 function defaultShell(): string {
-  // Use `||` (not `??`): an EMPTY $SHELL (set but blank, as some daemon/launchd
-  // envs leave it) must still fall back, or node-pty spawns an empty path and
-  // fails with "posix_spawnp failed".
+  // 使用 `||`（而非 `??`）：空字符串 $SHELL（已设置但为空，某些 daemon/launchd
+  // 环境变量会如此）仍需回退，否则 node-pty 会生成空路径并报错
+  // "posix_spawnp failed"。
   return process.env['SHELL'] || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/sh');
 }
 

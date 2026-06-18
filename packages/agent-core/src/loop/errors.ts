@@ -1,5 +1,5 @@
 /**
- * Loop-local error helpers.
+ * 循环本地错误辅助工具。
  */
 
 import { ErrorCodes, KimiError, isKimiError } from '#/errors';

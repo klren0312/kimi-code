@@ -7,19 +7,19 @@ import type {
   FlagDefinitionInput,
 } from './types';
 
-/** Master switch: when truthy, forces every flag on (highest priority). */
+/** 主开关：当为真值时，强制所有标志开启（最高优先级）。 */
 export const MASTER_ENV = 'KIMI_CODE_EXPERIMENTAL_FLAG';
 
 /**
- * Pure, synchronous flag resolver. State comes entirely from (env, registry) and nothing is
- * cached: env is read live on every call, so a single shared instance always reflects the current
- * process env. Defaults to process.env + FLAG_DEFINITIONS; tests can inject a custom env / defs.
+ * 纯同步标志解析器。状态完全来自（env, registry），不做任何缓存：
+ * 每次调用都实时读取 env，因此单个共享实例始终反映当前的进程环境变量。
+ * 默认使用 process.env + FLAG_DEFINITIONS；测试可以注入自定义 env / defs。
  *
- * Precedence (highest wins):
- *   L1 master switch KIMI_CODE_EXPERIMENTAL_FLAG → every flag is on
- *   L2 per-feature def.env (parseBooleanEnv, may force on or off)
- *   L3 config.toml [experimental] per-feature override
- *   L4 registry default
+ * 优先级（最高优先级获胜）：
+ *   L1 主开关 KIMI_CODE_EXPERIMENTAL_FLAG → 所有标志开启
+ *   L2 每个功能的 def.env（parseBooleanEnv，可能强制开启或关闭）
+ *   L3 config.toml [experimental] 每个功能的覆盖
+ *   L4 注册表默认值
  */
 export class FlagResolver {
   private readonly byId: ReadonlyMap<string, FlagDefinitionInput>;
@@ -92,8 +92,7 @@ export class FlagResolver {
 }
 
 /**
- * Compatibility accessor for callers that only need process-global env behavior.
- * Runtime code that belongs to a KimiCore/Session/Agent should use the scoped
- * resolver on that owner instead.
+ * 仅需要进程全局 env 行为的调用方的兼容性访问器。
+ * 属于 KimiCore/Session/Agent 的运行时代码应使用该所有者上的作用域解析器。
  */
 export const flags = new FlagResolver();

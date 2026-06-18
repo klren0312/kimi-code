@@ -1,5 +1,5 @@
 /**
- * `OAuthService` — implementation of `IOAuthService`.
+ * `OAuthService` — `IOAuthService` 的实现。
  */
 
 import { Disposable, DisposableMap, InstantiationType, registerSingleton } from '../../di';
@@ -24,17 +24,15 @@ import { IEnvironmentService } from '../environment/environment';
 import { IOAuthService } from './oauth';
 
 /**
- * One in-flight (or recently-completed) device-code flow. Stored in
- * `OAuthService._flows` (a `DisposableMap`) so:
- *   - `_flows.set(provider, newState)` auto-disposes the supersedee
- *   - `_flows.deleteAndDispose(provider)` (called from the GC timer) tears
- *     down a terminal entry's leftover state
- *   - service-wide `super.dispose()` walks every entry's `dispose()`
- *     instead of the old hand-written for-loop in `override dispose()`.
+ * 一次进行中（或最近完成的）设备码流程。存储在 `OAuthService._flows`
+ *（`DisposableMap`）中，因此：
+ *   - `_flows.set(provider, newState)` 自动 dispose 被取代者
+ *   - `_flows.deleteAndDispose(provider)`（从 GC 定时器调用）清理终态条目的残留状态
+ *   - 服务级 `super.dispose()` 遍历每个条目的 `dispose()`，而非旧的
+ *     `override dispose()` 中手写的 for 循环。
  *
- * `dispose()` is idempotent and aborts the controller only when the flow is
- * still pending — terminal flows have already returned from their underlying
- * promise, so a second abort would be a noisy no-op.
+ * `dispose()` 是幂等的，仅在流程仍在 pending 时中止控制器——终态流程已从底层
+ * promise 返回，再次中止只会产生无意义的空操作。
  */
 class FlowState implements IDisposable {
   status: OAuthFlowStatus = 'pending';
@@ -47,7 +45,7 @@ class FlowState implements IDisposable {
     readonly flowId: string,
     readonly provider: string,
     readonly deviceAuth: DeviceAuthorization,
-    /** Resolved seconds-until-expiry (may differ from `deviceAuth.expiresIn` if that was null). */
+    /** 解析后的剩余秒数（可能与 `deviceAuth.expiresIn` 不同，如果其为 null）。 */
     readonly expiresInSec: number,
     readonly startedAt: number,
     readonly expiresAt: number,
@@ -65,13 +63,13 @@ class FlowState implements IDisposable {
       try {
         this.controller.abort();
       } catch {
-        // ignore
+        // 忽略
       }
     }
   }
 }
 
-/** Terminal flows live this long after resolution before GC. */
+/** 终态流程在 GC 前的保留时间。 */
 const TERMINAL_RETENTION_MS = 5 * 60 * 1000;
 
 export class OAuthService extends Disposable implements IOAuthService {
@@ -86,7 +84,7 @@ export class OAuthService extends Disposable implements IOAuthService {
     this._authFacade = createManagedAuthFacade(env);
   }
 
-  /** @internal Test-only factory that injects a mock facade. */
+  /** @internal 仅测试用工厂方法，注入 mock facade。 */
   static _createForTest(env: IEnvironmentService, facade: ServicesAuthFacade): OAuthService {
     const svc = new (OAuthService as any)(env) as OAuthService;
     (svc as any)._authFacade = facade;
@@ -96,7 +94,7 @@ export class OAuthService extends Disposable implements IOAuthService {
   async startLogin(providerName?: string): Promise<OAuthFlowStart> {
     const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
 
-    // Supersede any existing pending flow.
+    // 取代任何现有的待处理流程。
     const existing = this._flows.get(name);
     if (existing !== undefined && existing.status === 'pending') {
       existing.controller.abort();
@@ -106,10 +104,9 @@ export class OAuthService extends Disposable implements IOAuthService {
     const flowId = `oauth_${ulid()}`;
     const controller = new AbortController();
 
-    // Capture the device authorization via a deferred. The managed auth facade
-    // calls `onDeviceCode` exactly once, then starts polling. We resolve the
-    // deferred from inside the callback so this method can return as soon as
-    // the URLs are known — well before the polling completes.
+    // 通过 deferred 捕获设备授权信息。managed auth facade 恰好调用一次
+    // `onDeviceCode`，然后开始轮询。我们在回调内部 resolve deferred，
+    // 以便此方法在 URL 已知时即可返回——远早于轮询完成。
     let resolveAuth: (d: DeviceAuthorization) => void;
     let rejectAuth: (e: unknown) => void;
     const authPromise = new Promise<DeviceAuthorization>((resolve, reject) => {
@@ -117,8 +114,8 @@ export class OAuthService extends Disposable implements IOAuthService {
       rejectAuth = reject;
     });
 
-    // Background login — DO NOT await. We hand the controller's signal in so
-    // `cancelLogin()` and the supersede path can interrupt mid-poll.
+    // 后台登录——不要 await。传入控制器的 signal，以便 `cancelLogin()`
+    // 和取代路径能在轮询中途中断。
     const loginPromise = this._authFacade.login(name, {
       signal: controller.signal,
       onDeviceCode: (auth) => {
@@ -126,8 +123,8 @@ export class OAuthService extends Disposable implements IOAuthService {
       },
     });
 
-    // Surface a synchronous failure (device-auth request itself fails before
-    // `onDeviceCode` fires) by racing the login promise.
+    // 捕获同步失败（设备授权请求本身在 `onDeviceCode` 触发前失败）
+    // 通过竞态登录 promise。
     loginPromise.catch((err) => {
       rejectAuth(err);
     });
@@ -136,18 +133,16 @@ export class OAuthService extends Disposable implements IOAuthService {
     try {
       deviceAuth = await authPromise;
     } catch (err) {
-      // The OAuth host or the network broke before we got a device code.
-      // No flow state was registered yet; just surface the error to the
-      // REST handler → 50001.
+      // OAuth 主机或网络在获取设备码之前出错。
+      // 此时尚未注册流程状态；直接向 REST 处理器报告错误 → 50001。
       const msg = err instanceof Error ? err.message : String(err);
       throw new OAuthError(`failed to start device flow: ${msg}`);
     }
 
     const startedAt = Date.now();
-    // `expiresIn` is server-reported and may be null (RFC 8628 §3.2 allows
-    // omission). Fall back to the local 15-min budget enforced by
-    // `OAuthManager.login`, so the `expires_at` we surface to clients is
-    // never further out than the deadline that's actually being enforced.
+    // `expiresIn` 是服务端报告的，可能为 null（RFC 8628 §3.2 允许省略）。
+    // 回退到 `OAuthManager.login` 强制执行的本地 15 分钟预算，
+    // 以确保我们向客户端展示的 `expires_at` 不会超过实际截止时间。
     const expiresInSec = deviceAuth.expiresIn ?? 15 * 60;
     const state = new FlowState(
       flowId,
@@ -160,8 +155,7 @@ export class OAuthService extends Disposable implements IOAuthService {
     );
     this._flows.set(name, state);
 
-    // Wire the background promise's terminal transition. We branch on error
-    // class + message — see the file header for the mapping.
+    // 连接后台 promise 的终态转换。根据错误类 + 消息进行分支——映射关系见文件头。
     loginPromise.then(
       () => this._handleSuccess(state),
       (err) => this._handleFailure(state, err),
@@ -191,7 +185,7 @@ export class OAuthService extends Disposable implements IOAuthService {
     const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
     const state = this._flows.get(name);
     if (state === undefined) {
-      // No flow at all → treat as "already cancelled" (idempotent).
+      // 完全没有流程 → 视为"已取消"（幂等）。
       return { cancelled: false, status: 'cancelled' };
     }
     if (state.status !== 'pending') {
@@ -204,8 +198,7 @@ export class OAuthService extends Disposable implements IOAuthService {
 
   async logout(providerName?: string): Promise<OAuthLogoutResponse> {
     const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
-    // Also cancel any in-flight flow so the next `GET /v1/auth` sees a clean
-    // slate.
+    // 同时取消任何进行中的流程，使下一次 `GET /v1/auth` 看到干净的状态。
     const pending = this._flows.get(name);
     if (pending !== undefined && pending.status === 'pending') {
       pending.controller.abort();
@@ -220,15 +213,15 @@ export class OAuthService extends Disposable implements IOAuthService {
     super.dispose();
   }
 
-  /* ----------------------------- internals ---------------------------- */
+  /* ----------------------------- 内部实现 ---------------------------- */
 
   private _handleSuccess(state: FlowState): void {
-    if (state.status !== 'pending') return; // already cancelled / superseded
+    if (state.status !== 'pending') return; // 已取消/已被取代
     this._setTerminal(state, 'authenticated');
   }
 
   private _handleFailure(state: FlowState, err: unknown): void {
-    if (state.status !== 'pending') return; // already cancelled / superseded
+    if (state.status !== 'pending') return; // 已取消/已被取代
 
     const status = classifyFailure(err);
     const message = err instanceof Error ? err.message : String(err);
@@ -240,20 +233,17 @@ export class OAuthService extends Disposable implements IOAuthService {
     if (state.status === status) return;
     state.status = status;
     state.resolvedAt = Date.now();
-    // Schedule GC. If a new flow supersedes this entry first, the supersede
-    // path runs `_flows.set(name, newState)` which auto-disposes this entry —
-    // its `dispose()` clears `gcTimer` before the timer can fire, so the
-    // callback can rely on "this state is still the current map entry"
-    // without the equality check needing a stale-guard.
+    // 调度 GC。如果新流程先取代此条目，取代路径执行 `_flows.set(name, newState)`
+    // 会自动 dispose 此条目——其 `dispose()` 在定时器触发前清除 `gcTimer`，
+    // 因此回调可以依赖"此状态仍是当前映射条目"，无需相等性检查。
     if (state.gcTimer !== undefined) clearTimeout(state.gcTimer);
     state.gcTimer = setTimeout(() => {
       const current = this._flows.get(state.provider);
-      // Belt-and-suspenders: even though dispose() clears the timer on
-      // overwrite, keep the identity check in case the timer was queued
-      // before the clearTimeout took effect.
+      // 双保险：即使 dispose() 在覆盖时清除了定时器，仍保留身份检查，
+      // 以防定时器在 clearTimeout 生效前已入队。
       if (current === state) this._flows.deleteAndDispose(state.provider);
     }, TERMINAL_RETENTION_MS);
-    // Don't keep the process alive solely for GC.
+    // 不要仅为 GC 保持进程存活。
     state.gcTimer.unref?.();
   }
 
@@ -283,14 +273,13 @@ export class OAuthService extends Disposable implements IOAuthService {
 }
 
 /**
- * Map the error thrown by the background login promise to a terminal status.
+ * 将后台登录 promise 抛出的错误映射为终态。
  *
- * - `DeviceCodeTimeoutError` → 'expired' (the 15-min budget ran out)
- * - `OAuthError` whose message starts with 'Login aborted' → 'cancelled'
- *   (our own AbortController fired or the toolkit's signal path)
- * - `OAuthError` mentioning 'denied' → 'denied' (user refused)
- * - Anything else → 'denied' (we collapse "denied" and "generic failure";
- *   the `error_message` field carries the diagnostic detail for the UI)
+ * - `DeviceCodeTimeoutError` → 'expired'（15 分钟预算耗尽）
+ * - `OAuthError` 消息以 'Login aborted' 开头 → 'cancelled'
+ *  （我们自己的 AbortController 触发或工具包的 signal 路径）
+ * - `OAuthError` 消息包含 'denied' → 'denied'（用户拒绝）
+ * - 其他 → 'denied'（合并"拒绝"和"通用失败"；`error_message` 字段携带诊断详情供 UI 使用）
  */
 function classifyFailure(err: unknown): OAuthFlowStatus {
   if (err instanceof DeviceCodeTimeoutError) return 'expired';
@@ -303,8 +292,7 @@ function classifyFailure(err: unknown): OAuthFlowStatus {
   return 'denied';
 }
 
-// Self-register under the global singleton registry. All ctor deps are
-// `@I…`-injected (@IEnvironmentService only); `staticArguments = []`.
-// `supportsDelayedInstantiation = false` preserves current reverse-dispose
-// semantics.
+// 在全局单例注册表中自行注册。所有构造函数依赖均通过 `@I…` 注入
+//（仅 @IEnvironmentService）；`staticArguments = []`。
+// `supportsDelayedInstantiation = false` 保持当前的反向 dispose 语义。
 registerSingleton(IOAuthService, OAuthService, InstantiationType.Delayed);

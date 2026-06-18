@@ -1,7 +1,7 @@
 /**
- * PlanBoxComponent — renders an ExitPlanMode plan inside a full box
- * border, width-aware. The plan text is parsed as Markdown so headings,
- * lists, bold, inline code etc. render the same way assistant messages do.
+ * PlanBoxComponent ——在完整盒型边框内渲染 ExitPlanMode 计划，
+ * 自适应宽度。计划文本解析为 Markdown，因此标题、列表、粗体、
+ * 行内代码等与助手消息的渲染方式一致。
  */
 
 import path from 'node:path';
@@ -12,8 +12,8 @@ import chalk from 'chalk';
 
 import { toTerminalHyperlink } from '#/utils/terminal-hyperlink';
 
-const LEFT_MARGIN = 2; // two-space indent matching other tool call children
-const SIDE_PADDING = 1; // space between the │ and the content on each side
+const LEFT_MARGIN = 2; // 两格缩进，与其他工具调用子项对齐
+const SIDE_PADDING = 1; // │ 与内容两侧之间的间距
 const TITLE_PREFIX = ' plan: ';
 const TITLE_SUFFIX = ' ';
 
@@ -37,10 +37,9 @@ export class PlanBoxComponent implements Component {
     private readonly planPath?: string,
     opts?: PlanBoxOptions,
   ) {
-    // Build the Markdown instance once — pi-tui's Markdown caches its own
-    // parse + wrap output keyed on (text, width), so reusing the same
-    // instance means repeated render() calls from the parent Container
-    // hit the cache instead of re-parsing on every frame.
+    // 构建一次 Markdown 实例——pi-tui 的 Markdown 以 (text, width) 为键
+    // 缓存自身的解析 + 换行输出，因此复用同一实例意味着父 Container
+    // 的重复 render() 调用会命中缓存，而非每帧重新解析。
     this.markdown = new Markdown(plan.trim(), 0, 0, markdownTheme);
     this.status = opts?.status;
   }
@@ -62,11 +61,11 @@ export class PlanBoxComponent implements Component {
       return this.cachedLines;
     }
 
-    // Box layout: "  ┌──...──┐"
-    //             "  │ <content> │"
-    //             "  └──...──┘"
+    // 盒型布局: "  ┌──...──┐"
+    //           "  │ <内容> │"
+    //           "  └──...──┘"
     // width = LEFT_MARGIN + 1 + horzLen + 1 ⇒ horzLen = width - 4
-    // content width = horzLen - 2 * SIDE_PADDING = width - 6
+    // 内容宽度 = horzLen - 2 * SIDE_PADDING = width - 6
     const horzLen = Math.max(2, safeWidth - LEFT_MARGIN - 2);
     const contentWidth = Math.max(1, horzLen - 2 * SIDE_PADDING);
 

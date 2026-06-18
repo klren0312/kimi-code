@@ -3,21 +3,19 @@ import { getCoreVersion } from '#/version';
 import type { MCPToolDefinition, MCPToolResult } from './types';
 
 export const KIMI_MCP_CLIENT_NAME = 'kimi-code';
-// Resolved from agent-core's package.json so MCP servers see the real version
-// in `initialize` (used for compatibility checks, telemetry, debugging).
-// `getCoreVersion()` falls back to '0.0.0' if the package.json read fails.
+// 从 agent-core 的 package.json 解析版本，使 MCP 服务器在 `initialize` 中
+// 看到真实版本（用于兼容性检查、遥测、调试）。
+// 如果 package.json 读取失败，`getCoreVersion()` 回退到 '0.0.0'。
 export const KIMI_MCP_CLIENT_VERSION = getCoreVersion();
 
 /**
- * Why-context attached when a runtime client notices its underlying transport
- * has gone away on its own — i.e. {@link RuntimeMcpClient.close} was NOT
- * called. The connection manager turns this into a `failed` status so the
- * UI/SDK do not keep advertising tools backed by a dead transport.
+ * 运行时客户端注意到其底层传输自行消失时附加的原因上下文——
+ * 即 {@link RuntimeMcpClient.close} 未被调用。连接管理器将其转换为
+ * `failed` 状态，以免 UI/SDK 继续宣传由已死传输支撑的工具。
  *
- * - `error` is the last error reported via the SDK's `onerror` channel, if
- *   any. Useful for HTTP where there is no stderr.
- * - `stderr` is the tail of bytes captured from the child process's stderr;
- *   populated only for the stdio transport.
+ * - `error` 是通过 SDK 的 `onerror` 通道报告的最后一个错误（如果有）。
+ *   对 HTTP 传输很有用，因为没有 stderr。
+ * - `stderr` 是从子进程的 stderr 捕获的尾部字节；仅对 stdio 传输填充。
  */
 export interface UnexpectedCloseReason {
   readonly error?: Error;
@@ -32,10 +30,9 @@ export interface McpRequestOptions {
 }
 
 /**
- * Build the `RequestOptions` object accepted by the MCP SDK's `callTool`,
- * including either the configured tool-call timeout, an in-flight abort
- * signal, both, or neither. Returns `undefined` when nothing needs to be
- * passed so the SDK falls back to its defaults.
+ * 构建 MCP SDK `callTool` 接受的 `RequestOptions` 对象，
+ * 包括配置的工具调用超时、进行中的中止信号、两者兼有或均无。
+ * 当无需传递任何内容时返回 `undefined`，让 SDK 使用其默认值。
  */
 export function buildRequestOptions(
   toolCallTimeoutMs: number | undefined,
@@ -60,10 +57,9 @@ export function toMcpToolDefinition(tool: SdkListedTool): MCPToolDefinition {
 }
 
 /**
- * Normalise the SDK's `callTool` return into kosong's {@link MCPToolResult}.
- * The SDK can return either the modern `{ content, isError }` shape or a
- * legacy `{ toolResult }` shape; we collapse the legacy shape to a single
- * text content block.
+ * 将 SDK 的 `callTool` 返回值规范化为 kosong 的 {@link MCPToolResult}。
+ * SDK 可以返回现代的 `{ content, isError }` 形式或旧版的
+ * `{ toolResult }` 形式；我们将旧版形式折叠为单个文本内容块。
  */
 export function toMcpToolResult(result: unknown): MCPToolResult {
   if (typeof result === 'object' && result !== null && 'content' in result) {

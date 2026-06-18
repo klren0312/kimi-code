@@ -25,7 +25,7 @@ import { setExperimentalFeatures } from './experimental-flags';
 import type { SlashCommandHost } from './dispatch';
 
 // ---------------------------------------------------------------------------
-// Plan / Config commands
+// 计划 / 配置命令
 // ---------------------------------------------------------------------------
 
 const MODEL_PICKER_REFRESH_TIMEOUT_MS = 2_000;
@@ -107,7 +107,7 @@ export async function handleYoloCommand(host: SlashCommandHost, args: string): P
     return;
   }
 
-  // toggle
+  // 切换
   if (currentMode === 'yolo') {
     await session.setPermission('manual');
     host.setAppState({ permissionMode: 'manual' });
@@ -151,7 +151,7 @@ export async function handleAutoCommand(host: SlashCommandHost, args: string): P
     return;
   }
 
-  // toggle
+  // 切换
   if (currentMode === 'auto') {
     await session.setPermission('manual');
     host.setAppState({ permissionMode: 'manual' });
@@ -213,7 +213,7 @@ export async function handleModelCommand(host: SlashCommandHost, args: string): 
 }
 
 // ---------------------------------------------------------------------------
-// Pickers & config apply
+// 选择器与配置应用
 // ---------------------------------------------------------------------------
 
 function showEditorPicker(host: SlashCommandHost): void {
@@ -410,9 +410,8 @@ async function applyThemeChoice(host: SlashCommandHost, theme: ThemeName): Promi
     return;
   }
 
-  // Validate custom themes up front so a missing / malformed file reports an
-  // error instead of silently persisting a name that resolves to the dark
-  // fallback.
+  // 预先验证自定义主题，以便缺失或格式错误的文件报告错误，
+  // 而不是静默持久化一个会解析为深色回退的名称。
   if (!isBuiltInTheme(theme)) {
     const palette = await loadCustomThemeMerged(theme);
     if (palette === null) {

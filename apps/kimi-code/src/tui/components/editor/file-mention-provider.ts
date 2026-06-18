@@ -24,13 +24,13 @@ interface FsMentionCandidate {
 }
 
 /**
- * Kimi wrapper around pi-tui's combined autocomplete provider.
+ * Kimi 对 pi-tui 组合自动补全提供器的包装。
  *
- * File / folder mention behavior uses pi-tui's fd-backed provider when fd is
- * available. While managed fd is downloading (or when it is unavailable), a
- * small filesystem fallback keeps basic `@` file and folder completion usable.
- * Ordinary path completion is still handled by pi-tui's readdir-backed path
- * completer. This wrapper also keeps Kimi-specific slash-command guards.
+ * 文件/文件夹提及功能在 fd 可用时使用 pi-tui 的 fd 后端提供器。
+ * 在托管 fd 下载期间（或不可用时），一个小型文件系统回退
+ * 保持基本的 `@` 文件和文件夹补全可用。
+ * 普通路径补全仍由 pi-tui 的 readdir 后端路径补全器处理。
+ * 此包装器还保留了 Kimi 特有的斜杠命令守卫。
  */
 export class FileMentionProvider implements AutocompleteProvider {
   private readonly inner: CombinedAutocompleteProvider;
@@ -40,8 +40,8 @@ export class FileMentionProvider implements AutocompleteProvider {
     private readonly workDir: string,
     private readonly fdPath: string | null,
   ) {
-    // Build an expanded list that includes alias entries so that
-    // inner's argument completion can find commands by alias too.
+    // 构建一个包含别名条目的扩展列表，
+    // 使内部的参数补全也能通过别名找到命令。
     const expanded: SlashAutocompleteCommand[] = [];
     for (const cmd of slashCommands) {
       expanded.push(cmd);
@@ -83,13 +83,12 @@ export class FileMentionProvider implements AutocompleteProvider {
       try {
         return await this.inner.getSuggestions(lines, cursorLine, cursorCol, options);
       } catch {
-        // If fd fails to spawn unexpectedly, keep @ completion usable.
+        // 如果 fd 意外启动失败，保持 @ 补全可用。
         return getFsMentionSuggestions(this.workDir, atPrefix, options.signal);
       }
     }
 
-    // Handle slash-command name completion ourselves so that aliases are
-    // searchable and visible in the label.
+    // 自行处理斜杠命令名称补全，使别名可搜索且在标签中可见。
     if (!options.force && textBeforeCursor.startsWith('/')) {
       const spaceIndex = textBeforeCursor.indexOf(' ');
       if (spaceIndex === -1) {
@@ -113,8 +112,8 @@ export class FileMentionProvider implements AutocompleteProvider {
             matches.push({ cmd, score: nameScore, viaAlias: false, label: cmd.name });
             continue;
           }
-          // Aliases only count when the primary name missed; the label then
-          // lists them so the user can see why the command matched.
+          // 别名仅在主名称未匹配时才计入；标签会列出它们，
+          // 以便用户了解命令匹配的原因。
           const aliases = cmd.aliases ?? [];
           let bestAliasScore: number | null = null;
           for (const alias of aliases) {
@@ -133,7 +132,7 @@ export class FileMentionProvider implements AutocompleteProvider {
           }
         }
 
-        // Primary-name matches outrank alias matches on score ties.
+        // 主名称匹配在分数相同时优先于别名匹配。
         matches.sort((a, b) => a.score - b.score || Number(a.viaAlias) - Number(b.viaAlias));
 
         if (matches.length === 0) return null;
@@ -224,7 +223,7 @@ function collectFsMentionCandidates(workDir: string, signal: AbortSignal): FsMen
         try {
           isDirectory = statSync(join(workDir, relativePath)).isDirectory();
         } catch {
-          // Broken symlink or permission error — keep it as a file candidate.
+          // 损坏的符号链接或权限错误——保持为文件候选。
         }
       }
 
@@ -314,9 +313,9 @@ function shouldSuppressSlashArgumentCompletion(
 }
 
 /**
- * All tokens must fuzzy-match `text`; returns the summed score, or null when
- * any token misses. An empty token list matches everything with score 0.
- * Mirrors pi-tui fuzzyFilter's token semantics — keep in sync if it changes.
+ * 所有 token 必须与 `text` 模糊匹配；返回总分数，任一 token 未命中时返回 null。
+ * 空 token 列表以分数 0 匹配一切。
+ * 镜像 pi-tui fuzzyFilter 的 token 语义——如果其变更需保持同步。
  */
 function scoreTokens(tokens: readonly string[], text: string): number | null {
   let score = 0;
@@ -329,8 +328,8 @@ function scoreTokens(tokens: readonly string[], text: string): number | null {
 }
 
 /**
- * Mirrors CombinedAutocompleteProvider's description rendering so the
- * intercepted name completion keeps showing the argument hint.
+ * 镜像 CombinedAutocompleteProvider 的描述渲染，
+ * 使拦截的名称补全仍显示参数提示。
  */
 function formatSlashCommandDescription(cmd: SlashAutocompleteCommand): string | undefined {
   const desc = cmd.description ?? '';

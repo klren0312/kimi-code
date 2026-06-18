@@ -18,14 +18,13 @@ interface MergedAgentProfile {
 }
 
 /**
- * Resolve agent profiles with extends inheritance.
+ * 通过 extends 继承解析 Agent 配置。
  *
- * Each resolved profile exposes its `systemPrompt` as a renderer that
- * closes over the merged template and prompt vars. The renderer is
- * invoked later with a {@link SystemPromptContext} to produce the
- * concrete prompt — this lets context that only exists at runtime
- * (cwd listing, AGENTS.md, skills) flow through without re-loading
- * profiles.
+ * 每个解析后的配置将其 `systemPrompt` 暴露为一个渲染器，
+ * 该渲染器捕获了合并后的模板和提示变量。渲染器稍后通过
+ * {@link SystemPromptContext} 调用以产生具体提示词——
+ * 这允许仅在运行时存在的上下文（目录列表、AGENTS.md、技能）
+ * 流入而无需重新加载配置。
  */
 export function resolveAgentProfiles(
   raw: readonly RawAgentProfile[],
@@ -117,9 +116,9 @@ function toResolvedProfile(merged: MergedAgentProfile): ResolvedAgentProfile {
 }
 
 /**
- * Build a renderer that captures the merged template and prompt vars.
- * The runtime SystemPromptContext is mapped to the template variables
- * (KIMI_OS, KIMI_AGENTS_MD, ...) at render time.
+ * 构建一个捕获合并模板和提示变量的渲染器。
+ * 运行时 SystemPromptContext 在渲染时映射到模板变量
+ * （KIMI_OS、KIMI_AGENTS_MD 等）。
  */
 function createSystemPromptRenderer(merged: MergedAgentProfile): SystemPromptRenderer {
   return (context: SystemPromptContext): string => {

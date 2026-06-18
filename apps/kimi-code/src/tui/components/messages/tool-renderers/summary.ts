@@ -1,13 +1,10 @@
 /**
- * Summary-style renderers — produce optional inline-glance content for
- * tools whose raw output is high-volume but low-information (Grep,
- * Glob). The numeric summary (line counts, exit codes, sizes) lives in
- * the header chip (see chip.ts), so most tools intentionally render an
- * empty body and only expose details when the global expand toggle is
- * on.
+ * 摘要式渲染器 — 为原始输出量大但信息密度低的工具（Grep、Glob）
+ * 生成可选的内联概览内容。数值摘要（行数、退出码、大小）位于
+ * 头部芯片（参见 chip.ts），因此大多数工具会故意渲染空正文，
+ * 仅在全局展开切换开启时才显示详情。
  *
- * Errors always fall through to the truncated renderer so the user
- * sees the actual error message, not a synthetic summary.
+ * 错误始终降级到截断渲染器，使用户看到的是实际错误消息而非合成摘要。
  */
 
 import type { Component } from '@earendil-works/pi-tui';
@@ -47,8 +44,8 @@ function nonEmptyLines(text: string): string[] {
   return text.split('\n').filter((line) => line.length > 0);
 }
 
-// Strip a trailing `:line:col:text` so the glance shows the file path
-// only, even when grep is in `content` mode (`src/foo.ts:42:    foo()`).
+// 去除尾部的 `:行号:列号:文本`，使概览仅显示文件路径，
+// 即使 grep 处于 `content` 模式（`src/foo.ts:42:    foo()`）。
 function pathFromGrepLine(line: string): string {
   const idx = line.indexOf(':');
   if (idx <= 0) return line;
@@ -75,10 +72,10 @@ const globGlance: GlanceFn = (_toolCall, result) => {
   return `${samples.join(', ')}${tail}`;
 };
 
-// ── Exports ──────────────────────────────────────────────────────────
+// ── 导出 ──────────────────────────────────────────────────────────
 
-// Tools whose chip already conveys everything — the body is empty in
-// the collapsed state and only the raw output appears when expanded.
+// 芯片已传达全部信息的工具 — 折叠状态下正文为空，
+// 展开时仅显示原始输出。
 export const readSummary: ResultRenderer = withGlance(null);
 export const fetchSummary: ResultRenderer = withGlance(null);
 export const webSearchSummary: ResultRenderer = withGlance(null);
@@ -86,6 +83,6 @@ export const thinkSummary: ResultRenderer = withGlance(null);
 export const editSummary: ResultRenderer = withGlance(null);
 export const writeSummary: ResultRenderer = withGlance(null);
 
-// Tools that benefit from inline path samples below the chip.
+// 芯片下方需要内联路径样本的工具。
 export const grepSummary: ResultRenderer = withGlance(grepGlance);
 export const globSummary: ResultRenderer = withGlance(globGlance);

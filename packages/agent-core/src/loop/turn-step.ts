@@ -1,10 +1,9 @@
 /**
- * Executes one provider step.
+ * 执行单个提供者步骤。
  *
- * A step owns the provider call, atomic transcript envelope, streaming callback
- * wiring, tool-call lifecycle, and post-step hooks. Provider usage is recorded
- * immediately after `llm.chat` returns so a later abort during tool execution
- * does not lose model usage that was already spent.
+ * 步骤负责提供者调用、原子转录信封、流式回调连接、
+ * 工具调用生命周期和步骤后钩子。提供者用量在 `llm.chat` 返回后
+ * 立即记录，以确保工具执行期间的后续中止不会丢失已消耗的模型用量。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -125,10 +124,9 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
   const stopTurnAfterUsage = usageResult?.stopTurn === true;
   const stopReason = deriveStepStopReason(response);
 
-  // Execute tools only when the normalized response shape represents a tool
-  // step. Provider terminal diagnostics such as filtering or truncation must
-  // not trigger side-effecting tool execution even if a malformed response also
-  // contains tool calls.
+  // 仅当标准化响应形状表示工具步骤时才执行工具。
+  // 提供者的终端诊断（如过滤或截断）不得触发带副作用的工具执行，
+  // 即使格式错误的响应也包含工具调用。
   let effectiveStopReason: LoopStepStopReason =
     stopTurnAfterUsage && stopReason === 'tool_use' ? 'end_turn' : stopReason;
   if (effectiveStopReason === 'tool_use') {
@@ -136,8 +134,8 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
     if (toolBatch.stopTurn) effectiveStopReason = 'end_turn';
   }
 
-  // When a tool batch runs, it drains paired `tool.result` events even when
-  // cancellation is requested. Check the signal here before sealing the step.
+  // 当工具批次运行时，即使请求了取消也会排空配对的 `tool.result` 事件。
+  // 在封存步骤之前在此处检查信号。
   signal.throwIfAborted();
 
   await dispatchEvent({
@@ -165,7 +163,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
       });
       stopTurnAfterStep = stopTurnAfterStep || afterStep?.stopTurn === true;
     } catch {
-      // The step is already sealed; observer hooks cannot change the result.
+      // 步骤已封存；观察者钩子无法改变结果。
     }
   }
 

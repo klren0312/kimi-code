@@ -15,7 +15,7 @@ import {
   toProtocolSkill,
 } from './skill';
 
-/** Matches the convention used elsewhere in services (prompt-service uses 'main'). */
+/** 与其他服务保持一致（prompt-service 使用 'main'）。 */
 const MAIN_AGENT_ID = 'main';
 
 export class SkillService extends Disposable implements ISkillService {
@@ -54,10 +54,9 @@ export class SkillService extends Disposable implements ISkillService {
   }
 
   /**
-   * Validate the session exists, then make sure it is loaded into the active
-   * session map (idempotent when already loaded) so the SessionAPI dispatch
-   * below cannot miss after a daemon restart. Same pattern as
-   * `PromptService.submit` / `SessionService.undo`.
+   * 验证 session 存在，并确保已加载到活跃 session 映射中（已加载时幂等），
+   * 以避免 daemon 重启后 SessionAPI 分发失败。与 `PromptService.submit` /
+   * `SessionService.undo` 模式相同。
    */
   private async _requireLoadedSession(sessionId: string): Promise<void> {
     const all = await this.core.rpc.listSessions({});
@@ -68,7 +67,6 @@ export class SkillService extends Disposable implements ISkillService {
   }
 }
 
-// Self-register under the global singleton registry. All ctor deps are
-// `@I…`-injected; `staticArguments = []`. `supportsDelayedInstantiation =
-// false` preserves current reverse-dispose semantics.
+// 在全局单例注册表中自注册。所有构造函数依赖通过 `@I…` 注入；`staticArguments = []`。
+// `supportsDelayedInstantiation = false` 保留当前反向释放语义。
 registerSingleton(ISkillService, SkillService, InstantiationType.Delayed);

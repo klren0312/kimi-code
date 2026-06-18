@@ -1,8 +1,7 @@
 /**
- * Render cron-facing timestamps in local wall time with an explicit
- * numeric offset. Cron expressions are evaluated in local time, so the
- * tool output should preserve that mental model while remaining
- * unambiguous and parseable as ISO 8601.
+ * 以本地墙钟时间和显式数字偏移渲染面向 cron 的时间戳。Cron 表达式
+ * 在本地时间中求值，因此工具输出应保留该心智模型，同时保持
+ * 无歧义并可作为 ISO 8601 解析。
  */
 export function formatLocalIsoWithOffset(ms: number): string {
   const date = new Date(ms);

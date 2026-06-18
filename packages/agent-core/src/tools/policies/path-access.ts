@@ -1,15 +1,14 @@
 /**
- * Path safety guards used by Read/Write/Edit/Grep/Glob.
+ * 路径安全守卫，供 Read/Write/Edit/Grep/Glob 使用。
  *
- * Canonicalization is **lexical** only (no `realpath` / symlink following).
- * Mirrors `KaosPath.canonical()` and keeps the guard backend-aware:
- * callers should pass the active Kaos path class so SSH paths stay POSIX
- * even when the host Node process is running on Windows.
+ * 规范化仅为**词法**操作（不跟踪 `realpath` / 符号链接）。
+ * 与 `KaosPath.canonical()` 配合，保持守卫对后端敏感：
+ * 调用方应传入当前活跃的 Kaos 路径类，使 SSH 路径在宿主
+ * Node 进程运行于 Windows 时仍保持 POSIX 形式。
  *
- * Shared-prefix escapes (a path like `/workspace-evil` passing a naive
- * `startswith('/workspace')` check) are blocked by requiring a path
- * separator (or exact equality) after the base prefix in
- * `isWithinDirectory`.
+ * 共享前缀逃逸（如 `/workspace-evil` 通过简单的
+ * `startswith('/workspace')` 检查）通过在 `isWithinDirectory`
+ * 中要求前缀后跟路径分隔符（或完全相等）来阻止。
  */
 
 import * as pathe from 'pathe';
@@ -62,8 +61,8 @@ function isWin32DriveRelative(path: string): boolean {
 export function normalizeUserPath(path: string, pathClass: PathClass = DEFAULT_PATH_CLASS): string {
   if (pathClass !== 'win32') return path;
 
-  // A bare root slash stays forward so downstream pathe operations
-  // treat it consistently. Matches the py helper's behavior.
+  // 单独的根正斜杠保持不变，使下游 pathe 操作一致处理。
+  // 与 Python 辅助函数行为一致。
   if (path === '/') return '/';
 
   if (path.startsWith('//')) {
@@ -97,8 +96,8 @@ function expandUserPath(path: string, homeDir: string | undefined, pathClass: Pa
 }
 
 /**
- * Lexical canonicalization: resolve relative → absolute against `cwd`,
- * then normalize `..` / `.` segments. No filesystem I/O.
+ * 词法规范化：基于 `cwd` 将相对路径解析为绝对路径，
+ * 然后规范化 `..` / `.` 段。无文件系统 I/O。
  */
 export function canonicalizePath(
   path: string,
@@ -130,8 +129,8 @@ export function canonicalizePath(
 }
 
 /**
- * True iff `candidate` is `base` itself or a descendant of it, compared
- * on path-component boundaries. Both arguments must already be canonical.
+ * 当且仅当 `candidate` 是 `base` 本身或其子路径时返回 true，
+ * 按路径组件边界比较。两个参数必须已经是规范化的。
  */
 export function isWithinDirectory(
   candidate: string,
@@ -148,8 +147,8 @@ export function isWithinDirectory(
 }
 
 /**
- * True iff `candidate` (already canonical) sits inside any of the workspace
- * roots listed in `config` (primary `workspaceDir` or any `additionalDirs`).
+ * 当且仅当 `candidate`（已规范化）位于 `config` 中列出的
+ * 工作区根目录（主 `workspaceDir` 或任意 `additionalDirs`）内时返回 true。
  */
 export function isWithinWorkspace(
   candidate: string,
@@ -165,7 +164,7 @@ export function isWithinWorkspace(
 
 export interface AssertPathOptions {
   readonly mode: PathAccessOperation;
-  /** When true (default), also reject paths matching a sensitive-file pattern. */
+  /** 为 true（默认）时，同时拒绝匹配敏感文件模式的路径。 */
   readonly checkSensitive?: boolean | undefined;
   readonly pathClass?: PathClass | undefined;
 }
@@ -256,13 +255,11 @@ export function resolvePathAccessPath(
 }
 
 /**
- * Throw `PathSecurityError` if `path` escapes the workspace through a relative
- * path, matches a known sensitive file, or is empty. Returns the canonical
- * absolute path when the check passes.
+ * 当 `path` 通过相对路径逃逸工作区、匹配已知敏感文件或为空时，
+ * 抛出 `PathSecurityError`。检查通过时返回规范化的绝对路径。
  *
- * Note: this is purely lexical. It does NOT protect against symlink
- * targets that point outside the workspace — that would require kaos-layer
- * realpath support, which is not currently available.
+ * 注意：这是纯词法操作。它**不**防御指向工作区外的符号链接目标
+ * ——那需要 kaos 层的 realpath 支持，目前尚不可用。
  */
 export function assertPathAllowed(
   path: string,

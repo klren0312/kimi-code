@@ -1,15 +1,14 @@
 /**
- * Small atomic JSON file store used by the MCP OAuth provider to persist
- * tokens, registered client info, and discovery state under
- * `<KIMI_CODE_HOME>/credentials/mcp/` (default
- * `~/.kimi-code/credentials/mcp/`).
+ * MCP OAuth 提供方使用的小型原子 JSON 文件存储，用于在
+ * `<KIMI_CODE_HOME>/credentials/mcp/`（默认 `~/.kimi-code/credentials/mcp/`）
+ * 下持久化 token、注册的客户端信息和发现状态。
  *
- * Write semantics: write to `<file>.tmp.<pid>.<rand>` → fsync → rename.
- * Atomic on POSIX; best-effort on Windows. Files land at mode 0600 (parent
- * dir 0700) so other local users cannot read tokens.
+ * 写入语义：写入 `<file>.tmp.<pid>.<rand>` → fsync → 重命名。
+ * 在 POSIX 上原子操作；在 Windows 上尽力而为。文件模式为 0600（父目录 0700），
+ * 以防止其他本地用户读取 token。
  *
- * Read semantics: missing file → undefined. Corrupt JSON / wrong shape →
- * undefined (never throws). The provider treats undefined as "not stored".
+ * 读取语义：文件不存在 → undefined。损坏的 JSON / 错误的形状 → undefined（不抛出异常）。
+ * 提供方将 undefined 视为"未存储"。
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -36,8 +35,8 @@ export function defaultMcpCredentialsDir(): string {
 }
 
 export function sanitizeStoreKey(name: string): string {
-  // Strip path-traversal segments. Tokens land under `<key>-<suffix>.json`,
-  // so the sanitized value must also be a single filename component.
+  // 删除路径遍历段。token 存储在 `<key>-<suffix>.json` 下，
+  // 因此清理后的值也必须是单个文件名组件。
   const safe = basename(name).replaceAll(/[^a-zA-Z0-9_-]/g, '_').replaceAll(/_+/g, '_');
   if (safe.length === 0 || safe.startsWith('.')) {
     throw new Error(`Invalid MCP OAuth store key: "${name}"`);
@@ -90,7 +89,7 @@ export class JsonFileStore {
     try {
       chmodSync(this.dir, 0o700);
     } catch {
-      // best-effort; Windows / read-only FS may refuse
+      // 尽力而为；Windows / 只读文件系统可能拒绝
     }
     const target = join(this.dir, file);
     const tmp = `${target}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;

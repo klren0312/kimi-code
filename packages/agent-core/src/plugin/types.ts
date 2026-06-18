@@ -32,7 +32,7 @@ export interface PluginManifest {
   readonly author?: PluginAuthor;
   readonly homepage?: string;
   readonly license?: string;
-  readonly skills?: readonly string[]; // resolved absolute paths
+  readonly skills?: readonly string[]; // 解析后的绝对路径
   readonly sessionStart?: PluginSessionStart;
   readonly mcpServers?: Readonly<Record<string, McpServerConfig>>;
   readonly interface?: PluginInterface;

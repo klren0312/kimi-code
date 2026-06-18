@@ -1,4 +1,4 @@
-/** Telemetry event names emitted by the cron subsystem. Centralised so a typo can't drift a metric. */
+/** cron 子系统发出的遥测事件名称。集中管理以避免拼写错误漂移指标。 */
 export const CRON_SCHEDULED = 'cron_scheduled' as const;
 export const CRON_FIRED = 'cron_fired' as const;
 export const CRON_MISSED = 'cron_missed' as const;

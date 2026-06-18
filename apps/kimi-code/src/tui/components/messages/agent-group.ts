@@ -1,18 +1,18 @@
 /**
- * AgentGroupComponent renders 2+ Agent tool calls from the same step as one group.
+ * AgentGroupComponent 将同一步骤中的 2 个以上 Agent 工具调用渲染为一组。
  *
- * Design:
- * - State container: each child Agent keeps its real state in its
- *   `ToolCallComponent` (subagent meta, phase, sub-tool calls, tokens, text).
- *   AgentGroup only stores references and does not copy state. Event handlers
- *   still route through `state.pendingToolComponents.get(parent_tool_call_id)`.
- * - Subscription: `attach` registers a snapshot listener on each child so the
- *   group can refresh when child state changes.
- * - Throttling: normal changes are coalesced into one render every 200ms.
- *   Phase transitions (spawning -> running -> done/failed) flush immediately.
- * - Mounting: `KimiTUI` attaches the group to the transcript at the
- *   right time; the group handles `invalidate` plus `ui.requestRender`.
- * - Ungrouping is not implemented. Once formed, a group stays grouped.
+ * 设计要点：
+ * - 状态容器：每个子 Agent 的真实状态保存在其 `ToolCallComponent` 中
+ *   （子代理元数据、阶段、子工具调用、token 数、文本）。AgentGroup 仅
+ *   存储引用，不复制状态。事件处理器仍通过
+ *   `state.pendingToolComponents.get(parent_tool_call_id)` 路由。
+ * - 订阅：`attach` 在每个子节点上注册快照监听器，以便子节点状态变化时
+ *   组可以刷新。
+ * - 节流：普通变更每 200ms 合并为一次渲染。
+ *   阶段转换（spawning -> running -> done/failed）立即刷新。
+ * - 挂载：`KimiTUI` 在合适的时机将组附加到对话记录；组负责 `invalidate`
+ *   和 `ui.requestRender`。
+ * - 取消分组暂未实现。一旦组建成，将始终保持分组状态。
  */
 
 import type { TUI } from '@earendil-works/pi-tui';
@@ -62,20 +62,18 @@ export class AgentGroupComponent extends Container {
   }
 
   /**
-   * Exposes the borrowed tool call components so external code (e.g.
-   * routing background task terminal events back to the corresponding
-   * Agent card) can reach them — the group renders the tcs' snapshots
-   * but never mounts the tcs as Container children, so a plain tree
-   * walk of `transcriptContainer` cannot discover them.
+   * 暴露借入的工具调用组件，以便外部代码（例如将后台任务终端事件路由回
+   * 对应的 Agent 卡片）可以访问它们——组渲染这些 tc 的快照但从不将 tc
+   * 挂载为 Container 子节点，因此仅通过 `transcriptContainer` 的普通
+   * 树遍历无法发现它们。
    */
   getToolComponents(): readonly ToolCallComponent[] {
     return this.entries.map((entry) => entry.tc);
   }
 
   /**
-   * Borrows a standalone `ToolCallComponent` into the group as a hidden state
-   * container. Snapshot changes trigger throttled refreshes. Re-attaching the
-   * same toolCallId is a no-op.
+   * 将独立的 `ToolCallComponent` 作为隐藏状态容器借入组内。
+   * 快照变化会触发节流刷新。重复附加相同的 toolCallId 不会产生效果。
    */
   attach(toolCallId: string, tc: ToolCallComponent): void {
     if (this.entries.some((e) => e.toolCallId === toolCallId)) return;
@@ -87,8 +85,8 @@ export class AgentGroupComponent extends Container {
   }
 
   /**
-   * Schedules a repaint. Real phase transitions force an immediate refresh;
-   * other changes such as latestActivity, tokens, or toolCount are throttled.
+   * 安排重绘。真正的阶段转换强制立即刷新；
+   * latestActivity、tokens、toolCount 等其他变更则进行节流。
    */
   private scheduleRender(): void {
     if (this.detectPhaseTransition()) {
@@ -103,8 +101,8 @@ export class AgentGroupComponent extends Container {
   }
 
   /**
-   * Compares each child's current phase with the phase captured at the last
-   * flush. Any change is treated as a phase transition.
+   * 比较每个子节点的当前阶段与上次刷新时记录的阶段。
+   * 任何变化均视为阶段转换。
    */
   private detectPhaseTransition(): boolean {
     let changed = false;
@@ -174,7 +172,7 @@ export class AgentGroupComponent extends Container {
   private appendLines(snap: ToolCallSubagentSnapshot, isLast: boolean): void {
     const dim = (text: string) => currentTheme.dim(text);
 
-    // First-level branch line.
+    // 一级分支线。
     const branch1 = isLast ? '└─' : '├─';
     const agentType = snap.agentName ?? 'agent';
     const desc = snap.toolCallDescription || '(no description)';
@@ -185,25 +183,25 @@ export class AgentGroupComponent extends Container {
     const line1 = `  ${branch1} ${namePart} ${descPart}${stats}${tail}`;
     this.bodyContainer.addChild(new Text(line1, 0, 0));
 
-    // Second-level line: latest activity, or Error for failures.
+    // 二级行：最新活动，或失败时显示错误信息。
     const branch2 = isLast ? '   ' : '│  ';
     if (snap.phase === 'failed') {
-      // Show one error line; error messages can be long.
+      // 显示一行错误信息；错误消息可能很长。
       const errLine = (snap.errorText ?? 'Failed').split('\n').at(0) ?? 'Failed';
       const errStr = currentTheme.fg('error', `Error: ${errLine}`);
       this.bodyContainer.addChild(new Text(`  ${branch2}    ${errStr}`, 0, 0));
       return;
     }
     if (snap.phase === 'done' || snap.phase === 'backgrounded') {
-      // Terminal states omit the second line.
+      // 终止状态省略第二行。
       return;
     }
-    // Running or not-yet-started agents show latest activity, with a fallback.
+    // 运行中或尚未启动的代理显示最新活动，带有回退值。
     const activity = snap.latestActivity ?? fallbackActivityForPhase(snap.phase);
     this.bodyContainer.addChild(new Text(`  ${branch2}    ${dim(activity)}`, 0, 0));
   }
 
-  /** Releases throttle timers so destroyed components cannot refresh later. */
+  /** 释放节流定时器，防止已销毁的组件稍后触发刷新。 */
   override invalidate(): void {
     if (this._invalidating) {
       super.invalidate();

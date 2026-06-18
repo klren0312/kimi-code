@@ -1,23 +1,20 @@
 /**
- * 5-field cron expression parsing and "next fire time" computation, in
- * local time. Self-contained — no external cron library is used because
- * upstream `claude-code` mirrors the same semantics and we need exact
- * lock-step behaviour with their implementation.
+ * 5 字段 cron 表达式解析和"下次触发时间"计算，使用本地时间。
+ * 自包含 — 不使用外部 cron 库，因为上游 `claude-code` 镜像了
+ * 相同语义，我们需要与其实现精确同步行为。
  *
- * Two flavours of correctness we care about:
+ * 我们关注两种正确性：
  *
- *   1. **Semantics.** Standard 5 fields (minute hour day-of-month month
- *      day-of-week). Day-of-month and day-of-week combine with cron's
- *      OR rule when both are restricted (POSIX/Vixie tradition). dow
- *      accepts 0..7 with 7 folded to 0 (Sunday).
+ *   1. **语义。** 标准 5 字段（分钟 小时 日 月份 星期几）。
+ *      日和星期几在两者都受限时使用 cron 的 OR 规则
+ *     （POSIX/Vixie 传统）。dow 接受 0..7，7 折叠为 0（星期日）。
  *
- *   2. **Termination.** Computing `next` for a legal-but-never-fires
- *      expression like `0 0 31 2 *` must not spin. We bound the search
- *      at a fixed window (5 years by default) and return `null` past
- *      that — the validator at `CronCreate` reuses this signal.
+ *   2. **终止性。** 对合法但永不触发的表达式如 `0 0 31 2 *` 计算
+ *      `next` 不能自旋。我们将搜索限制在固定窗口（默认 5 年），
+ *      超出返回 `null` — `CronCreate` 的验证器复用此信号。
  */
 
-/** A parsed cron expression. Opaque to callers — pass it back into {@link computeNextCronRun}. */
+/** 已解析的 cron 表达式。对调用者不透明 — 传回 {@link computeNextCronRun}。 */
 export interface ParsedCronExpression {
   readonly raw: string;
   readonly minutes: ReadonlySet<number>;
@@ -25,7 +22,7 @@ export interface ParsedCronExpression {
   readonly daysOfMonth: ReadonlySet<number>;
   readonly months: ReadonlySet<number>;
   readonly daysOfWeek: ReadonlySet<number>;
-  /** True if the source field was `*` — needed so cron's dom/dow OR rule fires only when both are restricted. */
+  /** 当源字段为 `*` 时为 true — 使 cron 的 dom/dow OR 规则仅在两者都受限时生效。 */
   readonly daysOfMonthWildcard: boolean;
   readonly daysOfWeekWildcard: boolean;
 }
@@ -34,15 +31,14 @@ const MINUTE_RANGE = { min: 0, max: 59 } as const;
 const HOUR_RANGE = { min: 0, max: 23 } as const;
 const DOM_RANGE = { min: 1, max: 31 } as const;
 const MONTH_RANGE = { min: 1, max: 12 } as const;
-const DOW_RANGE = { min: 0, max: 7 } as const; // 7 → 0 fold after parse
+const DOW_RANGE = { min: 0, max: 7 } as const; // 解析后 7 → 0 折叠
 
 const MS_PER_MINUTE = 60_000;
 
 /**
- * Parse a 5-field cron expression. Throws with a message naming the
- * offending field on any syntax error. Whitespace-separated; exactly 5
- * fields. Tokens supported per field: `*`, integers, ranges (`a-b`),
- * lists (`a,b,c`), and step (e.g. star-slash-n or `a-b/n`).
+ * 解析 5 字段 cron 表达式。任何语法错误时抛出命名问题字段的消息。
+ * 以空白分隔；恰好 5 个字段。每个字段支持的标记：`*`、整数、
+ * 范围（`a-b`）、列表（`a,b,c`）和步长（如 *-slash-n 或 `a-b/n`）。
  */
 export function parseCronExpression(expr: string): ParsedCronExpression {
   if (typeof expr !== 'string') {
@@ -87,9 +83,8 @@ export function parseCronExpression(expr: string): ParsedCronExpression {
 }
 
 function isWildcard(field: string): boolean {
-  // `*` and `*/n` both leave the field unconstrained in the
-  // "every value" sense — but only bare `*` should suppress the dom/dow
-  // OR rule. cron's tradition treats `*/n` as a restriction.
+  // `*` 和 `*/n` 在"每个值"意义上都使字段不受约束 — 但只有裸 `*`
+  // 才应抑制 dom/dow OR 规则。cron 传统将 `*/n` 视为一种限制。
   return field === '*';
 }
 
@@ -111,11 +106,10 @@ function parseField(field: string, min: number, max: number, name: string): Set<
   return out;
 }
 
-// Cron numeric fields are digit-only. `Number(...)` would otherwise
-// accept `''` (→ 0), `'1e1'`, `'0x10'`, `'+5'`, `'  3  '`, etc. — none
-// of which are valid cron syntax. This regex gate runs before the
-// conversion to surface a typo as a parse error instead of silently
-// rescheduling the task.
+// Cron 数字字段仅限数字。`Number(...)` 否则会接受 `''`（→ 0）、
+// `'1e1'`、`'0x10'`、`'+5'`、`'  3  '` 等 — 这些都不是合法 cron 语法。
+// 此正则门控在转换前运行，将拼写错误作为解析错误暴露，
+// 而非静默地重新调度任务。
 const DIGIT_ONLY = /^\d+$/;
 
 function parseCronInt(raw: string, name: string, role: string): number {
@@ -159,9 +153,8 @@ function addTerm(out: Set<number>, term: string, min: number, max: number, name:
       if (single < min || single > max) {
         throw new Error(`cron ${name} value ${single} out of range ${min}..${max}`);
       }
-      // A bare single value with a step (`5/10`) is unusual; treat as
-      // "from value through max stepping by N", which is what most cron
-      // dialects do.
+      // 带步长的裸单个值（`5/10`）不常见；视为"从值到最大值步进 N"，
+      // 这是大多数 cron 方言的做法。
       if (slash !== -1) {
         lo = single;
         hi = max;
@@ -188,32 +181,27 @@ function addTerm(out: Set<number>, term: string, min: number, max: number, name:
 }
 
 /**
- * Find the next wall-clock epoch ms strictly greater than `fromMs` that
- * satisfies `expr`, using local-time semantics. Returns `null` if no
- * match exists inside the default 5-year search window — defensive
- * against legal-but-never-fires expressions like `0 0 31 2 *`.
+ * 查找严格大于 `fromMs` 且满足 `expr` 的下一个墙钟 epoch 毫秒，
+ * 使用本地时间语义。如果在默认 5 年搜索窗口内无匹配则返回 `null`
+ * — 防御合法但永不触发的表达式如 `0 0 31 2 *`。
  *
- * Uses an O(transitions) field-by-field skip algorithm rather than a
- * minute-by-minute scan — month mismatch advances by months, day
- * mismatch by days, etc., so the worst case for `0 12 1 1 *` is a
- * handful of iterations, not 43 200.
+ * 使用 O(transitions) 逐字段跳过算法而非逐分钟扫描 — 月份不匹配
+ * 按月前进，日期不匹配按天前进等，因此 `0 12 1 1 *` 的最坏情况
+ * 是几次迭代，而非 43200 次。
  *
- * Termination is bounded by a wall-time deadline on the candidate
- * date — not an iteration count — so a pathological expression that
- * spends every iteration on `advanceMonth` still bails inside the
- * documented window. A secondary `HARD_ITERATION_CAP` guards against
- * a future refactor that fails to advance the date.
+ * 终止由候选日期的墙钟截止时间限制 — 而非迭代次数 — 因此每个
+ * 迭代都在 `advanceMonth` 上的病态表达式仍在文档窗口内退出。
+ * 次级 `HARD_ITERATION_CAP` 防止未来重构未能推进日期。
  */
 export function computeNextCronRun(expr: ParsedCronExpression, fromMs: number): number | null {
   return nextRunWithinMinutes(expr, fromMs, 5 * 366 * 24 * 60);
 }
 
 /**
- * True iff at least one fire exists within `years` years of `fromMs`.
- * Used by CronCreate validation to reject `0 0 31 2 *` and friends up
- * front, with the same wall-time deadline {@link computeNextCronRun}
- * uses (so the validator never says yes to something the scheduler
- * will later refuse to compute).
+ * 当且仅当在 `fromMs` 的 `years` 年内至少存在一次触发时返回 true。
+ * 用于 CronCreate 验证以提前拒绝 `0 0 31 2 *` 等表达式，
+ * 使用与 {@link computeNextCronRun} 相同的墙钟截止时间
+ * （因此验证器永远不会对调度器稍后拒绝计算的内容说"是"）。
  */
 export function hasFireWithinYears(
   expr: ParsedCronExpression,
@@ -229,36 +217,32 @@ function nextRunWithinMinutes(
   fromMs: number,
   capMinutes: number,
 ): number | null {
-  // Seek strictly into the next minute: drop seconds/ms and add one
-  // minute. This guarantees we never return `fromMs` itself.
+  // 严格进入下一分钟：丢弃秒/毫秒并加一分钟。这保证永远不返回 `fromMs` 本身。
   const start = new Date(fromMs);
   start.setSeconds(0, 0);
   const date = new Date(start.getTime() + MS_PER_MINUTE);
 
-  // Wall-clock deadline. Each loop body only advances `date` forward
-  // (month / day / hour / minute), so a single deadline check on
-  // `date.getTime()` bounds total work regardless of which granularity
-  // dominates — including the pathological case where `advanceMonth`
-  // is the dominant op (e.g. `0 0 30 2 *` never matches February).
+  // 墙钟截止时间。每个循环体只向前推进 `date`（月/日/时/分），
+  // 因此对 `date.getTime()` 的单次截止检查限制了总工作量，
+  // 无论哪种粒度占主导 — 包括 `advanceMonth` 为主要操作的
+  // 病态情况（如 `0 0 30 2 *` 永远不匹配二月）。
   const deadlineMs = fromMs + capMinutes * MS_PER_MINUTE;
 
-  // Secondary safety net: if a future refactor accidentally fails to
-  // advance `date`, this prevents an infinite loop. Generous enough to
-  // cover any minute-by-minute walk within a sane window, and many
-  // orders of magnitude below the previous iteration bound.
+  // 次级安全网：如果未来重构意外未能推进 `date`，这将防止无限循环。
+  // 足够慷慨以覆盖合理窗口内的任何逐分钟遍历，且比之前的迭代界限
+  // 低多个数量级。
   let iterations = 0;
   const HARD_ITERATION_CAP = 10_000_000;
 
   while (date.getTime() <= deadlineMs && iterations++ < HARD_ITERATION_CAP) {
-    // Month — coarsest. If wrong, jump to day 1 of the next allowed
-    // month and restart the day check.
+    // 月 — 最粗粒度。如果不对，跳到下一个允许月份的 1 日并重启日检查。
     if (!expr.months.has(date.getMonth() + 1)) {
       advanceMonth(date);
       continue;
     }
 
-    // Day. Cron-style OR: when both dom and dow are restricted, match
-    // either; when one is `*`, only the other constrains.
+    // 日。Cron 风格 OR：当 dom 和 dow 都受限时，匹配任一；
+    // 当一个是 `*` 时，只有另一个施加约束。
     if (!dayMatches(expr, date)) {
       advanceDay(date);
       continue;
@@ -289,13 +273,12 @@ function dayMatches(expr: ParsedCronExpression, date: Date): boolean {
   if (expr.daysOfMonthWildcard && expr.daysOfWeekWildcard) return true;
   if (expr.daysOfMonthWildcard) return dowOk;
   if (expr.daysOfWeekWildcard) return domOk;
-  // Both restricted: cron-style OR.
+  // 两者都受限：cron 风格 OR。
   return domOk || dowOk;
 }
 
 function advanceMonth(date: Date): void {
-  // Jump to the 1st of the next month at 00:00. Date's wrap-around
-  // handles year rollover for us.
+  // 跳到下个月的 1 日 00:00。Date 的自动进位处理年份翻转。
   date.setDate(1);
   date.setHours(0, 0, 0, 0);
   date.setMonth(date.getMonth() + 1);
@@ -342,10 +325,9 @@ const DAY_NAMES = [
 ] as const;
 
 /**
- * Cheap human-readable summary of an expression. Falls back to the raw
- * string when the shape isn't one of the patterns we recognise — the
- * caller (CronList) uses this purely for display, so a wordy fallback
- * is fine and we don't try to be exhaustive.
+ * 表达式的简单人类可读摘要。当形状不是我们识别的模式之一时回退到
+ * 原始字符串 — 调用方（CronList）纯用于展示，因此冗长的回退
+ * 是可以的，我们不试图穷举。
  */
 export function cronToHuman(expr: ParsedCronExpression): string {
   const allMin = isFullRange(expr.minutes, 0, 59);
@@ -354,7 +336,7 @@ export function cronToHuman(expr: ParsedCronExpression): string {
   const allMonth = isFullRange(expr.months, 1, 12);
   const allDow = expr.daysOfWeekWildcard;
 
-  // every N minutes — common LLM pattern (`*/5 * * * *`).
+  // 每 N 分钟 — 常见 LLM 模式（`*/5 * * * *`）。
   if (allHour && allDom && allMonth && allDow) {
     const step = detectStep(expr.minutes, 0, 59);
     if (step !== null && step > 1) return `every ${step} minutes`;
@@ -365,7 +347,7 @@ export function cronToHuman(expr: ParsedCronExpression): string {
     }
   }
 
-  // every N hours.
+  // 每 N 小时。
   if (expr.minutes.size === 1 && allDom && allMonth && allDow) {
     const m = [...expr.minutes][0]!;
     const step = detectStep(expr.hours, 0, 23);
@@ -374,7 +356,7 @@ export function cronToHuman(expr: ParsedCronExpression): string {
     }
   }
 
-  // at HH:MM every day, optional dow restriction.
+  // 每天 HH:MM，可选 dow 限制。
   if (
     expr.minutes.size === 1 &&
     expr.hours.size === 1 &&
@@ -388,7 +370,7 @@ export function cronToHuman(expr: ParsedCronExpression): string {
     if (dowStr !== null) return `at ${pad(h)}:${pad(m)} on ${dowStr}`;
   }
 
-  // at HH:MM on day N of <month>.
+  // 在 <月份> 第 N 天的 HH:MM。
   if (
     expr.minutes.size === 1 &&
     expr.hours.size === 1 &&
@@ -414,8 +396,8 @@ function isFullRange(set: ReadonlySet<number>, min: number, max: number): boolea
 }
 
 /**
- * If the set looks like `{min, min+step, ..., <=max}` with a constant
- * step, return `step`. Otherwise null. Used to pretty-print star-slash-N.
+ * 如果集合形如 `{min, min+step, ..., <=max}` 且步长恒定，返回 `step`。
+ * 否则返回 null。用于美化打印 star-slash-N。
  */
 function detectStep(set: ReadonlySet<number>, min: number, max: number): number | null {
   const values = [...set].toSorted((a, b) => a - b);
@@ -428,7 +410,7 @@ function detectStep(set: ReadonlySet<number>, min: number, max: number): number 
     if (v !== expected) return null;
     expected += step;
   }
-  // The last expected value should exceed `max` by less than `step`.
+  // 最后一个期望值应超出 `max` 不到 `step`。
   if (expected - step > max) return null;
   return step;
 }
@@ -436,7 +418,7 @@ function detectStep(set: ReadonlySet<number>, min: number, max: number): number 
 function formatDows(set: ReadonlySet<number>): string | null {
   const values = [...set].toSorted((a, b) => a - b);
   if (values.length === 0) return null;
-  // Mon-Fri shortcut.
+  // 周一到周五快捷方式。
   if (values.length === 5 && values.every((v, i) => v === i + 1)) {
     return 'weekdays';
   }

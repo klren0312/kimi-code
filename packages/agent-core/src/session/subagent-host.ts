@@ -40,9 +40,8 @@ export type {
 } from './subagent-batch';
 
 /**
- * A subagent summary shorter than this many characters triggers one
- * follow-up turn that asks the subagent to expand it, so the parent
- * agent receives a technically complete handoff.
+ * 如果子代理返回的摘要过短（少于指定字符数），会触发一次后续对话
+ * 要求子代理展开内容，以便父代理获得完整的技术交接。
  */
 const SUMMARY_MIN_LENGTH = 200;
 const SUMMARY_CONTINUATION_ATTEMPTS = 1;
@@ -240,8 +239,8 @@ export class SessionSubagentHost {
     );
     for (const [childId, child] of foregroundChildren) {
       this.session.getReadyAgent(childId)?.subagentHost?.cancelAll(reason);
-      // Abort with the cancel reason (a user interruption by default) so the
-      // subagent's in-flight tools report the cause accurately to the model.
+      // 使用取消原因（默认为用户中断）中止，以便子代理的
+      // 进行中工具能准确地向模型报告原因。
       child.controller.abort(reason);
     }
   }
@@ -325,10 +324,9 @@ export class SessionSubagentHost {
   ): Promise<SubagentCompletion> {
     await runChildTurnToCompletion(child, options.signal);
 
-    // A subagent that returns an overly terse summary leaves the parent
-    // agent under-informed. Give it a bounded number of chances to expand
-    // the handoff; if it is still short after that, accept it as-is rather
-    // than retrying indefinitely.
+    // 返回过于简短摘要的子代理会让父代理信息不足。
+    // 给予有限次数的机会来展开交接内容；如果仍然过短则接受原样，
+    // 而不是无限重试。
     let result = lastAssistantText(child);
     let remainingContinuations = SUMMARY_CONTINUATION_ATTEMPTS;
     while (remainingContinuations > 0 && result.length < SUMMARY_MIN_LENGTH) {
@@ -355,7 +353,7 @@ export class SessionSubagentHost {
     child: Agent,
     profile: ResolvedAgentProfile,
   ): Promise<void> {
-    // A subagent always inherits the parent agent's model.
+    // 子代理始终继承父代理的模型。
     child.config.update({
       cwd: parent.config.cwd,
       modelAlias: parent.config.modelAlias,

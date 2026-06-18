@@ -1,6 +1,6 @@
 /**
- * Shared syntax-highlighting helpers for code previews
- * (tool-call Write/Edit, approval-panel Write content, etc.).
+ * 共享的语法高亮辅助函数，用于代码预览
+ * （工具调用 Write/Edit、审批面板 Write 内容等）。
  */
 
 import { extname } from 'node:path';

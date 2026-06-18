@@ -1,17 +1,17 @@
 import type { KimiErrorCode } from './codes';
 
 export interface KimiErrorOptions {
-  /** JSON-serializable structured details. */
+  /** JSON 可序列化的结构化详情。 */
   readonly details?: Record<string, unknown>;
-  /** Original error or value. Local-only; never serialized to the wire. */
+  /** 原始错误或值。仅本地使用；永远不会序列化到 wire。 */
   readonly cause?: unknown;
 }
 
 /**
- * The single Kimi error class.
+ * Kimi 唯一的错误类。
  *
- * Discrimination is always by `code`. Cross-process consumers receive
- * `KimiErrorPayload` and must branch on `code` rather than class identity.
+ * 始终通过 `code` 进行区分。跨进程消费者接收 `KimiErrorPayload`，
+ * 必须基于 `code` 而非类标识进行分支判断。
  */
 export class KimiError extends Error {
   readonly code: KimiErrorCode;

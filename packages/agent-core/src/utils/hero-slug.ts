@@ -1,9 +1,9 @@
-/** Hero-name slug generator: produces "hero-hero-hero" with collision fallback. */
+/** 英雄名称 slug 生成器：生成 "hero-hero-hero" 格式，冲突时有回退方案。 */
 
 import { randomInt } from 'node:crypto';
 
 export const HERO_NAMES = [
-  // --- Marvel ---
+  // --- 漫威 ---
   'iron-man',
   'spider-man',
   'captain-america',

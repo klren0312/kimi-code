@@ -12,31 +12,30 @@ import type { ChatProvider, FinishReason, GenerateOptions, StreamedMessage } fro
 import type { Tool } from './tool';
 import type { TokenUsage } from './usage';
 
-/** Snapshot of a ToolCall excluding the internal `_streamIndex` routing field. */
+/** ToolCall 的快照，不包含内部的 `_streamIndex` 路由字段。 */
 type StoredToolCall = Omit<ToolCall, '_streamIndex'>;
 
 /**
- * The result of a single {@link generate} call.
+ * 单次 {@link generate} 调用的结果。
  *
- * Contains the fully-assembled assistant {@link message}, an optional
- * provider-assigned {@link id}, and token {@link usage} statistics.
+ * 包含完全组装的助手 {@link message}、可选的提供者分配的 {@link id}，
+ * 以及 token {@link usage} 统计。
  */
 export interface GenerateResult {
-  /** Provider-assigned response identifier, or `null` if unavailable. */
+  /** 提供者分配的响应标识符，如果不可用则为 `null`。 */
   readonly id: string | null;
-  /** The fully-assembled assistant message with merged content parts and tool calls. */
+  /** 完全组装的助手消息，包含合并后的内容部分和工具调用。 */
   readonly message: Message;
-  /** Token usage for this generation, or `null` if not reported. */
+  /** 此次生成的 token 用量，如果未报告则为 `null`。 */
   readonly usage: TokenUsage | null;
   /**
-   * Normalized finish reason reported by the provider, or `null` if no
-   * finish_reason was emitted (for example, the stream was interrupted
-   * before the final event).
+   * 提供者报告的标准化完成原因，如果未发出 finish_reason
+   * （例如流在最终事件之前被中断）则为 `null`。
    */
   readonly finishReason: FinishReason | null;
   /**
-   * Raw provider-specific finish_reason string preserved verbatim.
-   * `null` if the provider did not emit one.
+   * 原始的提供者特定 finish_reason 字符串，按原样保留。
+   * 如果提供者未发出则为 `null`。
    */
   readonly rawFinishReason: string | null;
 }
@@ -44,40 +43,40 @@ export interface GenerateResult {
 export interface GenerateCallbacks {
   onMessagePart?: (part: StreamedMessagePart) => void | Promise<void>;
   /**
-   * Fires once per fully-assembled tool call after the stream drains, in the
-   * order tool calls appear in the final assistant message.
+   * 在流排空后，对每个完全组装的工具调用触发一次，按工具调用
+   * 在最终助手消息中出现的顺序。
    *
-   * Tool calls are deliberately deferred until after the stream completes:
-   * parallel-tool-call streams may interleave argument deltas across calls
-   * (e.g. tc0-header → tc1-header → tc0-args → tc1-args), so firing mid-stream
-   * would dispatch a tool with half-parsed arguments and trigger toolParseError.
+   * 工具调用被故意延迟到流完成之后：并行工具调用的流可能会在
+   * 不同调用之间交错参数增量（例如 tc0-header → tc1-header →
+   * tc0-args → tc1-args），因此在流中途触发会导致分发一个
+   * 参数只解析了一半的工具并触发 toolParseError。
    */
   onToolCall?: (toolCall: ToolCall) => void | Promise<void>;
 }
 
 /**
- * Generate one assistant message by streaming from the given provider.
+ * 通过从给定提供者流式传输来生成一条助手消息。
  *
- * Parts of the message are streamed and merged: consecutive compatible parts
- * (e.g. TextPart + TextPart, ToolCall + ToolCallPart) are merged in-place so
- * the returned message always contains fully-assembled parts.
+ * 消息的部分在流式传输过程中被合并：连续的兼容部分（例如
+ * TextPart + TextPart、ToolCall + ToolCallPart）被就地合并，
+ * 因此返回的消息始终包含完全组装的部分。
  *
- * **Tool call completion** is inferred from merge boundaries (a non-merging
- * next part flushes the pending tool call into `message.toolCalls`) and from
- * stream end. Provider adapters translate native "done" signals into this
- * unified form; the generate loop never sees a separate done event.
+ * **工具调用的完成**通过合并边界推断（一个不可合并的下一个部分
+ * 将待处理的工具调用刷新到 `message.toolCalls` 中）以及流结束
+ * 推断。提供者适配器将原生的"完成"信号翻译为此统一形式；
+ * 生成循环永远不会看到单独的完成事件。
  *
- * @param provider - The chat provider to generate from.
- * @param systemPrompt - System-level instruction prepended to the request.
- * @param tools - Tool definitions the model may invoke.
- * @param history - The conversation history sent as context.
- * @param callbacks - Optional streaming callbacks.
- * @param options - Optional per-call settings (e.g. an {@link AbortSignal}).
+ * @param provider - 用于生成的聊天提供者。
+ * @param systemPrompt - 预置到请求中的系统级指令。
+ * @param tools - 模型可能调用的工具定义。
+ * @param history - 作为上下文发送的对话历史。
+ * @param callbacks - 可选的流式回调。
+ * @param options - 可选的每次调用设置（例如 {@link AbortSignal}）。
  *
- * @throws {DOMException} with name `"AbortError"` when `options.signal` is
- *   aborted before or during streaming.
- * @throws {APIEmptyResponseError} when the response contains no content and
- *   no tool calls, or only thinking content without any text or tool calls.
+ * @throws {DOMException} 名称为 `"AbortError"`，当 `options.signal` 在
+ *   流式传输之前或期间被中止时。
+ * @throws {APIEmptyResponseError} 当响应不包含内容和工具调用，
+ *   或仅包含思考内容而没有文本或工具调用时。
  */
 export async function generate(
   provider: ChatProvider,
@@ -90,15 +89,14 @@ export async function generate(
   const message: Message = { role: 'assistant', content: [], toolCalls: [] };
   let pendingPart: StreamedMessagePart | null = null;
 
-  // Map from provider streaming index (e.g. OpenAI Chat `index`, Responses
-  // `item_id`) to the position inside `message.toolCalls`. Used to route
-  // interleaved argument deltas from parallel tool calls to the correct call.
+  // 从提供者流式索引（例如 OpenAI Chat 的 `index`、Responses 的
+  // `item_id`）到 `message.toolCalls` 内部位置的映射。用于将来自
+  // 并行工具调用的交错参数增量路由到正确的调用。
   const toolCallIndexMap = new Map<number | string, number>();
 
-  // Pre-flight abort check: if the caller's signal is already aborted, we
-  // must not issue the provider request at all. Providers that do not
-  // themselves honor `signal` would otherwise emit a network call that the
-  // caller has explicitly cancelled.
+  // 预检中止检查：如果调用方的信号已中止，我们必须完全不发出
+  // 提供者请求。不自行遵守 `signal` 的提供者否则会发出一个
+  // 调用方已明确取消的网络调用。
   if (options?.signal?.aborted) {
     throwAbortError();
   }
@@ -106,25 +104,24 @@ export async function generate(
   options?.onRequestStart?.();
   const stream = await provider.generate(systemPrompt, tools, history, options);
 
-  // Post-await abort check: `provider.generate()` may have resolved before
-  // noticing a mid-flight abort. Reject immediately rather than draining
-  // the stream.
+  // 等待后中止检查：`provider.generate()` 可能在注意到飞行中中止
+  // 之前就已解析。立即拒绝而不是排空流。
   await throwIfAborted(options?.signal, stream);
 
   for await (const part of stream) {
     await throwIfAborted(options?.signal, stream);
 
-    // Notify raw part callback (deep copy to avoid aliasing mutations).
+    // 通知原始部分回调（深拷贝以避免别名修改）。
     if (callbacks?.onMessagePart !== undefined) {
       await callbacks.onMessagePart(deepCopyPart(part));
       await throwIfAborted(options?.signal, stream);
     }
 
-    // Index-based routing for parallel tool call argument deltas.
-    // When a ToolCallPart arrives with an index referring to a tool call
-    // that is NOT the currently-pending one, append it directly to the
-    // correct ToolCall in message.toolCalls instead of relying on sequential
-    // merging. This prevents argument cross-contamination across parallel calls.
+    // 基于索引的并行工具调用参数增量路由。
+    // 当 ToolCallPart 到达时，如果其索引指向的工具调用不是当前
+    // 待处理的那个，则直接将其追加到 message.toolCalls 中正确的
+    // ToolCall，而不是依赖顺序合并。这防止了并行调用之间的
+    // 参数交叉污染。
     if (
       isToolCallPart(part) &&
       part.index !== undefined &&
@@ -141,16 +138,16 @@ export async function generate(
         }
         continue;
       }
-      // Unknown index — fall through to the sequential logic as a safety net.
+      // 未知索引 — 回退到顺序逻辑作为安全网。
     }
 
     if (pendingPart === null) {
       pendingPart = part;
     } else if (!mergeInPlace(pendingPart, part)) {
-      // Could not merge — flush the pending part and start a new one.
-      // For parallel tool calls this happens when a new ToolCall header arrives
-      // while a previous ToolCall is still pending; the flush finalizes the
-      // previous tool call into `message.toolCalls`.
+      // 无法合并 — 刷新待处理部分并开始新的部分。
+      // 对于并行工具调用，当新的 ToolCall 头到达而上一个
+      // ToolCall 仍在待处理状态时会发生这种情况；刷新将
+      // 上一个工具调用最终确定到 `message.toolCalls` 中。
       flushPart(message, pendingPart, toolCallIndexMap);
       pendingPart = part;
     }
@@ -159,7 +156,7 @@ export async function generate(
   await throwIfAborted(options?.signal, stream);
   options?.onStreamEnd?.();
 
-  // Flush the last pending part.
+  // 刷新最后一个待处理部分。
   if (pendingPart !== null) {
     flushPart(message, pendingPart, toolCallIndexMap);
   }
@@ -175,7 +172,7 @@ export async function generate(
     );
   }
 
-  // Think-only response (no real text, no tool calls) is treated as incomplete.
+  // 仅包含思考的响应（无实际文本、无工具调用）视为不完整。
   const hasThink = message.content.some((p) => p.type === 'think');
   const hasText = message.content.some((p) => p.type === 'text' && p.text.trim().length > 0);
   const hasToolCalls = message.toolCalls.length > 0;
@@ -195,7 +192,7 @@ export async function generate(
     );
   }
 
-  // Fire onToolCall for every fully-assembled tool call, in final order.
+  // 对每个完全组装的工具调用触发 onToolCall，按最终顺序。
   if (callbacks?.onToolCall !== undefined) {
     for (const toolCall of message.toolCalls) {
       await throwIfAborted(options?.signal, stream);
@@ -245,7 +242,7 @@ async function throwIfAborted(signal?: AbortSignal, stream?: StreamedMessage): P
   throwAbortError();
 }
 
-/** True when `pending` is a ToolCall whose _streamIndex equals `index`. */
+/** 当 `pending` 是 _streamIndex 等于 `index` 的 ToolCall 时返回 `true`。 */
 function isPendingToolCallAtIndex(
   pending: StreamedMessagePart | null,
   index: number | string,
@@ -254,12 +251,12 @@ function isPendingToolCallAtIndex(
 }
 
 /**
- * Append a fully-merged part to the message.
+ * 将一个完全合并的部分追加到消息中。
  *
  * - ContentPart -> message.content
- * - ToolCall    -> message.toolCalls (the `_streamIndex` routing key is
- *                  registered in the map and stripped before storage).
- * - ToolCallPart -> ignored (orphaned delta without a matching pending call)
+ * - ToolCall    -> message.toolCalls（`_streamIndex` 路由键被注册到
+ *                  映射表中，并在存储前被剥离）。
+ * - ToolCallPart -> 被忽略（没有匹配的待处理调用的孤立增量）
  */
 function flushPart(
   message: Message,
@@ -285,7 +282,7 @@ function flushPart(
       toolCallIndexMap.set(streamIndex, ordinal);
     }
   }
-  // ToolCallPart: orphaned delta — silently ignore.
+  // ToolCallPart：孤立的增量 — 静默忽略。
 }
 
 function formatFinishReasonHint(stream: StreamedMessage): string {
@@ -302,10 +299,10 @@ function formatFinishReasonHint(stream: StreamedMessage): string {
 }
 
 /**
- * Produce a shallow-ish copy of a StreamedMessagePart.
+ * 生成 StreamedMessagePart 的浅拷贝。
  *
- * This is intentionally minimal: we only need isolation for the mutable
- * string fields that `mergeInPlace` mutates (text, think, arguments).
+ * 这是有意最小化的：我们只需要对 `mergeInPlace` 修改的可变
+ * 字符串字段（text、think、arguments）进行隔离。
  */
 function deepCopyPart(part: StreamedMessagePart): StreamedMessagePart {
   return structuredClone(part);

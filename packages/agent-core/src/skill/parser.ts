@@ -168,10 +168,10 @@ export function parseD2Flowchart(markdown: string): string | undefined {
 }
 
 /**
- * Expand argument placeholders in a skill body.
+ * 展开技能正文中的参数占位符。
  *
- * Placeholder syntax ($ARGUMENTS, $0, $name, etc.) is modelled after common
- * shell/CLI conventions rather than any specific product.
+ * 占位符语法（$ARGUMENTS、$0、$name 等）参考了常见的 shell/CLI 惯例，
+ * 而非任何特定产品。
  */
 export function expandSkillParameters(
   body: string,

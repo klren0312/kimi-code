@@ -9,7 +9,7 @@ import {
   type ThinkingConfig,
 } from './schema';
 
-/** Reserved keys for the env-driven synthetic provider / model alias. */
+/** 环境驱动的合成 provider / 模型别名的保留键。 */
 export const ENV_MODEL_PROVIDER_KEY = '__kimi_env__';
 export const ENV_MODEL_ALIAS_KEY = '__kimi_env_model__';
 
@@ -18,13 +18,13 @@ const ALLOWED_TYPES: readonly ProviderType[] = ['kimi', 'anthropic', 'openai'];
 const DEFAULT_BASE_URL: Partial<Record<ProviderType, string>> = {
   kimi: 'https://api.moonshot.ai/v1',
   openai: 'https://api.openai.com/v1',
-  // anthropic: omitted -> let the Anthropic SDK pick its default
+  // anthropic: 省略 -> 让 Anthropic SDK 选择其默认值
 };
 
-/** Default context window (256K) used when KIMI_MODEL_MAX_CONTEXT_SIZE is unset. */
+/** 未设置 KIMI_MODEL_MAX_CONTEXT_SIZE 时使用的默认上下文窗口大小（256K）。 */
 const DEFAULT_MAX_CONTEXT_SIZE = 262144;
 
-/** Default capabilities when KIMI_MODEL_CAPABILITIES is unset (kimi models support both). */
+/** 未设置 KIMI_MODEL_CAPABILITIES 时的默认能力（kimi 模型同时支持两者）。 */
 const DEFAULT_CAPABILITIES = ['image_in', 'thinking'];
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -65,10 +65,9 @@ function parseCapabilities(raw: string | undefined): string[] | undefined {
   return caps.length === 0 ? undefined : caps;
 }
 
-// `parseBooleanEnv` returns undefined for unrecognized input. Treat a non-empty
-// but unparseable value (e.g. a typo like `flase`) as a config error so it
-// fails fast like the other KIMI_MODEL_* values, instead of silently keeping
-// config.toml's existing value.
+// `parseBooleanEnv` 对无法识别的输入返回 undefined。对于非空但无法解析的值
+//（例如拼写错误如 `flase`），将其视为配置错误以便快速失败，与其他
+// KIMI_MODEL_* 值的行为保持一致，而不是静默保留 config.toml 中的现有值。
 function parseBooleanVar(raw: string | undefined, varName: string): boolean | undefined {
   const value = trimmed(raw);
   if (value === undefined) return undefined;
@@ -80,15 +79,13 @@ function parseBooleanVar(raw: string | undefined, varName: string): boolean | un
 }
 
 /**
- * When `KIMI_MODEL_NAME` is set, synthesize one provider + one model alias from
- * the `KIMI_MODEL_*` environment variables and make it the default model.
- * Returns the config unchanged when the trigger variable is absent.
+ * 当设置了 `KIMI_MODEL_NAME` 时，从 `KIMI_MODEL_*` 环境变量合成一个 provider
+ * + 一个模型别名，并将其设为默认模型。当触发变量不存在时，原样返回配置。
  *
- * IMPORTANT: the synthesized provider/model/default_model exist ONLY in the
- * in-memory runtime config and must never be serialized back to config.toml.
- * Two layers enforce this: write paths read the raw config via `readConfigFile`,
- * and `writeConfigFile` strips the reserved entries via `stripEnvModelConfig` as
- * a final guard against patch round-trips (getConfig -> setConfig).
+ * 重要：合成的 provider/model/default_model 仅存在于内存中的运行时配置，
+ * 绝不能序列化回 config.toml。两层机制强制执行此规则：写路径通过
+ * `readConfigFile` 读取原始配置，`writeConfigFile` 通过 `stripEnvModelConfig`
+ * 剥离保留条目，作为防止 patch 往返（getConfig -> setConfig）的最终保障。
  */
 export function applyEnvModelConfig(config: KimiConfig, env: Env = process.env): KimiConfig {
   const model = trimmed(env['KIMI_MODEL_NAME']);
@@ -144,9 +141,9 @@ export function applyEnvModelConfig(config: KimiConfig, env: Env = process.env):
     thinkingMode !== undefined || thinkingEffort !== undefined
       ? {
           ...config.thinking,
-          // Cast: thinkingMode is a raw string passed through to validateConfig
-          // for enum validation (auto/on/off). The cast avoids a TS compile error
-          // without skipping runtime validation.
+          // 类型转换：thinkingMode 是原始字符串，传递给 validateConfig
+          // 进行枚举验证（auto/on/off）。此转换避免 TS 编译错误
+          // 而不会跳过运行时验证。
           ...(thinkingMode !== undefined ? { mode: thinkingMode as ThinkingConfig['mode'] } : {}),
           ...(thinkingEffort !== undefined ? { effort: thinkingEffort } : {}),
         }
@@ -165,22 +162,20 @@ export function applyEnvModelConfig(config: KimiConfig, env: Env = process.env):
     ...(defaultThinking !== undefined ? { defaultThinking } : {}),
   };
 
-  // Re-validate so the synthesized entries honor the same schema constraints
-  // (e.g. thinking.mode must be auto/on/off). `validateConfig` throws
-  // KimiError(CONFIG_INVALID) on violation, matching the explicit checks above.
+  // 重新验证，使合成条目遵循相同的 schema 约束
+  //（例如 thinking.mode 必须为 auto/on/off）。`validateConfig` 在违反时抛出
+  // KimiError(CONFIG_INVALID)，与上述显式检查一致。
   return validateConfig(merged);
 }
 
 /**
- * Remove the env-synthesized provider/model before a config is persisted to
- * disk. Mirror of {@link applyEnvModelConfig}: that injects the reserved entries
- * into the in-memory runtime config; this guarantees they never reach
- * config.toml — including via a `getConfig` -> `setConfig` patch round-trip,
- * where the runtime config (carrying the env provider and its shell API key)
- * would otherwise be merged back and written out. Every env-injected top-level
- * field (default_model, thinking, default_thinking) is restored to its on-disk
- * value from `config.raw` rather than erased, so real values already in
- * config.toml survive the round-trip.
+ * 在配置持久化到磁盘之前，移除环境合成的 provider/model。
+ * {@link applyEnvModelConfig} 的镜像操作：后者将保留条目注入内存运行时配置；
+ * 此函数保证它们绝不会到达 config.toml——包括通过 `getConfig` -> `setConfig`
+ * 的 patch 往返，否则运行时配置（携带 env provider 及其 shell API key）
+ * 会被合并回去并写入磁盘。每个 env 注入的顶层字段（default_model、thinking、
+ * default_thinking）都从 `config.raw` 恢复到其磁盘值，而不是被擦除，
+ * 因此 config.toml 中已有的真实值可以在往返中存活。
  */
 export function stripEnvModelConfig(config: KimiConfig): KimiConfig {
   const hasProvider = ENV_MODEL_PROVIDER_KEY in config.providers;
@@ -201,11 +196,11 @@ export function stripEnvModelConfig(config: KimiConfig): KimiConfig {
     ...config,
     providers,
     ...(models !== undefined ? { models } : {}),
-    // Restore env-injected top-level fields from raw instead of persisting the
-    // shell overrides: the env default_model (when it points at the env alias),
-    // and the env thinking / default_thinking. Reaching here means env-model
-    // mode is active (the synthetic provider/model exist), so these may be env
-    // values; an unset raw field restores to undefined (i.e. drops it).
+    // 从 raw 恢复 env 注入的顶层字段，而不是持久化 shell 覆盖值：
+    // env 的 default_model（当它指向 env 别名时），以及 env 的 thinking /
+    // default_thinking。到达此处意味着 env-model 模式处于活动状态
+    //（合成的 provider/model 存在），因此这些可能是 env 值；
+    // 未设置的 raw 字段恢复为 undefined（即移除它）。
     ...(defaultIsEnv ? { defaultModel: rawDefaultModel(config) } : {}),
     thinking: rawThinking(config),
     defaultThinking: rawDefaultThinking(config),

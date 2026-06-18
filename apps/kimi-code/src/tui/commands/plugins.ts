@@ -155,9 +155,8 @@ async function showPluginsPicker(
       selectedId: options?.selectedId,
       pluginHint: options?.pluginHint,
       onSelect: (selection) => {
-        // Each branch of the handler either mounts the next view or restores
-        // the editor itself, so do not pre-restore here — that would flash the
-        // editor for in-place actions like toggling a plugin.
+        // 处理器的每个分支要么挂载下一个视图，要么恢复编辑器本身，
+        // 因此不要在此处预先恢复——否则对于切换插件等原地操作会导致编辑器闪烁。
         void handlePluginsOverviewSelection(host, selection).catch((error: unknown) => {
           host.showError(`/plugins failed: ${formatErrorMessage(error)}`);
         });
@@ -183,8 +182,7 @@ async function showPluginMarketplacePicker(host: SlashCommandHost, source?: stri
         ),
         source: marketplace.source,
         onSelect: (selection) => {
-          // Every marketplace action re-mounts a picker, so let the handler do
-          // the mounting — pre-restoring the editor here would flash.
+          // 每个商店操作都会重新挂载选择器，因此让处理器负责挂载——在此处预先恢复编辑器会导致闪烁。
           void handlePluginMarketplaceSelection(host, selection).catch((error: unknown) => {
             host.showError(`/plugins marketplace failed: ${formatErrorMessage(error)}`);
           });
@@ -219,8 +217,7 @@ async function showPluginMcpPicker(
       selectedServer: options?.selectedServer,
       serverHint: options?.serverHint,
       onSelect: (selection) => {
-        // Every MCP action re-mounts a picker, so let the handler do the
-        // mounting — pre-restoring the editor here would flash on toggle.
+        // 每个 MCP 操作都会重新挂载选择器，因此让处理器负责挂载——在此处预先恢复编辑器在切换时会导致闪烁。
         void handlePluginMcpSelection(host, selection).catch((error: unknown) => {
           host.showError(`/plugins mcp failed: ${formatErrorMessage(error)}`);
         });
@@ -238,7 +235,7 @@ async function confirmRemovePlugin(host: SlashCommandHost, id: string): Promise<
   try {
     displayName = (await host.requireSession().getPluginInfo(id)).displayName;
   } catch {
-    // Keep the confirmation available even when plugin details cannot be loaded.
+    // 即使无法加载插件详情，也要保持确认可用。
   }
 
   return new Promise((resolveConfirmed) => {

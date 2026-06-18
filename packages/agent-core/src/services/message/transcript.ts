@@ -1,42 +1,35 @@
 /**
- * Wire-transcript reader — rebuilds the FULL message history of a session
- * agent from its `wire.jsonl` record log.
+ * wire 对话记录读取器——从会话 agent 的 `wire.jsonl` 记录日志中重建完整消息历史。
  *
- * Why: `ContextMemory.applyCompaction` rewrites the in-memory history as
- * `[compaction_summary, ...tail]`, so `getContext().history` only reflects the
- * model's CURRENT context. The wire log, however, keeps every record. The TUI
- * shows the full transcript on resume because `ReplayBuilder` captures every
- * `pushHistory` during record replay and is never folded by compaction. This
- * module reproduces that exact view for daemon REST consumers (web), without
- * touching agent-core: it re-reduces the `context.*` records with the same
- * semantics as `ContextMemory` restore, except that `context.apply_compaction`
- * INSERTS the summary message in place instead of dropping the compacted
- * prefix.
+ * 背景：`ContextMemory.applyCompaction` 会将内存中的历史重写为
+ * `[compaction_summary, ...tail]`，因此 `getContext().history` 仅反映模型的
+ * 当前上下文。但 wire 日志保留每条记录。TUI 在 resume 后显示完整对话记录，
+ * 因为 `ReplayBuilder` 在记录回放期间捕获每次 `pushHistory`，且不会被压缩
+ * 折叠。此模块为守护进程 REST 消费者（web）复现完全相同的视图，无需修改
+ * agent-core：使用与 `ContextMemory` 恢复相同的语义重新 reduce `context.*` 记录，
+ * 但 `context.apply_compaction` 在折叠点插入摘要消息，而非丢弃被压缩的前缀。
  *
- * Mirrored agent-core semantics (packages/agent-core/src/agent/context/index.ts):
- *   - `context.append_message`      → append (deferred while a tool exchange is open)
- *   - `context.append_loop_event`   → step.begin/content.part/tool.call mutate the
- *                                     open assistant message; tool.result appends a
- *                                     tool message with the same `<system>` status
- *                                     wrapping as `toolResultOutputForModel`
- *   - `context.apply_compaction`    → keep the prefix, insert the summary message
- *                                     at the fold point (origin `compaction_summary`)
- *   - `context.undo`                → remove tail messages exactly like
- *                                     `ContextMemory.undo` (skip injections, stop at
- *                                     compaction summaries / `context.clear` floors)
- *   - `context.clear`               → keep prior messages in the transcript (the TUI
- *                                     replay keeps them too) but reset the folded view
+ * 镜像 agent-core 语义（packages/agent-core/src/agent/context/index.ts）：
+ *   - `context.append_message`      → 追加（在工具交换打开期间延迟执行）
+ *   - `context.append_loop_event`   → step.begin/content.part/tool.call 修改打开的
+ *                                     assistant 消息；tool.result 追加一条工具消息，
+ *                                     使用与 `toolResultOutputForModel` 相同的
+ *                                     `<system>` 状态包装
+ *   - `context.apply_compaction`    → 保留前缀，在折叠点插入摘要消息
+ *                                    （origin 为 `compaction_summary`）
+ *   - `context.undo`                → 精确移除尾部消息，与 `ContextMemory.undo`
+ *                                     一致（跳过注入消息，遇到压缩摘要/`context.clear`
+ *                                     下限时停止）
+ *   - `context.clear`               → 在对话记录中保留先前消息（TUI 回放也保留），
+ *                                     但重置折叠视图
  *
- * Blob refs (`blobref:<mime>;<hash>` URLs offloaded by `BlobStore`) are
- * rehydrated from `<agentDir>/blobs/<hash>` back into data URIs, mirroring
- * `BlobStore.rehydrateParts`.
+ * blob 引用（`blobref:<mime>;<hash>` URL，由 `BlobStore` 卸载）从
+ * `<agentDir>/blobs/<hash>` 还原为 data URI，镜像 `BlobStore.rehydrateParts`。
  *
- * Callers must `resumeSession` BEFORE reading: replay rewrites outdated wire
- * protocol versions in place, so a post-resume read always sees the current
- * record shapes. Reads of an actively-running session can trail the in-memory
- * history by the few records still in the persistence flush queue — compare
- * `foldedLength` with the live `getContext().history` length and append the
- * missing tail (see `MessageService`).
+ * 调用方必须在读取前先 `resumeSession`：回放会就地重写过时的 wire 协议版本，
+ * 因此 resume 后的读取始终看到当前记录形状。读取正在运行的会话时，可能比
+ * 内存中的历史少几条仍在持久化刷新队列中的记录——比较 `foldedLength` 与
+ * 实时 `getContext().history` 长度并追加缺失的尾部（见 `MessageService`）。
  */
 
 import { readFile } from 'node:fs/promises';
@@ -51,8 +44,8 @@ type ContentPart = ContextMessage['content'][number];
 const BLOBREF_PROTOCOL = 'blobref:';
 const MISSING_MEDIA_PLACEHOLDER = '[media missing]';
 
-// Status strings must match agent-core's toolResultOutputForModel so the
-// transcript renders tool results byte-identically to getContext().history.
+// 状态字符串必须与 agent-core 的 toolResultOutputForModel 匹配，以使
+// 对话记录渲染的工具结果与 getContext().history 字节级一致。
 const TOOL_ERROR_STATUS = '<system>ERROR: Tool execution failed.</system>';
 const TOOL_EMPTY_STATUS = '<system>Tool output is empty.</system>';
 const TOOL_EMPTY_ERROR_STATUS =
@@ -61,16 +54,16 @@ const TOOL_OUTPUT_EMPTY_TEXT = 'Tool output is empty.';
 
 export interface TranscriptEntry {
   readonly message: ContextMessage;
-  /** Wall-clock time of the originating wire record, when present. */
+  /** 产生该记录的 wall-clock 时间（如存在）。 */
   readonly time?: number | undefined;
 }
 
 export interface WireTranscript {
-  /** Full message history, compacted prefixes included. */
+  /** 完整消息历史，包含被压缩的前缀。 */
   readonly entries: readonly TranscriptEntry[];
   /**
-   * Length the live (folded) `context.history` would have after these
-   * records. Lets callers detect and append a not-yet-flushed live tail.
+   * 实时（折叠后的）`context.history` 在这些记录之后应有的长度。
+   * 供调用方检测并追加尚未刷新的实时尾部。
    */
   readonly foldedLength: number;
 }
@@ -90,18 +83,18 @@ interface MutableEntry {
 }
 
 /**
- * Reduce wire records into the full transcript. Pure (no I/O); exported for
- * tests. Unknown or non-context records are ignored — only `context.*`
- * records mutate history in agent-core, every other mutation path logs one.
+ * 将 wire 记录 reduce 为完整对话记录。纯函数（无 I/O）；导出供测试使用。
+ * 未知或非 context 记录被忽略——只有 `context.*` 记录在 agent-core 中修改历史，
+ * 每个其他修改路径都会记录一条。
  */
 export function reduceWireRecords(records: Iterable<AgentRecord>): {
   entries: TranscriptEntry[];
   foldedLength: number;
 } {
   const transcript: MutableEntry[] = [];
-  /** What `context.history.length` would be right now (post-folding). */
+  /** 当前 `context.history.length` 的值（折叠后）。 */
   let foldedLength = 0;
-  /** Transcript index `context.undo` may not cross (set by `context.clear`). */
+  /** 对话记录索引，`context.undo` 不得跨越此下限（由 `context.clear` 设置）。 */
   let clearFloor = 0;
   const openSteps = new Map<string, MutableEntry>();
   const pendingToolResultIds = new Set<string>();
@@ -139,8 +132,7 @@ export function reduceWireRecords(records: Iterable<AgentRecord>): {
         return;
       }
       case 'content.part': {
-        // Lenient where ContextMemory throws: a dangling part in a damaged
-        // file should not take the whole messages endpoint down.
+        // 比 ContextMemory 更宽松：损坏文件中的悬挂 part 不应拖垮整个消息端点。
         openSteps.get(event.stepUuid)?.message.content.push(event.part);
         return;
       }
@@ -209,9 +201,8 @@ export function reduceWireRecords(records: Iterable<AgentRecord>): {
         applyLoopEvent(record.event, record.time);
         break;
       case 'context.apply_compaction': {
-        // ContextMemory drops history[0..compactedCount] and prepends the
-        // summary; we keep the prefix and insert the summary at the fold
-        // point so the transcript shows both.
+        // ContextMemory 丢弃 history[0..compactedCount] 并在头部插入摘要；
+        // 我们保留前缀并在折叠点插入摘要，使对话记录同时展示两者。
         const tailLength = Math.max(0, foldedLength - record.compactedCount);
         transcript.splice(Math.max(0, transcript.length - tailLength), 0, {
           message: {
@@ -243,7 +234,7 @@ export function reduceWireRecords(records: Iterable<AgentRecord>): {
   return { entries: transcript as TranscriptEntry[], foldedLength };
 }
 
-/** Mirrors agent-core's `isRealUserPrompt` (context undo accounting). */
+/** 镜像 agent-core 的 `isRealUserPrompt`（context undo 计数）。 */
 function isRealUserPrompt(message: MutableMessage): boolean {
   if (message.role !== 'user') return false;
   const origin = message.origin;
@@ -254,7 +245,7 @@ function isRealUserPrompt(message: MutableMessage): boolean {
   return false;
 }
 
-/** Mirrors agent-core's `toolResultOutputForModel` + `createToolMessage`. */
+/** 镜像 agent-core 的 `toolResultOutputForModel` + `createToolMessage`。 */
 function toolResultContent(result: ExecutableToolResult): ContentPart[] {
   const output = result.output;
   if (typeof output === 'string') {
@@ -286,9 +277,9 @@ function toolResultContent(result: ExecutableToolResult): ContentPart[] {
 }
 
 /**
- * Parse a `wire.jsonl` file. A torn FINAL line (crash mid-flush) is dropped,
- * matching `FileSystemAgentRecordPersistence.read`; corruption anywhere else
- * throws so the caller can fall back to the live context view.
+ * 解析 `wire.jsonl` 文件。截断的最后一行（刷写中途崩溃）会被丢弃，
+ * 与 `FileSystemAgentRecordPersistence.read` 一致；其他位置的损坏会抛出异常，
+ * 以便调用方降级到实时上下文视图。
  */
 export async function readWireRecords(wirePath: string): Promise<AgentRecord[]> {
   const raw = await readFile(wirePath, 'utf8');
@@ -312,8 +303,8 @@ export async function readWireRecords(wirePath: string): Promise<AgentRecord[]> 
 }
 
 /**
- * Rebuild the full transcript for one session agent. The caller is expected
- * to have resumed the session first (wire protocol migration — see header).
+ * 重建单个会话 agent 的完整对话记录。调用方应已先 resume 会话
+ *（wire 协议迁移——见文件头注释）。
  */
 export async function readWireTranscript(
   sessionDir: string,
@@ -327,9 +318,9 @@ export async function readWireTranscript(
 }
 
 /**
- * Replace `blobref:<mime>;<hash>` media URLs with `data:` URIs read from the
- * agent's blob store, mirroring `BlobStore.rehydrateParts`. Unresolvable refs
- * become `[media missing]`, same as agent-core.
+ * 将 `blobref:<mime>;<hash>` 媒体 URL 替换为从 agent blob 存储中读取的
+ * `data:` URI，镜像 `BlobStore.rehydrateParts`。无法解析的引用变为
+ * `[media missing]`，与 agent-core 一致。
  */
 async function rehydrateBlobRefs(
   entries: readonly TranscriptEntry[],
@@ -362,8 +353,7 @@ async function resolveBlobRef(
   if (semiIdx !== -1) {
     const mimeType = rest.slice(0, semiIdx);
     const hash = rest.slice(semiIdx + 1);
-    // Hashes are hex digests written by BlobStore; reject anything that could
-    // escape the blobs directory.
+    // 哈希是 BlobStore 写入的十六进制摘要；拒绝任何可能逃逸出 blobs 目录的内容。
     if (/^[0-9a-f]{16,}$/i.test(hash)) {
       const payload = await readFile(path.join(blobsDir, hash)).catch(() => undefined);
       if (payload !== undefined) {

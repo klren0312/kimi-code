@@ -1,5 +1,5 @@
 /**
- * file-type — magic-byte + extension detection. No npm dependency.
+ * file-type ——魔数字节 + 扩展名检测。无 npm 依赖。
  */
 
 export const MEDIA_SNIFF_BYTES = 512;
@@ -174,9 +174,9 @@ function sniffFtypBrand(header: Buffer): string | null {
   if (header.length < 12) return null;
   if (header.subarray(4, 8).toString('latin1') !== 'ftyp') return null;
   const raw = header.subarray(8, 12).toString('latin1').toLowerCase();
-  // Python `.strip()` removes ASCII whitespace including trailing NULs via
-  // the `decode(..., errors="ignore")` semantics. We approximate: trim
-  // spaces and trailing NULs so brands like `qt  ` → `qt`.
+  // Python `.strip()` 通过 `decode(..., errors="ignore")` 语义移除
+  // ASCII 空白（包括尾部 NUL）。我们近似处理：修剪空格和尾部 NUL，
+  // 使 `qt  ` → `qt` 这样的 brand 正确解析。
   // oxlint-disable-next-line no-control-regex
   return raw.replaceAll(/[\s\u0000]+$/g, '').trim();
 }
@@ -240,25 +240,23 @@ export interface ImageDimensions {
 }
 
 /**
- * Best-effort pixel-dimension reader for common raster formats.
+ * 尽力读取常见光栅格式的像素尺寸。
  *
- * Inspects only the fixed region near the start of the file where each
- * format records its dimensions (the IHDR/DIB header, the RIFF chunk
- * after the `WEBP` tag, or the first JPEG SOFn segment). Returns `null`
- * for formats whose dimensions are not locatable from that region, or
- * when the supplied buffer is too short to cover it.
+ * 仅检查文件开头附近每种格式记录尺寸的固定区域（IHDR/DIB 头、
+ * `WEBP` 标记后的 RIFF 块，或第一个 JPEG SOFn 段）。
+ * 对于尺寸无法从该区域定位的格式，或提供的缓冲区太短时返回 `null`。
  */
 export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions | null {
   const buf = toBuffer(data);
 
-  // PNG — IHDR is the first chunk; width/height are big-endian uint32
-  // at offsets 16 and 20.
+  // PNG ——IHDR 是第一个块；宽度/高度为大端 uint32，
+  // 位于偏移 16 和 20。
   if (startsWith(buf, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) && buf.length >= 24) {
     return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
   }
 
-  // GIF — logical-screen width/height are little-endian uint16 at
-  // offsets 6 and 8.
+  // GIF ——逻辑屏幕宽度/高度为小端 uint16，
+  // 位于偏移 6 和 8。
   if (
     (startsWith(buf, Buffer.from('GIF87a')) || startsWith(buf, Buffer.from('GIF89a'))) &&
     buf.length >= 10
@@ -266,14 +264,14 @@ export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions
     return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
   }
 
-  // BMP — DIB header width/height are little-endian int32 at offsets 18
-  // and 22 (height may be negative for top-down bitmaps).
+  // BMP ——DIB 头宽度/高度为小端 int32，位于偏移 18 和 22
+  // （自上而下位图高度可能为负数）。
   if (startsWith(buf, Buffer.from('BM')) && buf.length >= 26) {
     return { width: buf.readInt32LE(18), height: Math.abs(buf.readInt32LE(22)) };
   }
 
-  // WEBP — RIFF container; VP8/VP8L/VP8X each store dimensions
-  // differently in the chunk that follows the 'WEBP' tag.
+  // WEBP ——RIFF 容器；VP8/VP8L/VP8X 各自在 'WEBP' 标记后的
+  // 块中以不同方式存储尺寸。
   if (startsWith(buf, Buffer.from('RIFF')) && buf.length >= 30) {
     const fourCc = buf.subarray(12, 16).toString('latin1');
     if (fourCc === 'VP8 ') {
@@ -296,8 +294,8 @@ export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions
     }
   }
 
-  // JPEG — scan segment markers for a Start-Of-Frame (SOFn) marker,
-  // whose payload carries height/width as big-endian uint16.
+  // JPEG ——扫描段标记以查找 Start-Of-Frame (SOFn) 标记，
+  // 其载荷以大端 uint16 携带高度/宽度。
   if (startsWith(buf, [0xff, 0xd8])) {
     let offset = 2;
     while (offset + 9 < buf.length) {
@@ -306,7 +304,7 @@ export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions
         continue;
       }
       const marker = buf[offset + 1]!;
-      // SOFn markers carry frame dimensions; skip SOF4/SOF8/SOF12 (0xc4/0xc8/0xcc).
+      // SOFn 标记携带帧尺寸；跳过 SOF4/SOF8/SOF12 (0xc4/0xc8/0xcc)。
       if (
         marker >= 0xc0 &&
         marker <= 0xcf &&
@@ -319,7 +317,7 @@ export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions
           width: buf.readUInt16BE(offset + 7),
         };
       }
-      // Standalone markers (RSTn, SOI, EOI) carry no length field.
+      // 独立标记（RSTn、SOI、EOI）不携带长度字段。
       if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
         offset += 2;
         continue;
@@ -336,7 +334,7 @@ export function sniffImageDimensions(data: Buffer | Uint8Array): ImageDimensions
 function getSuffix(path: string): string {
   const idx = path.lastIndexOf('.');
   if (idx === -1) return '';
-  // POSIX `.suffix` treats `foo.tar.gz` → `.gz` and `foo/.bashrc` → '' (leading-dot is "no suffix").
+  // POSIX `.suffix` 将 `foo.tar.gz` → `.gz`，`foo/.bashrc` → ''（前导点视为"无后缀"）。
   const lastSep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   if (idx <= lastSep + 1) return '';
   return path.slice(idx).toLowerCase();
@@ -357,10 +355,10 @@ export function detectFileType(
     mediaHint = { kind: 'video', mimeType: VIDEO_MIME_BY_SUFFIX[suffix]! };
   }
 
-  // When a header is supplied, cross-validate against the ext hint by
-  // default: a kind mismatch reports `unknown` rather than blindly trusting
-  // either signal. Media readers treat bytes as authoritative and only fall
-  // back to media suffixes when the header cannot be sniffed.
+  // 当提供 header 时，默认与扩展名提示交叉验证：
+  // 类型不匹配时报告 `unknown` 而非盲目信任任一信号。
+  // 媒体读取器将字节视为权威来源，仅在 header 无法嗅探时
+  // 回退到媒体后缀。
   if (header !== undefined) {
     const buf = toBuffer(header);
     const sniffed = sniffMediaFromMagic(buf);
@@ -384,7 +382,7 @@ export function detectFileType(
     if (buf.includes(0x00)) {
       return { kind: 'unknown', mimeType: '' };
     }
-    // No sniff and no NUL: fall through to hint / text / unknown logic.
+    // 无嗅探且无 NUL：回退到提示 / 文本 / unknown 逻辑。
   }
 
   if (mediaHint) return mediaHint;

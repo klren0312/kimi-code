@@ -1,9 +1,8 @@
 /**
- * ExitPlanModeTool — plan-mode exit tool.
+ * ExitPlanModeTool — 计划模式退出工具。
  *
- * The LLM calls this tool to surface a finalised plan to the user and
- * exit plan mode. The plan must already be written to the current plan
- * file; this tool reads that file and flips plan mode off.
+ * LLM 调用此工具向用户展示最终计划并退出计划模式。计划必须已经写入
+ * 当前计划文件；此工具读取该文件并关闭计划模式。
  */
 
 import type { Agent } from '#/agent';
@@ -19,10 +18,9 @@ import DESCRIPTION from './exit-plan-mode.md?raw';
 // ── Input schema ─────────────────────────────────────────────────────
 
 /**
- * User-selectable option surfaced at plan approval time. The LLM supplies
- * up to 3 of these when the plan contains multiple approaches; the host's
- * ApprovalRuntime presents them to the user and returns the chosen `label`
- * (or `{kind:'revise', feedback}` when the user asks for revisions).
+ * 在计划审批时展示的用户可选选项。当计划包含多种方案时，LLM 提供最多 3 个选项；
+ * 宿主的 ApprovalRuntime 将它们展示给用户并返回选择的 `label`
+ *（或当用户要求修改时返回 `{kind:'revise', feedback}`）。
  */
 export interface ExitPlanModeOption {
   label: string;
@@ -77,7 +75,7 @@ type ResolvePlanResult =
   | { readonly ok: true; readonly plan: string; readonly path?: string | undefined }
   | { readonly ok: false; readonly error: ExecutableToolResult };
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput> {
   readonly name = 'ExitPlanMode' as const;

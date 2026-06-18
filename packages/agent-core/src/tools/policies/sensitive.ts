@@ -1,10 +1,9 @@
 /**
- * Sensitive-file detection.
+ * 敏感文件检测。
  *
- * The pattern list is intentionally small to avoid false positives; files
- * matching any of these patterns are blocked from Read/Write/Edit so
- * credentials cannot be exfiltrated through a compromised prompt. Exemptions
- * like `.env.example` are explicitly allowed.
+ * 模式列表有意保持精简以避免误报；匹配这些模式的文件将被
+ * Read/Write/Edit 阻止，以防止凭证通过被注入的提示词泄露。
+ * 像 `.env.example` 这样的豁免项被显式允许。
  */
 
 import { basename } from 'pathe';
@@ -57,8 +56,8 @@ export function isSensitiveFile(path: string): boolean {
 
   for (const prefix of SENSITIVE_BASENAME_PREFIXES) {
     if (comparableName === prefix) return true;
-    // Catch rename-shielded variants without flagging unrelated filenames
-    // like `id_rsafoo` or ordinary JSON files like `credentials.json`.
+    // 捕获重命名保护的变体，同时不误判无关文件名
+    // 如 `id_rsafoo` 或普通 JSON 文件如 `credentials.json`。
     if (comparableName.length > prefix.length && comparableName.startsWith(prefix)) {
       const suffix = comparableName.slice(prefix.length);
       const next = suffix[0];

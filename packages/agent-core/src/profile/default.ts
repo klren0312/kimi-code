@@ -6,8 +6,8 @@ import planYaml from './default/plan.yaml?raw';
 import systemMd from './default/system.md?raw';
 import { loadAgentProfilesFromSources } from './load';
 
-// Keyed by the source path the profile loader expects: profile YAML files
-// plus any file referenced through `systemPromptPath`.
+// 以配置加载器期望的源路径为键：配置 YAML 文件
+// 加上通过 `systemPromptPath` 引用的任何文件。
 const PROFILE_SOURCES: Record<string, string> = {
   'profile/default/agent.yaml': agentYaml,
   'profile/default/coder.yaml': coderYaml,

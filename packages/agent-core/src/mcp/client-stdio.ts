@@ -24,10 +24,9 @@ export interface StdioMcpClientOptions {
 const STDERR_BUFFER_CAPACITY = 4 * 1024;
 
 /**
- * Wraps the `@modelcontextprotocol/sdk` stdio client and exposes the small
- * surface required by kosong's {@link MCPClient}. Lifecycle is explicit:
- * the caller must `connect()` before use and `close()` to terminate the
- * child process.
+ * 封装 `@modelcontextprotocol/sdk` 的 stdio 客户端，暴露 kosong
+ * {@link MCPClient} 所需的最小接口。生命周期是显式的：调用方必须
+ * 在使用前调用 `connect()`，在终止子进程时调用 `close()`。
  */
 export class StdioMcpClient implements MCPClient {
   private readonly client: Client;
@@ -36,21 +35,20 @@ export class StdioMcpClient implements MCPClient {
   private readonly stderrBuffer = new BoundedTail(STDERR_BUFFER_CAPACITY);
   private started = false;
   private closed = false;
-  // Flips to true only after `client.connect()` resolves AND the caller has
-  // not torn things down mid-startup. The `onclose` hook uses this to
-  // distinguish "transport died after the handshake" (→ unexpected close)
-  // from "transport died during the handshake" (→ `connect()` throws; the
-  // manager surfaces the failure via `formatStartupError`).
+  // 仅在 `client.connect()` 解析且调用方未在启动过程中拆除后翻转为 true。
+  // `onclose` 钩子使用此标志来区分"握手后传输断开"（→ 非预期关闭）
+  // 和"握手期间传输断开"（→ `connect()` 抛出异常；管理器通过
+  // `formatStartupError` 呈现失败）。
   private ready = false;
   private hooksInstalled = false;
   private unexpectedCloseListener: UnexpectedCloseListener | undefined;
   private lastTransportError: Error | undefined;
-  // Buffered when the transport closes before a listener is installed (e.g.
-  // a server that exits seconds after answering `tools/list`). Replayed when
-  // `onUnexpectedClose` registers so the close is never silently dropped.
+  // 在传输关闭前监听器尚未安装时缓冲（例如服务器在响应 `tools/list` 后
+  // 几秒即退出）。在 `onUnexpectedClose` 注册时重放，以确保关闭
+  // 不会被静默丢弃。
   private pendingUnexpectedClose: UnexpectedCloseReason | undefined;
 
-  /** Capacity (in characters) of the stderr tail captured for diagnostics. */
+  /** stderr 尾部捕获的容量（字符数），用于诊断。 */
   static readonly stderrBufferCapacity = STDERR_BUFFER_CAPACITY;
 
   constructor(config: McpServerStdioConfig, options: StdioMcpClientOptions = {}) {
@@ -64,10 +62,9 @@ export class StdioMcpClient implements MCPClient {
       cwd: config.cwd,
       stderr: 'pipe',
     });
-    // `stderr: 'pipe'` means we MUST drain the stream — otherwise the child
-    // can block on a full pipe. We also keep the last few KB around so the
-    // connection manager can attach it to user-facing failure messages
-    // (`Timed out after 30000ms` on its own tells the user nothing).
+    // `stderr: 'pipe'` 意味着我们必须排空该流——否则子进程可能在管道满时阻塞。
+    // 我们还保留最后几 KB，以便连接管理器将其附加到面向用户的失败消息中
+    //（单独的 `Timed out after 30000ms` 对用户没有实际帮助）。
     this.transport.stderr?.on('data', (chunk: Buffer | string) => {
       this.stderrBuffer.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
     });
@@ -84,10 +81,9 @@ export class StdioMcpClient implements MCPClient {
     }
     if (this.started) return;
     this.started = true;
-    // Install transport hooks BEFORE the SDK handshake so we never lose an
-    // onclose that fires between handshake completion and our wiring. The
-    // hooks themselves gate on `this.ready`, so a close that happens DURING
-    // the handshake still flows through `client.connect()` rejecting.
+    // 在 SDK 握手之前安装传输钩子，以确保不会丢失握手完成与我们连线之间
+    // 触发的 onclose。钩子本身基于 `this.ready` 门控，因此握手期间发生的
+    // 关闭仍通过 `client.connect()` 拒绝来传播。
     this.installTransportHooks();
     try {
       await this.client.connect(this.transport);
@@ -109,13 +105,11 @@ export class StdioMcpClient implements MCPClient {
   }
 
   /**
-   * Register a listener that fires when the underlying transport closes on
-   * its own — i.e. the caller has not yet invoked {@link close}. At most one
-   * listener can be installed; later registrations replace earlier ones.
-   * Intentional closes never invoke the listener.
+   * 注册底层传输自行关闭时触发的监听器——即调用方尚未调用 {@link close}。
+   * 最多可安装一个监听器；后续注册会替换先前的。有意的关闭不会调用该监听器。
    *
-   * If the transport already closed before this method was called, the
-   * buffered reason is replayed synchronously so the close is never dropped.
+   * 如果传输在调用此方法之前已关闭，则缓冲的原因会同步重放，
+   * 以确保关闭不会被丢弃。
    */
   onUnexpectedClose(listener: UnexpectedCloseListener): void {
     this.unexpectedCloseListener = listener;
@@ -127,9 +121,9 @@ export class StdioMcpClient implements MCPClient {
   }
 
   /**
-   * Returns the tail of bytes captured from the child's stderr since spawn.
-   * Bounded by {@link StdioMcpClient.stderrBufferCapacity} so a noisy server
-   * cannot exhaust memory.
+   * 返回自子进程启动以来从其 stderr 捕获的字节尾部。
+   * 由 {@link StdioMcpClient.stderrBufferCapacity} 限制，以防止
+   * 噪音服务器耗尽内存。
    */
   stderrSnapshot(): string {
     return this.stderrBuffer.snapshot();
@@ -157,17 +151,17 @@ export class StdioMcpClient implements MCPClient {
   }
 
   private installTransportHooks(): void {
-    // Idempotent: `connect()` is the only caller and is itself guarded by
-    // `started`, but defending here lets future refactors call this freely.
+    // 幂等：`connect()` 是唯一的调用方且自身受 `started` 保护，
+    // // 但在此防御可让未来的重构自由调用此方法。
     if (this.hooksInstalled) return;
     this.hooksInstalled = true;
-    // `Client.onclose` fires for THREE situations:
-    //   1. The intentional `close()` path → gated by `this.closed`.
-    //   2. Transport dying during the SDK handshake → gated by `!this.ready`;
-    //      the failure already surfaces via `client.connect()` rejecting, and
-    //      `formatStartupError` attaches stderr at the manager layer.
-    //   3. Transport dying after the handshake succeeded → the case we care
-    //      about: fire or buffer for the manager's watch listener.
+    // `Client.onclose` 在三种情况下触发：
+    //   1. 有意的 `close()` 路径 → 由 `this.closed` 门控。
+    //   2. SDK 握手期间传输断开 → 由 `!this.ready` 门控；
+    //      失败已通过 `client.connect()` 拒绝呈现，`formatStartupError`
+    //      在管理器层附加 stderr。
+    //   3. 握手成功后传输断开 → 我们关注的情况：触发或缓冲给管理器的
+    //      watch 监听器。
     this.client.onclose = () => {
       if (this.closed) return;
       if (!this.ready) return;
@@ -180,25 +174,23 @@ export class StdioMcpClient implements MCPClient {
       if (listener !== undefined) {
         listener(reason);
       } else {
-        // Buffer so a listener registered moments later still sees the close.
+        // 缓冲，以便稍后注册的监听器仍能看到关闭事件。
         this.pendingUnexpectedClose = reason;
       }
     };
     this.client.onerror = (error) => {
-      // Errors are informational on their own — `_onclose` is what tells us
-      // the transport is gone — so just remember the latest one and let the
-      // close handler decide whether to surface it. During startup the thrown
-      // error from `client.connect()` already carries the message, so this
-      // capture is only load-bearing post-`ready`.
+      // 错误本身仅是信息性的——`_onclose` 才告诉我们传输已消失——
+      // 因此只需记住最新的错误，让 close 处理程序决定是否呈现它。
+      // 启动期间 `client.connect()` 抛出的错误已携带消息，所以此捕获
+      // 仅在 `ready` 之后起作用。
       this.lastTransportError = error;
     };
   }
 }
 
 /**
- * A bounded "tail" buffer: appends characters and drops the oldest when the
- * total exceeds `capacity`. Used to keep the last few KB of child-process
- * stderr around without unbounded growth.
+ * 有界的"尾部"缓冲区：追加字符并在总量超过 `capacity` 时丢弃最旧的内容。
+ * 用于保留子进程 stderr 的最后几 KB，避免无限增长。
  */
 class BoundedTail {
   private buffer = '';
@@ -216,15 +208,14 @@ class BoundedTail {
   }
 }
 
-// Inherit the parent's env so PATH/HOME/etc. survive — otherwise `npx`/`uvx`
-// style stdio servers fail to launch even with a valid config. `config.env`
-// overrides on conflict. A node child does not inherit our in-process undici
-// dispatcher, so `proxyEnvForChild` adds `NODE_USE_ENV_PROXY` (and a
-// loopback-protected `NO_PROXY`) to make it honor the proxy natively (on a Node
-// version that supports the flag — ≥22.21 or ≥24.5). It is computed from the
-// MERGED env so a proxy declared only in `config.env` is honored too.
-// `reconcileChildNoProxy` then mirrors a single-casing `NO_PROXY` override onto
-// both casings so it isn't shadowed by the injected value.
+// 继承父进程的环境变量，使 PATH/HOME 等得以保留——否则 `npx`/`uvx` 风格的
+// stdio 服务器即使配置有效也会启动失败。`config.env` 在冲突时覆盖。
+// Node 子进程不会继承我们的进程内 undici 调度器，所以 `proxyEnvForChild`
+// 添加 `NODE_USE_ENV_PROXY`（和回环保护的 `NO_PROXY`）使其原生遵守代理
+// （在支持该标志的 Node 版本上——≥22.21 或 ≥24.5）。它从合并后的环境变量
+// 计算，因此仅在 `config.env` 中声明的代理也会被遵守。
+// `reconcileChildNoProxy` 随后将单一大写的 `NO_PROXY` 覆盖镜像到两种大小写，
+// 以免被注入的值遮蔽。
 export function mergeStdioEnv(
   configEnv?: Record<string, string>,
   parentEnv: Readonly<Record<string, string | undefined>> = process.env,

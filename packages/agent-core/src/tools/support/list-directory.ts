@@ -1,14 +1,13 @@
 /**
- * list-directory — compact 2-level directory tree for LLM context.
+ * list-directory ——面向 LLM 上下文的紧凑 2 级目录树。
  *
- * Used by GlobTool when rejecting a `**`-leading pattern: appending a
- * snapshot of the workspace root helps the LLM re-scope its pattern
- * without a second round-trip.
+ * 当 GlobTool 拒绝以 `**` 开头的模式时使用：追加工作区根目录的
+ * 快照有助于 LLM 重新调整模式范围，无需额外一轮交互。
  *
- * Width caps keep the system-prompt token budget bounded:
- *   - Depth 0 (root):  up to LIST_DIR_ROOT_WIDTH entries
- *   - Depth 1 (children of root dirs): up to LIST_DIR_CHILD_WIDTH entries
- *   - Truncated levels show "... and N more" so the LLM knows more exists.
+ * 宽度上限控制系统提示词的 token 预算：
+ *   - 深度 0（根）：最多 LIST_DIR_ROOT_WIDTH 个条目
+ *   - 深度 1（根目录的子项）：最多 LIST_DIR_CHILD_WIDTH 个条目
+ *   - 被截断的层级显示 "... and N more"，使 LLM 知道还有更多内容。
  */
 
 import { basename, join } from 'pathe';
@@ -39,11 +38,11 @@ async function collectEntries(
       let isDir = false;
       try {
         const st = await kaos.stat(fullPath);
-        // StatResult mirrors POSIX stat; derive the file type from the
-        // mode bits (S_IFMT mask → S_IFDIR == 0o040000).
+        // StatResult 镜像 POSIX stat；从 mode 位派生文件类型
+        // （S_IFMT 掩码 → S_IFDIR == 0o040000）。
         isDir = (st.stMode & 0o170000) === 0o040000;
       } catch {
-        // Unreadable entries keep isDir=false; still list the name.
+        // 不可读条目保持 isDir=false；仍列出名称。
       }
       all.push({ name, isDir });
     }
@@ -62,9 +61,8 @@ function shouldCollapseDirectory(entry: Entry, options: ListDirectoryOptions): b
 }
 
 /**
- * Return a 2-level tree listing of `workDir` suitable for inclusion in a
- * tool error message. Returns `"(empty directory)"` if the directory is
- * empty, or an error marker line if the directory itself is unreadable.
+ * 返回适合包含在工具错误消息中的 `workDir` 2 级树形列表。
+ * 目录为空时返回 `"(empty directory)"`，目录本身不可读时返回错误标记行。
  */
 export async function listDirectory(
   kaos: Kaos,

@@ -1,39 +1,31 @@
 /**
- * CronDeleteTool — cancel a scheduled cron job by id.
+ * CronDeleteTool — 按 id 取消已调度的 cron 任务。
  *
- * The tool's job is intentionally narrow: validate the id shape, ask the
- * session store to drop the entry, and report whether anything was
- * actually removed. The scheduler picks up the deletion on its next
- * `tick()` automatically because `source: () => store.list()` is
- * re-read every pass — there is no separate "unsubscribe" handshake to
- * keep in sync.
+ * 工具的职责有意地窄：验证 id 形态，请求会话存储删除条目，
+ * 并报告是否实际删除了任何内容。调度器在下一次 `tick()` 自动
+ * 感知删除，因为 `source: () => store.list()` 每次都会重新读取
+ * — 没有需要保持同步的单独"取消订阅"握手。
  *
- * Why "not found" is reported as an error:
+ * 为什么"未找到"报告为错误：
  *
- *   - The model uses the result string to decide whether to follow up
- *     (e.g. confirm to the user, retry, or move on). Returning a
- *     success-shaped message for a no-op would silently teach the model
- *     that CronDelete is idempotent against missing ids, which it is
- *     not — the next `CronList` would still show whatever id the model
- *     thought it deleted. Surfacing `isError: true` lets the model
- *     correct itself (typically by calling `CronList` again).
+ *   - 模型使用结果字符串决定是否跟进（例如确认给用户、重试或继续）。
+ *     对空操作返回成功形式的消息会静默地教会模型 CronDelete 对缺失 id
+ *     是幂等的，但它不是 — 下一次 `CronList` 仍会显示模型认为已删除的 id。
+ *     展示 `isError: true` 让模型自我纠正（通常通过再次调用 `CronList`）。
  *
- * Why the manager is not consulted for telemetry on the not-found
- * branch:
+ * 为什么未找到分支不向管理器查询遥测：
  *
- *   - `cron_deleted` records an actual state change. Emitting it on a
- *     miss would inflate the metric and break parity with `cron_create`
- *     (which never fires on a rejected schedule). The branch is fully
- *     observable through tool-call telemetry already.
+ *   - `cron_deleted` 记录实际状态变更。在未命中时发送会膨胀指标并破坏
+ *     与 `cron_create`（在被拒绝的调度上从不触发）的对称性。该分支已通过
+ *     工具调用遥测完全可观测。
  *
- * Refresh-cron pattern this tool participates in:
+ * 此工具参与的刷新 cron 模式：
  *
- *   When `CronList` (or a fired job's origin) reports `stale: true`, the
- *   documented "refresh" flow is `CronDelete(id)` followed by a fresh
- *   `CronCreate` with the same cron + prompt. That resets `createdAt`,
- *   clears the stale flag, and rejoins the herd-avoidance jitter draw
- *   with a new task id. The doc string spells this out so the model can
- *   reach for it without prompting from a system message.
+ *   当 `CronList`（或已触发任务的来源）报告 `stale: true` 时，
+ *   文档化的"刷新"流程是 `CronDelete(id)` 后跟使用相同 cron + prompt
+ *   的新 `CronCreate`。这会重置 `createdAt`，清除 stale 标志，
+ *   并以新任务 id 重新加入防群聚抖动抽签。文档字符串阐明了这一点，
+ *   以便模型无需系统消息提示即可使用。
  */
 
 import { z } from 'zod';
@@ -44,18 +36,16 @@ import type { ToolExecution } from '../../loop/types';
 import { toInputJsonSchema } from '../support/input-schema';
 import CRON_DELETE_DESCRIPTION from './cron-delete.md?raw';
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── 常量 ────────────────────────────────────────────────────────
 
 /**
- * Same id shape used by `SessionCronStore` and the on-disk persistence
- * layer. We re-check here so a malformed id never reaches the store —
- * the regex is the single source of truth for the on-the-wire id
- * format and an early reject keeps the error message close to the
- * user's input.
+ * 与 `SessionCronStore` 和磁盘持久层使用的相同 id 形态。
+ * 在此重新检查使畸形 id 永远不会到达存储 — 该正则表达式是
+ * 线上 id 格式的唯一真理来源，提前拒绝使错误消息贴近用户输入。
  */
 const ID_PATTERN = /^[0-9a-f]{8}$/;
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const CronDeleteInputSchema = z.object({
   id: z
@@ -64,7 +54,7 @@ export const CronDeleteInputSchema = z.object({
 });
 export type CronDeleteInput = z.infer<typeof CronDeleteInputSchema>;
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class CronDeleteTool implements BuiltinTool<CronDeleteInput> {
   readonly name = 'CronDelete' as const;
@@ -76,9 +66,8 @@ export class CronDeleteTool implements BuiltinTool<CronDeleteInput> {
   constructor(private readonly manager: CronManager) {}
 
   resolveExecution(args: CronDeleteInput): ToolExecution {
-    // Format check up front. The store would reject the lookup anyway,
-    // but the message is more actionable when it names the constraint
-    // ("8 lowercase hex characters") rather than a generic "not found".
+    // 先做格式检查。存储无论如何会拒绝查找，但当消息明确指出约束
+    // （"8 个小写十六进制字符"）而非通用的"未找到"时更具可操作性。
     if (!ID_PATTERN.test(args.id)) {
       return {
         isError: true,
@@ -94,19 +83,16 @@ export class CronDeleteTool implements BuiltinTool<CronDeleteInput> {
       execute: async () => {
         const removed = this.manager.removeTasks([args.id]);
         if (removed.length === 0) {
-          // Not found is reported as an error so the model can correct
-          // itself — see the module header for the rationale. We
-          // deliberately do NOT emit `cron_deleted` here; the metric
-          // tracks real state changes.
+          // 未找到报告为错误，以便模型自我纠正 — 参见模块头部的理由。
+          // 这里故意不发送 `cron_deleted`；该指标跟踪真实状态变更。
           return {
             isError: true,
             output: `No cron job with id ${args.id}.`,
           };
         }
 
-        // Telemetry goes through the manager so the tool stays out of
-        // `manager.agent.telemetry` — symmetric with `CronCreate`'s use
-        // of `emitScheduled`.
+        // 遥测通过管理器进行，使工具不接触 `manager.agent.telemetry`
+        // — 与 `CronCreate` 使用 `emitScheduled` 对称。
         this.manager.emitDeleted(args.id);
 
         return {

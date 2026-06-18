@@ -1,10 +1,8 @@
 /**
- * Constants for the /feedback command — endpoints, telemetry keys, and
- * the status messages shown around the feedback submission flow.
+ * /feedback 命令的常量——端点、遥测事件键，以及反馈提交流程中显示的状态消息。
  *
- * Dialog-internal copy (the box title, subtitle, footer) lives next to
- * the dialog component itself, since it is part of that component's
- * visual contract.
+ * 对话框内部文案（弹窗标题、副标题、底部提示）放在对话框组件旁边，
+ * 因为它是该组件视觉契约的一部分。
  */
 
 import { FEEDBACK_VERSION_PREFIX } from '#/constant/app';
@@ -31,8 +29,8 @@ export function feedbackSessionLine(sessionId: string): string {
   return `Session: ${sessionId}`;
 }
 
-// Hint shown beneath session-level error messages in the TUI to point users
-// at the `/export-debug-zip` workflow so they can share diagnostics with us.
+// 在 TUI 中会话级错误消息下方显示的提示，引导用户使用
+// `/export-debug-zip` 工作流来与我们共享诊断信息。
 export function errorReportHintLine(): string {
   return "If this persists, run `/export-debug-zip` and share the file with us for diagnosis. Please don't share it publicly.";
 }

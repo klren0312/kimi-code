@@ -1,8 +1,7 @@
 /**
- * Public entry point for the stateless agent loop.
+ * 无状态 Agent 循环的公共入口点。
  *
- * Higher-level orchestration may import from this module; this module must not
- * import from host-layer implementations.
+ * 上层编排可以导入此模块；此模块不得导入宿主层实现。
  */
 
 export type {

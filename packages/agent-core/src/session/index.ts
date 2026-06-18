@@ -66,7 +66,7 @@ export interface SessionOptions {
 
 export interface SessionSkillConfig {
   readonly userHomeDir?: string;
-  /** Brand data dir (KIMI_CODE_HOME); user brand skills live under `<brandHomeDir>/skills`. */
+  /** 品牌数据目录 (KIMI_CODE_HOME)；用户品牌技能位于 `<brandHomeDir>/skills` 下。 */
   readonly brandHomeDir?: string;
   readonly explicitDirs?: readonly string[];
   readonly extraDirs?: readonly string[];
@@ -160,9 +160,8 @@ export class Session {
   private writeMetadataPromise = Promise.resolve();
 
   constructor(public readonly options: SessionOptions) {
-    // Attach the per-session log sink up front so the constructor's
-    // fire-and-forget `loadSkills` / `loadMcpServers` failures (and
-    // anything else that races) land in the session log, not just global.
+    // 提前附加会话级别的日志接收器，这样构造函数中即发即忘的 `loadSkills` /
+    // `loadMcpServers` 失败（以及其他竞态内容）会被记录到会话日志中，而不仅仅是全局日志。
     this.logHandle =
       options.id === undefined
         ? undefined
@@ -214,11 +213,10 @@ export class Session {
   }
 
   /**
-   * Kaos used by session-internal bootstrap (AGENTS.md context, cwd listing)
-   * and metadata persistence. Always backed by the persistence sink (typically
-   * the local filesystem) so a transient ACP-side failure on system files like
-   * `AGENTS.md` never blocks `bootstrapAgentProfile` — tool calls still route
-   * through `agent.kaos` and continue to honor the ACP bridge.
+   * 用于会话内部引导（AGENTS.md 上下文、目录列表）和元数据持久化的 Kaos。
+   * 始终由持久化存储（通常是本地文件系统）支持，因此 ACP 端对系统文件
+   * （如 `AGENTS.md`）的临时故障不会阻塞 `bootstrapAgentProfile`——
+   * 工具调用仍通过 `agent.kaos` 路由并继续遵循 ACP 桥接。
    */
   systemContextKaos(cwd: string): Kaos {
     return this.persistenceKaos.withCwd(cwd);
@@ -237,15 +235,13 @@ export class Session {
     this.log.info('session resume', { app_version: this.options.appVersion });
     const { agents } = await this.readMetadata();
     this.agents.clear();
-    // Only the main agent is needed to reopen the session; subagents replay
-    // lazily when an RPC or Agent(resume=...) call asks for their state.
+    // 恢复会话只需要主代理；子代理在 RPC 或 Agent(resume=...) 调用请求其状态时延迟重放。
     const { warning } =
       agents['main'] === undefined ? { warning: undefined } : await this.resumeAgent('main');
-    // A session migrated from an external tool ships a wire without the
-    // `config.update` bootstrap events a natively-created agent writes, so the
-    // main agent comes back with an empty system prompt and no tools. Apply the
-    // default profile so the resumed session is usable. Native sessions always
-    // replay a non-empty system prompt and never enter this branch.
+    // 从外部工具迁移的会话携带的 wire 不包含原生创建的代理写入的
+    // `config.update` 引导事件，因此主代理恢复后会有一个空的系统提示词和
+    // 没有工具。应用默认配置以使恢复的会话可用。原生会话始终重放非空的
+    // 系统提示词，永远不会进入此分支。
     const main = this.getReadyAgent('main');
     const profile = DEFAULT_AGENT_PROFILES['agent'];
     if (main !== undefined && profile !== undefined && main.config.systemPrompt === '') {
@@ -396,9 +392,8 @@ export class Session {
   }
 
   /**
-   * Applies a profile's derived config — cwd, system prompt, active tools — to
-   * an agent. Fresh creation and resume-of-an-incomplete-wire both route
-   * through here so the two paths cannot drift apart.
+   * 将配置的派生配置——cwd、系统提示词、活跃工具——应用到代理。
+   * 新建和不完整 wire 的恢复都经过此路径，以确保两条路径不会产生偏差。
    */
   private async bootstrapAgentProfile(
     agent: Agent,
@@ -532,8 +527,8 @@ export class Session {
   }
 
   private onMcpServerStatusChange(entry: McpServerEntry): void {
-    // Always surface server-level status changes to clients so the TUI/SDK
-    // can keep its dashboard in sync, even before the main agent exists.
+    // 始终将服务器级别的状态变更通知给客户端，以便 TUI/SDK
+    // 保持仪表板同步，即使在主代理存在之前也是如此。
     void this.rpc.emitEvent({
       type: 'mcp.server.status',
       agentId: 'main',

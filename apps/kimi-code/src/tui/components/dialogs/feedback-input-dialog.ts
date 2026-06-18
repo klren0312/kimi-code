@@ -1,10 +1,10 @@
 /**
- * FeedbackInputDialog — blue rounded box that collects a single line of
- * user feedback before submitting it to the managed Kimi Code platform.
+ * FeedbackInputDialog —— 蓝色圆角输入框，用于收集单行用户反馈，
+ * 然后提交至托管的 Kimi Code 平台。
  *
- * Geometry mirrors `DeviceCodeBox` so the chrome stays consistent with
- * the OAuth login flow. The box embeds a `pi-tui` Input for the actual
- * text entry; cursor visibility tracks the dialog's `focused` flag.
+ * 几何布局与 `DeviceCodeBox` 一致，使 UI 外壳与 OAuth 登录流程保持统一。
+ * 输入框内嵌 `pi-tui` Input 组件用于实际文本输入；
+ * 光标可见性跟随对话框的 `focused` 标志。
  */
 
 import {

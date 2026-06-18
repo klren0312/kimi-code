@@ -10,7 +10,7 @@ export type ResolvedSource =
   | { kind: 'zip-url'; path: string }
   | { kind: 'github'; owner: string; repo: string; ref?: GithubRef };
 
-// Kept as a back-compat alias for downstream code that imported the old name.
+// 作为向后兼容的别名保留，供导入旧名称的下游代码使用。
 export type InstallSource = ResolvedSource;
 
 const SHA_RE = /^[0-9a-f]{7,40}$/;
@@ -56,48 +56,45 @@ function parseGithubUrl(raw: string): ResolvedSource | undefined {
   const second = rest[1];
 
   if (head === 'tree' && rest.length >= 2) {
-    // `url.pathname` preserves percent-encoding (e.g. `release%231`). Decode
-    // each segment so the stored ref value is the human-readable Git ref name.
-    // The resolver re-encodes when building the codeload URL.
+    // `url.pathname` 保留了百分号编码（例如 `release%231`）。对每个段进行解码，
+    // 使存储的 ref 值是人类可读的 Git ref 名称。
+    // 解析器在构建 codeload URL 时会重新编码。
     const refValue = decodeRefSegments(rest.slice(1));
-    // We cannot tell branch from tag at parse time. For SHA-shaped values use
-    // kind: 'sha'; otherwise label as 'branch'. The resolver compensates by
-    // using codeload's short-form URL for 'branch' kinds, so codeload itself
-    // picks branch-or-tag — matching how `/tree/<x>` resolves in the GitHub UI.
+    // 在解析时无法区分分支和 tag。对于 SHA 形状的值使用 kind: 'sha'；
+    // 否则标记为 'branch'。解析器通过为 'branch' 类型使用 codeload 的短路径 URL
+    // 来补偿，让 codeload 自己选择分支或 tag —— 匹配 GitHub UI 中 `/tree/<x>` 的解析方式。
     const kind: GithubRef['kind'] = SHA_RE.test(refValue) ? 'sha' : 'branch';
     return { kind: 'github', owner, repo, ref: { kind, value: refValue } };
   }
 
   if (head === 'releases' && second === 'tag' && rest.length >= 3) {
-    // Recognize the canonical "this is a specific release" URL form. Earlier
-    // versions rejected it and pointed users at /tree/<tag>, but /tree/<tag>
-    // could not be parsed as a tag (only branch), which produced a 404 when
-    // codeload was asked for refs/heads/<tag-name>.
+    // 识别标准的"这是一个特定 release" URL 形式。早期版本拒绝了它并引导用户
+    // 使用 /tree/<tag>，但 /tree/<tag> 无法被解析为 tag（只能是分支），
+    // 当 codeload 请求 refs/heads/<tag-name> 时会产生 404。
     const tag = decodeRefSegments(rest.slice(2));
     return { kind: 'github', owner, repo, ref: { kind: 'tag', value: tag } };
   }
 
   if (head === 'commit' && rest.length >= 2) {
-    // Mirror the /releases/tag/ change for symmetry: a commit URL pinpoints a
-    // SHA, so accept it directly instead of bouncing users to /tree/<sha>.
+    // 与 /releases/tag/ 的改动对称：commit URL 精确指向一个 SHA，
+    // 因此直接接受，而不是将用户重定向到 /tree/<sha>。
     const sha = decodeRefSegments(rest.slice(1));
     return { kind: 'github', owner, repo, ref: { kind: 'sha', value: sha } };
   }
 
-  // /archive/refs/{heads,tags}/X.zip and any other path — fall through to zip-url.
+  // /archive/refs/{heads,tags}/X.zip 及其他路径 —— 回退到 zip-url。
   return undefined;
 }
 
 /**
- * Join path segments and percent-decode them into a single ref name.
+ * 连接路径段并对其进行百分号解码，合并为单个 ref 名称。
  *
- * `URL.pathname` keeps `%xx` sequences as-is (e.g. `release%231`), but
- * downstream code treats the ref value as a raw Git ref. Decoding here keeps
- * one canonical representation: human-readable in storage and display, and
- * re-encoded by the resolver when it builds a codeload URL.
+ * `URL.pathname` 保留 `%xx` 序列（例如 `release%231`），但下游代码将 ref 值
+ * 视为原始 Git ref。在此处解码可以保持唯一的规范表示：存储和显示时为人类可读的，
+ * 由解析器在构建 codeload URL 时重新编码。
  *
- * Malformed percent-encoding (`%ZZ`) is tolerated: we keep the raw segments
- * so the user sees a meaningful error downstream rather than a parse crash.
+ * 畸形的百分号编码（`%ZZ`）会被容忍：我们保留原始段，使用户在下游看到有意义的
+ * 错误，而不是解析崩溃。
  */
 function decodeRefSegments(segments: readonly string[]): string {
   return segments

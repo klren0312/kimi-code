@@ -18,7 +18,7 @@ class AsyncSerialQueue {
 }
 export interface Sink {
   enqueue(line: string): void;
-  /** Resolves to false when the pending batch could not be written. */
+  /** 当待写入批次无法写入时返回 false。 */
   flush(): Promise<boolean>;
   close(): Promise<void>;
   flushSync(): void;
@@ -61,7 +61,7 @@ export class RotatingFileSink implements Sink {
     try {
       await this.flush();
     } catch {
-      // swallow — close must not throw
+      // 吞掉异常——close 不应抛出
     }
   }
 
@@ -182,7 +182,7 @@ export class RotatingFileSink implements Sink {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
-    // last archive may be evicted; ensure we don't keep > files
+    // 最旧的归档文件可能会被清除；确保文件数不超过上限
     try {
       await unlink(`${path}.${files}`);
     } catch (error) {

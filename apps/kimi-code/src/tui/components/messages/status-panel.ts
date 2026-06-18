@@ -1,8 +1,8 @@
 /**
- * Status report line builder for `/status`.
+ * `/status` 命令的状态报告行构建器。
  *
- * It mirrors `/usage` visual language but keeps runtime status formatting
- * separate from the TUI orchestration layer.
+ * 复用 `/usage` 的视觉语言，但将运行时状态格式化
+ * 与 TUI 编排层保持分离。
  */
 
 import type { ModelAlias, PermissionMode, SessionStatus } from '@moonshot-ai/kimi-code-sdk';

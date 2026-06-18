@@ -1,13 +1,13 @@
 /**
- * BackgroundManager — manages background tasks for an agent.
+ * BackgroundManager — 管理 Agent 的后台任务。
  *
- * Tracks background bash tasks and background subagent tasks.
+ * 跟踪后台 Bash 任务和后台子 Agent 任务。
  *
- * Each task gets a unique ID, captures stdout+stderr to a ring buffer,
- * and supports status query / output retrieval / stop operations.
+ * 每个任务拥有唯一 ID，将 stdout+stderr 捕获到环形缓冲区，
+ * 并支持状态查询、输出检索和停止操作。
  *
- * Concrete task classes own execution details; the manager owns task
- * registration, lifecycle state, persistence, output, and notifications.
+ * 具体任务类负责执行细节；管理器负责任务注册、生命周期状态、
+ * 持久化、输出和通知。
  */
 
 import { randomBytes } from 'node:crypto';
@@ -31,9 +31,8 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 /**
- * `'lost'` is a reconcile-only terminal state. Tasks loaded from disk
- * that were marked `running` at startup but have no live KaosProcess
- * (the previous CLI process died) are reclassified as lost.
+ * `'lost'` 是仅用于对账的终端状态。从磁盘加载的、在启动时被标记为 `running`
+ * 但没有活跃 KaosProcess（之前 CLI 进程已崩溃）的任务会被重新分类为 lost。
  */
 export function isBackgroundTaskTerminal(status: BackgroundTaskStatus): boolean {
   return TERMINAL_STATUSES.has(status);
@@ -52,39 +51,47 @@ export type {
 } from './task';
 
 interface ManagedTask {
+  /** 由 `generateTaskId()` 生成的唯一任务 ID。 */
   readonly taskId: string;
+  /** 具体的任务实现（进程、Agent 或问题）。 */
   readonly task: BackgroundTask;
+  /** 内存中的输出块环形缓冲区（超出容量时丢弃最旧的块）。 */
   readonly outputChunks: string[];
-  /** Total UTF-8 bytes observed, including chunks dropped from the live ring buffer. */
+  /** 已观察到的总 UTF-8 字节数，包括从活跃环形缓冲区丢弃的块。 */
   outputSizeBytes: number;
+  /** 当前生命周期状态。 */
   status: BackgroundTaskStatus;
+  /** 任务注册时的 Unix 时间戳（毫秒）。 */
   readonly startedAt: number;
+  /** 任务到达终端状态时的 Unix 时间戳（毫秒），或 `null`。 */
   endedAt: number | null;
-  /** Listeners awaiting task completion. */
+  /** 等待任务完成的监听器列表。 */
   readonly waiters: Array<() => void>;
-  /** True once terminal notification/event side effects have already run. */
+  /** 终端通知/事件副作用是否已执行。 */
   terminalFired: boolean;
-  /** Human-readable reason for the terminal status, when available. */
+  /** 终端状态的可读原因（可用时）。 */
   stopReason?: string | undefined;
-  /** Suppress automatic terminal notifications/reminders for this task. */
+  /** 抑制此任务的自动终端通知/提醒。 */
   terminalNotificationSuppressed?: boolean | undefined;
-  /** Cancellation signal owned by the manager and observed by the concrete task. */
+  /** 管理器拥有且具体任务观察的取消信号。 */
   readonly abortController: AbortController;
+  /** 当任务的 `start()` 结束或遇到未处理错误时解析。 */
   lifecyclePromise: Promise<void>;
+  /** 序列化持久化写入以防止 JSON 文件损坏。 */
   persistWriteQueue: Promise<void>;
+  /** 序列化输出日志追加以保持顺序。 */
   outputWriteQueue: Promise<void>;
 }
 
 /**
- * Maximum bytes of combined output kept in the in-memory ring buffer per
- * task. When exceeded, the oldest chunks are dropped.
+ * 每个任务在内存环形缓冲区中保留的最大输出字节数。
+ * 超出时丢弃最旧的块。
  *
- * The ring buffer is a lightweight tail intended for the `/tasks` UI and
- * terminal notifications only — it deliberately discards old output to
- * cap memory. It is NOT the authoritative full output: the complete,
- * never-truncated log lives on disk at `<sessionDir>/tasks/<id>/output.log`.
- * Callers that need task output should use `getOutputSnapshot()`, which
- * reads the persisted log when available.
+ * 环形缓冲区是一个轻量级的尾部视图，仅用于 `/tasks` UI 和终端通知——
+ * 它有意丢弃旧输出以限制内存。它不是权威的完整输出：
+ * 完整的、永不截断的日志位于磁盘上的 `<sessionDir>/tasks/<id>/output.log`。
+ * 需要任务输出的调用方应使用 `getOutputSnapshot()`，
+ * 它会在可用时读取持久化日志。
  */
 const MAX_OUTPUT_BYTES = 1024 * 1024; // 1 MiB
 
@@ -93,11 +100,11 @@ const SIGTERM_GRACE_MS = 5_000;
 const _ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 
 /**
- * Generate `{prefix}-{8 base36 chars}`.
+ * 生成 `{prefix}-{8个base36字符}` 格式的 ID。
  *
- * `randomBytes(8) % 36` has a modest modulo bias (256 % 36 = 4) but
- * over an 8-char suffix yields ~36^8 ≈ 2.8e12 distinct ids which is
- * more than enough uniqueness for per-session task ids.
+ * `randomBytes(8) % 36` 有轻微的模偏差（256 % 36 = 4），
+ * 但在 8 字符后缀上产生约 36^8 ≈ 2.8e12 个不同 ID，
+ * 对于每会话任务 ID 来说唯一性已足够。
  */
 function generateTaskId(kind: string): string {
   const bytes = randomBytes(8);
@@ -108,12 +115,25 @@ function generateTaskId(kind: string): string {
   return `${kind}-${suffix}`;
 }
 
+/**
+ * 任务输出的快照，由 TaskOutput UI 组件使用。
+ *
+ * 当任务注册了输出会话目录且 `output.log` 已实际创建时，优先使用持久化日志
+ * （完整且永不截断）；对于没有会话目录或输出尚未写入磁盘的任务，
+ * 回退到内存环形缓冲区。
+ */
 export interface BackgroundTaskOutputSnapshot {
+  /** 磁盘输出日志的绝对路径（已附加持久化时）。 */
   readonly outputPath?: string;
+  /** 任务已产生的总 UTF-8 输出字节数（权威值，永不截断）。 */
   readonly outputSizeBytes: number;
+  /** `preview` 字符串中的字节数。 */
   readonly previewBytes: number;
+  /** 预览是否为较大输出的尾部片段。 */
   readonly truncated: boolean;
+  /** 当预览从持久化日志读取时为 `true`（完整来源）。 */
   readonly fullOutputAvailable: boolean;
+  /** 预览内容（输出尾部，受 `maxPreviewBytes` 限制）。 */
   readonly preview: string;
 }
 
@@ -127,20 +147,30 @@ function emptyOutputSnapshot(): BackgroundTaskOutputSnapshot {
   };
 }
 
+/**
+ * 当任务到达终端状态时传递给 Agent 上下文的通知负载。
+ * 由 `renderNotificationXml()` 渲染为 XML 并注入对话中，
+ * 以便 Agent 可以对任务结果做出反应。
+ */
 type BackgroundTaskNotification = Record<string, unknown> & {
   readonly id: string;
   readonly category: 'task';
   readonly type: string;
   readonly source_kind: 'background_task';
   readonly source_id: string;
-  /** Subagent id accepted by Agent(resume=...). Omitted for process tasks. */
+  /** Agent(resume=...) 接受的子 Agent ID。进程任务省略此字段。 */
   readonly agent_id?: string | undefined;
   readonly title: string;
   readonly severity: 'info' | 'warning';
   readonly body: string;
+  /** 任务输出的尾部，上限为 `NOTIFICATION_TAIL_BYTES`。 */
   readonly tail_output: string;
 };
 
+/**
+ * 将内容、来源和通知对象打包在一起，以便管理器可以在单个调用中
+ * 转向（活跃任务）或追加（恢复任务）通知。
+ */
 interface BackgroundTaskNotificationContext {
   readonly content: readonly ContentPart[];
   readonly origin: BackgroundTaskOrigin;
@@ -151,12 +181,25 @@ const NOTIFICATION_TAIL_BYTES = 3_000;
 
 // ── Manager ──────────────────────────────────────────────────────────
 
+/**
+ * Agent 会话中所有后台任务的中央注册表和生命周期管理器。
+ *
+ * 职责：
+ * - **注册**：分配唯一 ID，强制执行最大运行任务限制
+ * - **生命周期**：启动任务，处理停止（SIGTERM → 宽限期 → SIGKILL），结算终端状态
+ * - **输出**：维护内存环形缓冲区并委托磁盘持久化记录完整日志
+ * - **持久化**：将任务状态写入磁盘，以便 CLI 重启时可恢复丢失的任务
+ * - **通知**：将终端任务摘要注入 Agent 上下文并触发钩子
+ * - **对账**：在启动时加载持久化任务并将运行中但已死亡的任务重新分类为 `'lost'`
+ *
+ * 具体任务类负责执行细节；管理器负责其他一切。
+ */
 export class BackgroundManager {
   private readonly tasks = new Map<string, ManagedTask>();
   /**
-   * Ghosts: tasks loaded from disk during reconcile that have no live
-   * KaosProcess. They appear in `list()` / `getTask()` with status
-   * `lost` so users see what was running before the crash/restart.
+   * 幽灵任务：对账期间从磁盘加载的、没有活跃 KaosProcess 的任务。
+   * 它们以 `lost` 状态出现在 `list()` / `getTask()` 中，
+   * 以便用户看到崩溃/重启前正在运行的任务。
    */
   private readonly ghosts = new Map<string, BackgroundTaskInfo>();
 
@@ -169,10 +212,9 @@ export class BackgroundManager {
   ) { }
 
   /**
-   * Fire terminal side effects for a live task. Idempotent: the second
-   * invocation for the same task is a no-op so a lagging `wait()`
-   * resolver or a race between `stop()` and natural exit cannot yield
-   * duplicate notifications/events.
+   * 触发活跃任务的终端副作用。幂等：同一任务的第二次调用为空操作，
+   * 这样延迟的 `wait()` 解析器或 `stop()` 与自然退出之间的竞争
+   * 不会产生重复的通知/事件。
    */
   private fireTerminalEffects(entry: ManagedTask): void {
     if (entry.terminalFired) return;
@@ -218,6 +260,14 @@ export class BackgroundManager {
     return count;
   }
 
+  /**
+   * 注册新的后台任务。分配唯一 ID，创建内部 {@link ManagedTask} 条目，
+   * 启动任务的 `start()` 方法，持久化初始快照，并发出 `background.task.started` 事件。
+   *
+   * 若超过配置的 `maxRunningTasks` 限制则抛出异常。
+   *
+   * @returns 生成的任务 ID（格式：`{prefix}-{8个base36字符}`）。
+   */
   registerTask(task: BackgroundTask): string {
     this.assertCanRegister();
     const taskId = generateTaskId(task.idPrefix);
@@ -254,14 +304,14 @@ export class BackgroundManager {
         });
       });
 
-    // Initial persistence (snapshot at start).
+    // 初始持久化（启动时快照）。
     void this.persistLive(entry);
     this.emitTaskStarted(this.toInfo(entry));
 
     return taskId;
   }
 
-  /** Get info about a specific task. Falls back to reconcile ghosts. */
+  /** 获取特定任务的信息。回退到对账幽灵任务。 */
   getTask(taskId: string): BackgroundTaskInfo | undefined {
     const entry = this.tasks.get(taskId);
     if (entry !== undefined) {
@@ -271,11 +321,10 @@ export class BackgroundManager {
   }
 
   /**
-   * List tasks, optionally filtering to active-only.
+   * 列出任务，可选择仅筛选活跃任务。
    *
-   * When `activeOnly=false`, includes reconcile ghosts (lost tasks
-   * from a prior CLI process) so the user sees what survived the
-   * restart. Active-only mode never shows ghosts (they're terminal).
+   * 当 `activeOnly=false` 时，包含对账幽灵任务（来自之前 CLI 进程的丢失任务），
+   * 以便用户看到在重启后幸存的任务。仅活跃模式从不显示幽灵任务（它们是终端状态）。
    */
   list(activeOnly = true, limit?: number): BackgroundTaskInfo[] {
     const result: BackgroundTaskInfo[] = [];
@@ -294,13 +343,11 @@ export class BackgroundManager {
   }
 
   /**
-   * Return the output snapshot used by TaskOutput.
+   * 返回 TaskOutput 使用的输出快照。
    *
-   * Persisted logs are preferred when the task was registered with an
-   * output session directory and `output.log` has actually been created,
-   * because they are the complete, never-truncated source. Detached managers,
-   * tasks registered before a session dir was attached, and silent tasks with
-   * no persisted log fall back to the live ring buffer.
+   * 当任务注册了输出会话目录且 `output.log` 实际已创建时，优先使用持久化日志，
+   * 因为它们是完整的、永不截断的来源。分离的管理器、在会话目录附加前注册的任务
+   * 以及没有持久化日志的静默任务会回退到活跃环形缓冲区。
    */
   async getOutputSnapshot(
     taskId: string,
@@ -342,6 +389,10 @@ export class BackgroundManager {
     };
   }
 
+  /**
+   * 读取任务的完整输出，可选择截断为最后 `tail` 个字符。
+   * 委托给 `getOutputSnapshot()` 以优先使用持久化日志而非环形缓冲区。
+   */
   async readOutput(taskId: string, tail?: number): Promise<string> {
     const output = (await this.getOutputSnapshot(taskId, Number.MAX_SAFE_INTEGER)).preview;
     if (tail !== undefined && tail < output.length) {
@@ -350,6 +401,11 @@ export class BackgroundManager {
     return output;
   }
 
+  /**
+   * 阻止任务发送自动终端通知。
+   * 当用户已通过其他方式看到结果时很有用。
+   * 持久化抑制标志以在 CLI 重启后保持。
+   */
   async suppressTerminalNotification(taskId: string): Promise<void> {
     const entry = this.tasks.get(taskId);
     if (entry === undefined || entry.terminalNotificationSuppressed === true) return;
@@ -357,17 +413,16 @@ export class BackgroundManager {
     await this.persistLive(entry);
   }
 
-  /** Stop a running task. SIGTERM → 5s grace → SIGKILL. */
+  /** 停止运行中的任务。SIGTERM → 5秒宽限期 → SIGKILL。 */
   async stop(taskId: string, reason?: string): Promise<BackgroundTaskInfo | undefined> {
     const entry = this.tasks.get(taskId);
     if (!entry) return undefined;
-    // Normalize at this shared boundary: every public stop path (the TaskStop
-    // tool, SDK/RPC) funnels through here, so a blank or whitespace-only
-    // reason must never be recorded as an empty stopReason.
+    // 在此共享边界规范化：每个公共停止路径（TaskStop 工具、SDK/RPC）
+    // 都经过此处，因此空白或仅含空格的原因绝不应被记录为空 stopReason。
     const trimmedReason = reason?.trim();
     const stopReason =
       trimmedReason === undefined || trimmedReason.length === 0 ? undefined : trimmedReason;
-    // Terminal tasks short-circuit.
+    // 终端任务直接短路。
     if (TERMINAL_STATUSES.has(entry.status)) {
       await entry.persistWriteQueue;
       return this.toInfo(entry);
@@ -376,9 +431,9 @@ export class BackgroundManager {
     entry.stopReason = stopReason;
     entry.abortController.abort(stopReason);
 
-    // Wait up to 5s for the lifecycle path to settle, then SIGKILL.
-    // Waiting on lifecyclePromise, rather than the task directly, lets a
-    // natural completion win the race instead of being overwritten here.
+    // 等待最多 5 秒让生命周期路径结算，然后 SIGKILL。
+    // 等待 lifecyclePromise 而非直接等待任务，可以让自然完成
+    // 赢得竞争而非在此处被覆盖。
     let graceTimer: ReturnType<typeof setTimeout> | undefined;
     const graceful = await Promise.race([
       entry.lifecyclePromise.then(
@@ -411,13 +466,14 @@ export class BackgroundManager {
       return this.toInfo(entry);
     }
 
-    // Tasks whose lifecycle promise never settles need an explicit terminal
-    // finalize here after their stop/force-stop hooks have had a chance.
+    // 生命周期 Promise 永不结算的任务需要在停止/强制停止钩子有机会执行后
+    // 在此处显式结算为终端状态。
     await this.settleTask(entry, { status: 'killed', stopReason });
 
     return this.toInfo(entry);
   }
 
+  /** 停止所有运行中的任务。返回每个被停止或已是终端状态的任务的信息。 */
   async stopAll(reason?: string): Promise<readonly BackgroundTaskInfo[]> {
     const taskIds = Array.from(this.tasks.keys());
     const results = await Promise.all(taskIds.map((taskId) => this.stop(taskId, reason)));
@@ -425,8 +481,8 @@ export class BackgroundManager {
   }
 
   /**
-   * Wait for a task to reach a terminal state.
-   * Returns immediately if already terminal. Times out after `timeoutMs`.
+   * 等待任务到达终端状态。
+   * 若已到达终端状态则立即返回。超时时间为 `timeoutMs`。
    */
   async wait(taskId: string, timeoutMs = 30_000): Promise<BackgroundTaskInfo | undefined> {
     const entry = this.tasks.get(taskId);
@@ -465,9 +521,9 @@ export class BackgroundManager {
   // ── persistence + reconcile ────────────────────────────────────────
 
   /**
-   * Load persisted task records into the ghost map. Does NOT reconcile
-   * (call `reconcile()` after `loadFromDisk()`). Idempotent; subsequent
-   * calls overwrite the ghost map.
+   * 将持久化的任务记录加载到幽灵映射中。不执行对账
+   * （在 `loadFromDisk()` 之后调用 `reconcile()`）。幂等；
+   * 后续调用覆盖幽灵映射。
    */
   async loadFromDisk(): Promise<void> {
     const persistence = this.persistence;
@@ -475,23 +531,22 @@ export class BackgroundManager {
     this.ghosts.clear();
     const persisted = await persistence.listTasks();
     for (const t of persisted) {
-      // Skip ids that already exist as live processes — live wins.
+      // 跳过已作为活跃进程存在的 ID——活跃进程优先。
       if (this.tasks.has(t.taskId)) continue;
       this.ghosts.set(t.taskId, t);
     }
   }
 
   /**
-   * Reconcile loaded ghost tasks. Any ghost with status `running` is
-   * reclassified as `lost` (its previous CLI process died without
-   * writing a terminal state). Updates the on-disk record and returns
-   * the lost task snapshots so the caller can emit user-facing notifications.
+   * 对账已加载的幽灵任务。任何状态为 `running` 的幽灵任务
+   * 被重新分类为 `lost`（其之前的 CLI 进程未写入终端状态就退出了）。
+   * 更新磁盘记录并返回丢失的任务快照，以便调用方发出面向用户的通知。
    */
   private async markLoadedTasksLost(): Promise<readonly BackgroundTaskInfo[]> {
     const lostInfo: BackgroundTaskInfo[] = [];
     const persistence = this.persistence;
     for (const [id, info] of this.ghosts) {
-      // Any non-terminal ghost is lost.
+      // 非终端状态的幽灵任务即为丢失。
       if (TERMINAL_STATUSES.has(info.status)) continue;
       const updated: BackgroundTaskInfo = {
         ...info,
@@ -516,8 +571,8 @@ export class BackgroundManager {
   }
 
   /**
-   * Persist the current state of a live ManagedTask. Called from
-   * `registerTask()` and the lifecycle finally block. No-op unless attached.
+   * 持久化活跃 ManagedTask 的当前状态。从 `registerTask()` 和
+   * 生命周期 finally 块中调用。除非已附加持久化，否则为空操作。
    */
   private persistLive(entry: ManagedTask): Promise<void> {
     const persistence = this.persistence;
@@ -529,10 +584,15 @@ export class BackgroundManager {
     return entry.persistWriteQueue;
   }
 
+  /**
+   * 将输出块追加到内存环形缓冲区并持久化到磁盘。
+   * 当环形缓冲区超过 `MAX_OUTPUT_BYTES` 时丢弃最旧的块以限制内存使用。
+   * 持久化写入通过 `outputWriteQueue` 序列化以保持顺序。
+   */
   private appendOutput(entry: ManagedTask, chunk: string): void {
     entry.outputSizeBytes += Buffer.byteLength(chunk, 'utf-8');
     entry.outputChunks.push(chunk);
-    // Enforce output cap: drop oldest chunks when over budget.
+    // 强制输出上限：超出容量时丢弃最旧的块。
     let total = entry.outputChunks.reduce((s, c) => s + c.length, 0);
     while (total > MAX_OUTPUT_BYTES && entry.outputChunks.length > 1) {
       const removed = entry.outputChunks.shift();
@@ -622,6 +682,10 @@ export class BackgroundManager {
     });
   }
 
+  /**
+   * 将通知标记为已投递，以避免在下次对账或会话恢复时重复注入。
+   * 在 Agent 上下文成功消费通知内容后调用。
+   */
   markDeliveredNotification(origin: BackgroundTaskOrigin): void {
     this.deliveredNotificationKeys.add(notificationKey(origin));
   }
@@ -633,6 +697,14 @@ export class BackgroundManager {
     );
   }
 
+  /**
+   * 将任务转换为终端状态。对大多数状态幂等，
+   * 但允许第二次 `'killed'` 结算更新 `endedAt`，
+   * 以便与自然退出竞争的 `stop()` 调用获得单调时间戳。
+   * 持久化新状态，触发终端效应，并唤醒等待者。
+   *
+   * @returns 若任务刚结算返回 `true`，若已到达终端状态返回 `false`。
+   */
   private async settleTask(
     entry: ManagedTask,
     settlement: BackgroundTaskSettlement,
@@ -656,6 +728,10 @@ export class BackgroundManager {
     return true;
   }
 
+  /**
+   * 从活跃的 managed task 构建完整的 {@link BackgroundTaskInfo} 快照，
+   * 通过将基础字段与具体任务的 `toInfo()` 输出组合。
+   */
   private toInfo(entry: ManagedTask): BackgroundTaskInfo {
     const base: BackgroundTaskInfoBase = {
       taskId: entry.taskId,
@@ -675,6 +751,7 @@ function notificationKey(origin: BackgroundTaskOrigin): string {
   return `${origin.taskId}\0${origin.status}\0${origin.notificationId}`;
 }
 
+/** 为终端任务构建可读的通知正文。对 Agent 任务包含恢复说明。 */
 function buildBackgroundTaskNotificationBody(info: BackgroundTaskInfo): string {
   const baseLine =
     info.status === 'timed_out'

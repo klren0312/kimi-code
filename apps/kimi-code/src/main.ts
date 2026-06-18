@@ -113,6 +113,7 @@ const MIGRATE_CLI_OPTIONS: CLIOptions = {
   outputFormat: undefined,
   prompt: undefined,
   skillsDirs: [],
+  logLlm: false,
 };
 
 export function main(): void {

@@ -127,7 +127,7 @@ export class SessionEventHandler {
     });
   }
 
-  // Runtime state – owned by this handler, reset between sessions.
+  // 运行时状态——由本 handler 拥有，会话切换时重置。
   backgroundTasks: Map<string, BackgroundTaskInfo> = new Map();
   backgroundTaskTranscriptedTerminal: Set<string> = new Set();
 
@@ -282,7 +282,7 @@ export class SessionEventHandler {
   }
 
   // ---------------------------------------------------------------------------
-  // Private handlers
+  // 私有处理方法
   // ---------------------------------------------------------------------------
 
   private handleTurnBegin(_event: TurnStartedEvent): void {
@@ -602,10 +602,8 @@ export class SessionEventHandler {
     if (change === undefined) return;
     const { state } = this.host;
 
-    // Completion -> the box disappears (snapshot cleared on the follow-up null
-    // update) and a deterministic completion message lands in the transcript.
-    // Resume renders the same text from the durable goal completion replay
-    // record, so live and replayed completion cards stay identical.
+    // 完成 -> 目标框消失（在后续的 null 更新中清除快照），并在对话记录中生成确定性的完成消息。
+    // 恢复时从持久化的目标完成回放记录中渲染相同的文本，确保实时和回放的完成卡片保持一致。
     if (change.kind === 'completion' && event.snapshot !== null) {
       this.pendingModelBlockedFallback = undefined;
       this.goalCompletionAwaitingClear = true;
@@ -620,8 +618,7 @@ export class SessionEventHandler {
       return;
     }
 
-    // Lifecycle change (pause / resume / blocked) -> a low-profile,
-    // ctrl+o-expandable marker.
+    // 生命周期变更（暂停 / 恢复 / 阻塞）-> 一个低调的、可通过 ctrl+o 展开的标记。
     if (change.kind === 'lifecycle' && change.status === 'blocked') {
       void this.notifyQueuedGoalWaitingOnBlocked();
       if (change.actor === 'model' || change.reason === undefined) {
@@ -961,7 +958,7 @@ export class SessionEventHandler {
   }
 
   // ---------------------------------------------------------------------------
-  // Background task lifecycle
+  // 后台任务生命周期
   // ---------------------------------------------------------------------------
 
   private handleBackgroundTaskEvent(
@@ -998,10 +995,9 @@ export class SessionEventHandler {
 
     if (event.type === 'background.task.terminated' && isTerminal) {
       if (info.kind === 'agent') {
-        // The Agent tool's spawn-success ToolResult is not an error, so the
-        // parent toolCall card would otherwise render `✓ Completed` for any
-        // terminated bg agent — including `lost` / `failed` / `killed`.
-        // Push the actual terminal status so the card matches reality.
+        // Agent 工具的 spawn-success ToolResult 不是错误，因此父级 toolCall 卡片
+        // 会为所有已终止的后台 agent（包括 `lost` / `failed` / `killed`）显示 `✓ Completed`。
+        // 推送实际的终端状态，使卡片与实际情况一致。
         this.host.streamingUI.applyBackgroundTaskTerminalStatus({
           agentId: info.agentId,
           description: info.description,

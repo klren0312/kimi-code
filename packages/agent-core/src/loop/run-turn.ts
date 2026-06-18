@@ -1,9 +1,9 @@
 /**
- * Turn-level loop for a stateless agent run.
+ * 无状态 Agent 运行的轮次级循环。
  *
- * Owns convergence across steps: abort checks at loop boundaries, max-step
- * enforcement, usage aggregation, optional continuation after non-tool stops,
- * and final `TurnResult` mapping. One-step execution lives in `turn-step.ts`.
+ * 负责跨步骤的收敛：循环边界处的中止检查、最大步数限制、
+ * 用量聚合、非工具停止后的可选继续，以及最终的 `TurnResult` 映射。
+ * 单步执行逻辑位于 `turn-step.ts`。
  */
 
 import { addUsage, emptyUsage, type TokenUsage } from '@moonshot-ai/kosong';
@@ -61,7 +61,7 @@ export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
   } = input;
   let usage: TokenUsage = emptyUsage();
   let steps = 0;
-  // Normal exits overwrite this with the completed step's stop reason.
+  // 正常退出时用已完成步骤的停止原因覆盖此值。
   let stopReason: LoopTurnStopReason = 'end_turn';
   let activeStep: number | undefined;
   const recordStepUsage = async (

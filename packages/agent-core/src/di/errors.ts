@@ -1,31 +1,28 @@
 /**
- * Errors raised by the DI subsystem.
+ * DI 子系统抛出的错误。
  */
 
 import type { Graph } from './graph';
 
 /**
- * Thrown when the container detects a cycle in the dependency graph.
+ * 当容器检测到依赖图中存在循环时抛出。
  *
- * Two construction forms are supported:
+ * 支持两种构造形式：
  *
- *  1. **`path: string[]` form** — used by the linear `_inProgress`
- *     tree-stack check inside `_getOrCreateInstance`. This was the only form
- *     stack check. The path is the construction stack at the moment the
- *     cycle was detected, in construction order (root → ... → repeated-id).
- *     The repeated id appears at both ends so the cycle is visually obvious.
+ *  1. **`path: string[]` 形式** — 用于 `_getOrCreateInstance` 内部的线性
+ *     `_inProgress` 树栈检查。这是最初的栈检查形式。path 是检测到循环时的
+ *     构造栈，按构造顺序排列（根 → ... → 重复的 id）。
+ *     重复的 id 出现在两端，使循环一目了然。
  *
- *  2. **`Graph<any>` form** — used by the Graph-based
- *     `_createAndCacheServiceInstance`. The path is computed lazily via
- *     `graph.findCycleSlow()` when the message is built. If the cycle finder
- *     returns `undefined` we fall back to dumping the entire graph so the
- *     failure is still diagnosable.
+ *  2. **`Graph<any>` 形式** — 用于基于图的
+ *     `_createAndCacheServiceInstance`。path 通过 `graph.findCycleSlow()`
+ *     延迟计算。如果循环查找器返回 `undefined`，则回退为转储整个图，
+ *     以便仍然可以诊断故障。
  *
- * Both forms expose `path: ReadonlyArray<string>` so existing call sites
- * (and tests) keep working. For the Graph form the `path` array is
- * `[graph.findCycleSlow()]` split on `' -> '` so the same structural data
- * is available; this avoids forcing callers to branch on which form built
- * the error.
+ * 两种形式都暴露 `path: ReadonlyArray<string>`，因此现有的调用点（和测试）
+ * 继续正常工作。对于 Graph 形式，`path` 数组是 `[graph.findCycleSlow()]`
+ * 按 `' -> '` 分割的结果，这样相同的数据结构就可用了；这避免了强制调用方
+ * 根据构建错误的形式进行分支判断。
  */
 export class CyclicDependencyError extends Error {
   readonly path: ReadonlyArray<string>;
@@ -42,8 +39,8 @@ export class CyclicDependencyError extends Error {
       const cycle = graph.findCycleSlow();
       const detail = cycle ?? `UNABLE to detect cycle, dumping graph:\n${graph.toString()}`;
       super(`cyclic dependency between services: ${detail}`);
-      // Provide a structured path for callers that read `.path` directly.
-      // `findCycleSlow` formats as `A -> B -> A`; split it back into segments.
+      // 为直接读取 `.path` 的调用方提供结构化的路径。
+      // `findCycleSlow` 格式为 `A -> B -> A`；将其拆分为各个段。
       this.path = cycle ? cycle.split(' -> ') : [];
     }
     this.name = 'CyclicDependencyError';

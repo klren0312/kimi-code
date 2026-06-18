@@ -1,20 +1,19 @@
 /**
- * Stateful execution scheduler for tool calls in one model step.
+ * 单个模型步骤中工具调用的有状态执行调度器。
  *
- * The scheduler owns only execution ordering:
- *   - tasks with non-conflicting resource accesses may overlap
- *   - tasks with conflicting resource accesses wait for the conflicting active tasks
- *   - drained results are handed back in provider order
+ * 调度器仅负责执行顺序：
+ *   - 资源访问不冲突的任务可以重叠执行
+ *   - 资源访问冲突的任务等待冲突的活动任务完成
+ *   - 完成的结果按提供者顺序返回
  *
- * Validation, hooks, event construction, and result finalization stay in
- * `tool-call.ts`.
+ * 验证、钩子、事件构建和结果终结保留在 `tool-call.ts` 中。
  */
 
 import { createControlledPromise, type ControlledPromise } from '@antfu/utils';
 
 import { ToolAccesses } from './tool-access';
 
-// Scheduler
+// 调度器
 
 export interface ToolCallTask<Result> {
   readonly accesses: ToolAccesses;

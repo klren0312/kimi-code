@@ -10,14 +10,13 @@ import { KimiError } from './classes';
 import { ErrorCodes, KIMI_ERROR_INFO, type KimiErrorCode } from './codes';
 
 /**
- * Wire-safe payload of a Kimi error.
+ * Kimi 错误的 wire 安全载荷。
  *
- * The structure passed across process / language boundaries (RPC, events,
- * telemetry, SDK wrappers). Class identity does not survive the boundary;
- * downstream code must branch on `code` rather than `instanceof`.
+ * 跨进程/语言边界传递的结构（RPC、事件、遥测、SDK 包装器）。
+ * 类标识不会跨越边界；下游代码必须基于 `code` 而非 `instanceof` 进行分支判断。
  *
- * `details` is JSON-serialized. `cause` is intentionally absent -- it is
- * local-only diagnostic state and must not cross the boundary.
+ * `details` 是 JSON 序列化的。`cause` 故意缺失——它是仅本地的诊断状态，
+ * 不应跨越边界。
  */
 export interface KimiErrorPayload {
   readonly code: KimiErrorCode;
@@ -27,16 +26,15 @@ export interface KimiErrorPayload {
   readonly retryable: boolean;
 }
 
-/** Type guard for KimiError. */
+/** KimiError 的类型守卫。 */
 export function isKimiError(error: unknown): error is KimiError {
   return error instanceof KimiError;
 }
 
 /**
- * Build a KimiErrorPayload directly from a code + message (no Error instance
- * needed). Use this for synthetic error events that are signaled, not thrown
- * -- e.g. "turn busy" or "compaction failed". `retryable` is filled from
- * KIMI_ERROR_INFO so callers cannot drift out of sync with the registry.
+ * 直接从 code + message 构建 KimiErrorPayload（不需要 Error 实例）。
+ * 用于信号传递而非抛出的合成错误事件——例如 "turn busy" 或 "compaction failed"。
+ * `retryable` 从 KIMI_ERROR_INFO 填充，确保调用方不会与注册表失步。
  */
 export function makeErrorPayload(
   code: KimiErrorCode,
@@ -53,16 +51,15 @@ export function makeErrorPayload(
 }
 
 /**
- * Normalize any value into a KimiErrorPayload.
+ * 将任意值规范化为 KimiErrorPayload。
  *
- * Recognized errors:
- * - `KimiError`: passthrough.
- * - `APIStatusError`: 429 -> rate_limit, 401 -> auth_error, otherwise -> api_error.
- * - `APIConnectionError` / `APITimeoutError`: connection_error.
- * - `ChatProviderError`: api_error.
+ * 已识别的错误类型：
+ * - `KimiError`：直接透传。
+ * - `APIStatusError`：429 -> rate_limit，401 -> auth_error，其他 -> api_error。
+ * - `APIConnectionError` / `APITimeoutError`：connection_error。
+ * - `ChatProviderError`：api_error。
  *
- * Anything else collapses to `internal`. We never echo `cause` or stack on
- * the wire.
+ * 其他任何值都归为 `internal`。我们永远不会在 wire 上回显 `cause` 或堆栈。
  */
 export function toKimiErrorPayload(error: unknown): KimiErrorPayload {
   if (isKimiError(error)) {
@@ -142,9 +139,9 @@ export function toKimiErrorPayload(error: unknown): KimiErrorPayload {
 }
 
 /**
- * Rehydrate a KimiErrorPayload into a KimiError. Used by SDK boundary code
- * receiving errors over RPC to re-surface them with a real class so
- * in-process consumers can still use `instanceof`.
+ * 将 KimiErrorPayload 重新水化为 KimiError。由 SDK 边界代码使用，
+ * 接收通过 RPC 传来的错误后，以真实类的形式重新暴露它们，
+ * 使进程内消费者仍然可以使用 `instanceof`。
  */
 export function fromKimiErrorPayload(payload: KimiErrorPayload): KimiError {
   return new KimiError(payload.code, payload.message, {

@@ -1,19 +1,14 @@
 /**
- * ApprovalPreviewViewer — full-screen preview of an Edit diff or Write
- * file content for the approval flow.
+ * ApprovalPreviewViewer —— 审批流程中 Edit diff 或 Write 文件内容的全屏预览。
  *
- * Mounted by `kimi-tui.ts` via the same nested-takeover pattern as
- * `TaskOutputViewer`: the active approval panel is preserved underneath
- * and restored on close. The viewer is intentionally a snapshot — its
- * lines are rendered once at construction and only sliced on scroll, so
- * the per-frame render cost stays in `O(viewport)` even when the
- * underlying diff/content is very large.
+ * 由 `kimi-tui.ts` 通过与 `TaskOutputViewer` 相同的嵌套接管模式挂载：
+ * 当前活动的审批面板被保留在下方，关闭预览后恢复。查看器是快照式的 ——
+ * 其行在构造时渲染一次，滚动时只做切片操作，因此每帧渲染成本保持在
+ * `O(viewport)`，即使底层 diff/内容非常大也是如此。
  *
- * This avoids the prior failure mode where pressing ctrl+e on an Edit
- * with a long hunk inflated the approval panel past one screen, which
- * collided with pi-tui's inline differential renderer and the terminal
- * emulator's "snap to bottom on stdout" reflex, causing flicker and an
- * unscrollable history pane.
+ * 这避免了之前的问题：在包含长 hunk 的 Edit 上按 ctrl+e 会使审批面板
+ * 膨胀超过一屏，与 pi-tui 的内联差异渲染器和终端模拟器的
+ * "输出到 stdout 时自动滚动到底部"行为产生冲突，导致闪烁和不可滚动的历史面板。
  */
 
 import {
@@ -41,6 +36,7 @@ export interface ApprovalPreviewViewerProps {
   readonly onClose: () => void;
 }
 
+/** 将行填充到指定宽度，超出时截断。 */
 function padToWidth(line: string, width: number): string {
   const w = visibleWidth(line);
   if (w === width) return line;
@@ -48,6 +44,7 @@ function padToWidth(line: string, width: number): string {
   return line + ' '.repeat(width - w);
 }
 
+/** 精确适配到指定宽度：先截断再填充。 */
 function fitExactly(line: string, width: number): string {
   let s = line;
   if (visibleWidth(s) > width) s = truncateToWidth(s, width, ELLIPSIS);
@@ -59,11 +56,11 @@ export class ApprovalPreviewViewer extends Container implements Focusable {
 
   private readonly props: ApprovalPreviewViewerProps;
   private readonly terminal: Terminal;
-  /** Pre-rendered body lines (ANSI-styled, no border / no gutter). */
+  /** 预渲染的正文行（ANSI 样式，无边框/无装订线）。 */
   private bodyLines: string[];
-  /** Title shown in the header (path + diff stats / "Write" label). */
+  /** 标题栏中显示的标题（路径 + diff 统计 / "Write" 标签）。 */
   private headerTitle: string;
-  /** Index of the topmost visible line. */
+  /** 顶部可见行的索引。 */
   private scrollTop = 0;
 
   constructor(props: ApprovalPreviewViewerProps, terminal: Terminal) {
@@ -133,7 +130,7 @@ export class ApprovalPreviewViewer extends Container implements Focusable {
     return Math.max(0, this.bodyLines.length - this.viewableRows());
   }
 
-  /** Body rows = terminal rows − header(1) − top border(1) − bottom border(1) − footer(1). */
+  /** 正文行数 = 终端行数 − 标题栏(1) − 上边框(1) − 下边框(1) − 底栏(1)。 */
   private viewableRows(): number {
     return Math.max(1, this.terminal.rows - 4);
   }
@@ -210,6 +207,7 @@ interface BuiltBody {
   title: string;
 }
 
+/** 根据展示块类型构建正文内容。 */
 function buildBody(block: ApprovalPreviewBlock): BuiltBody {
   if (block.type === 'diff') {
     return buildDiffBody(block);
@@ -217,11 +215,11 @@ function buildBody(block: ApprovalPreviewBlock): BuiltBody {
   return buildFileContentBody(block);
 }
 
+/** 构建 diff 正文：将首行标题提取到查看器 chrome 中，正文为纯可滚动的 diff 内容。 */
 function buildDiffBody(block: DiffDisplayBlock): BuiltBody {
-  // renderDiffLines emits a `+N -M path` header on its first line followed
-  // by every changed line. We pull the header out into the viewer chrome so
-  // the body is purely scrollable diff content; this also means we don't
-  // double-render the path.
+  // renderDiffLines 输出 `+N -M path` 标题行作为首行，后面是所有变更行。
+  // 我们将标题提取到查看器的 chrome 中，使正文为纯可滚动的 diff 内容；
+  // 这也意味着我们不会重复渲染路径。
   const rendered = renderDiffLines(
     block.old_text,
     block.new_text,
@@ -234,6 +232,7 @@ function buildDiffBody(block: DiffDisplayBlock): BuiltBody {
   return { lines: rest, title: stripLeadingSpace(header) };
 }
 
+/** 构建文件内容正文：带行号高亮显示。 */
 function buildFileContentBody(block: FileContentDisplayBlock): BuiltBody {
   const lang = block.language ?? langFromPath(block.path);
   const highlighted = highlightLines(block.content, lang);
@@ -244,6 +243,7 @@ function buildFileContentBody(block: FileContentDisplayBlock): BuiltBody {
   return { lines, title };
 }
 
+/** 去除字符串开头的空格。 */
 function stripLeadingSpace(s: string): string {
   return s.replace(/^ +/, '');
 }

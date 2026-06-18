@@ -1,5 +1,5 @@
 /**
- * SessionPicker — pi-tui version of the session selection dialog.
+ * SessionPicker — 会话选择对话框的 pi-tui 版本。
  */
 
 import {
@@ -27,8 +27,8 @@ export interface SessionRow {
 const ELLIPSIS = '…';
 
 function formatRelativeTime(ts: number): string {
-  // SessionSummary timestamps come from filesystem stat `*timeMs`,
-  // so they use the same millisecond unit as `Date.now()`.
+  // SessionSummary 时间戳来自文件系统 stat 的 `*timeMs`，
+  // 因此使用与 `Date.now()` 相同的毫秒单位。
   if (!Number.isFinite(ts) || ts <= 0) return '';
   const diffSec = Math.floor(Math.max(0, Date.now() - ts) / 1000);
   if (diffSec < 60) return 'just now';
@@ -46,18 +46,17 @@ function homeAlias(path: string): string {
   return path;
 }
 
-// Truncates from the LEFT (keeps the tail), prefixing an ellipsis when clipped.
-// Paths typically carry the relevant info near the end, so we drop the prefix.
+// 从左侧截断（保留尾部），截断时添加省略号前缀。
+// 路径的关键信息通常在末尾，因此丢弃前缀部分。
 function truncatePathLeft(path: string, maxWidth: number): string {
   if (maxWidth <= 0) return '';
   if (visibleWidth(path) <= maxWidth) return path;
   if (maxWidth === 1) return ELLIPSIS;
-  // Walk graphemes from the end accumulating width, keep the longest tail
-  // whose width + ellipsis fits.
+  // 从末尾逐字素累加宽度，保留宽度加上省略号能放得下的最长尾部。
   const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
   const segments = [...segmenter.segment(path)].map((s) => s.segment);
   let used = 0;
-  const budget = maxWidth - 1; // reserve 1 column for ellipsis
+  const budget = maxWidth - 1; // 为省略号预留 1 列
   let i = segments.length - 1;
   while (i >= 0) {
     const seg = segments[i];
@@ -198,12 +197,11 @@ export class SessionPickerComponent extends Container implements Focusable {
     return this.renderLines(width).map((line) => truncateToWidth(line, width, ELLIPSIS));
   }
 
-  // Builds the raw lines; `render()` applies a final width clamp so no line
-  // can ever exceed the terminal width. The per-line budgets below keep the
-  // layout tidy at normal widths, but on a very narrow terminal those budgets
-  // floor at a minimum and the trailing time/badge are appended in full, so
-  // the clamp in `render()` is what guarantees the renderer's invariant and
-  // prevents the "Rendered line exceeds terminal width" crash (issue #240).
+  // 构建原始行；`render()` 应用最终的宽度截断，确保没有任何行
+  // 超过终端宽度。下面的逐行预算在正常宽度下保持布局整洁，但在
+  // 非常窄的终端上，这些预算下限取最小值，尾部的时间/徽标会完整
+  // 追加，因此 `render()` 中的截断是保证渲染器不变量、防止
+  // "Rendered line exceeds terminal width" 崩溃的关键（issue #240）。
   private renderLines(width: number): string[] {
     const lines: string[] = [currentTheme.fg('primary', '─'.repeat(width))];
     const title = this.scope === 'all' ? 'All sessions' : 'Sessions';
@@ -321,7 +319,7 @@ export class SessionPickerComponent extends Container implements Focusable {
     const rawTitle = (session.title ?? session.id).trim() || session.id;
     const titleSource = formatSessionLabel({ title: rawTitle, metadata: session.metadata });
 
-    // Inline trailing parts after the title: "<title>  <time>  ← current".
+    // 标题后的行内尾部部分："<title>  <time>  ← current"。
     const trailingParts = [time, badge].filter((p) => p.length > 0);
     const trailingText = trailingParts.length > 0 ? '  ' + trailingParts.join('  ') : '';
     const trailingWidth = visibleWidth(trailingText);
@@ -335,9 +333,9 @@ export class SessionPickerComponent extends Container implements Focusable {
     if (badge.length > 0) header += '  ' + currentTheme.fg('success', badge);
     const card: string[] = [header];
 
-    // Session id is rendered in full at normal widths (the final clamp in
-    // `render()` truncates it only when the terminal is narrower than the id).
-    // The directory wraps to its own line if it would push past the edge.
+    // Session id 在正常宽度下完整渲染（`render()` 中的最终截断仅在
+    // 终端宽度小于 id 宽度时才生效）。
+    // 如果目录路径会导致行溢出，则换到下一行显示。
     const fullId = session.id;
     const idWidth = visibleWidth(fullId);
     const metaGap = '   ';
@@ -354,8 +352,8 @@ export class SessionPickerComponent extends Container implements Focusable {
           currentTheme.fg('textMuted', aliasedDir),
       );
     } else {
-      // Not enough room for both on one line — keep the id intact and put the
-      // directory on the next line (left-truncated only if it still doesn't fit).
+      // 空间不足以在一行显示两者——保持 id 完整，将目录放到下一行
+      // （仅在仍放不下时才进行左侧截断）。
       card.push(
         indent +
           currentTheme.fg(

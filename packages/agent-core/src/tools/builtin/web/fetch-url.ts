@@ -1,9 +1,8 @@
 /**
- * FetchURLTool — host-injected URL fetcher.
+ * FetchURLTool — 宿主注入的 URL 获取器。
  *
- * kimi-core defines the interface; the host provides the real fetch
- * implementation via `UrlFetcher`. If no fetcher is supplied, the tool
- * should not be registered (not exposed to the LLM).
+ * kimi-core 定义接口；宿主通过 `UrlFetcher` 提供实际的 fetch 实现。
+ * 若未提供 fetcher，不应注册此工具（不暴露给 LLM）。
  */
 
 import { z } from 'zod';
@@ -16,22 +15,20 @@ import { literalRulePattern, matchesGlobRuleSubject } from '../../support/rule-m
 import { ToolResultBuilder } from '../../support/result-builder';
 import DESCRIPTION from './fetch-url.md?raw';
 
-// ── Provider interface (host-injected) ───────────────────────────────
+// ── 提供者接口（宿主注入） ───────────────────────────────
 
 /**
- * How the returned content relates to the original response body.
+ * 返回内容与原始响应体的关系。
  *
- * - `passthrough` — the body was already plain text / markdown and is
- *   returned verbatim, in full.
- * - `extracted` — the body was an HTML page; only the main article text
- *   was extracted and returned.
+ * - `passthrough` — 响应体已是纯文本 / markdown，原样完整返回。
+ * - `extracted` — 响应体是 HTML 页面；仅提取并返回主要文章文本。
  */
 export type UrlFetchKind = 'passthrough' | 'extracted';
 
 export interface UrlFetchResult {
-  /** The text handed to the LLM. */
+  /** 传递给 LLM 的文本。 */
   content: string;
-  /** Whether `content` is a verbatim passthrough or extracted main text. */
+  /** `content` 是原样透传还是已提取的主体文本。 */
   kind: UrlFetchKind;
 }
 
@@ -40,10 +37,9 @@ export interface UrlFetcher {
 }
 
 /**
- * Thrown by a `UrlFetcher` when the upstream HTTP request completed but
- * returned a non-success status. The tool branches on this to surface
- * `Status: N` in the error message; non-HTTP failures (DNS, timeout,
- * connection reset, …) keep flowing through as plain `Error`.
+ * 当上游 HTTP 请求已完成但返回非成功状态时，由 `UrlFetcher` 抛出。
+ * 工具据此分支在错误消息中展示 `Status: N`；非 HTTP 失败（DNS、超时、
+ * 连接重置等）继续作为普通 `Error` 传递。
  */
 export class HttpFetchError extends Error {
   override readonly name = 'HttpFetchError';
@@ -54,7 +50,7 @@ export class HttpFetchError extends Error {
   }
 }
 
-// ── Input schema ─────────────────────────────────────────────────────
+// ── 输入 schema ─────────────────────────────────────────────────────
 
 export const FetchURLInputSchema = z.object({
   url: z.string().describe('The URL to fetch content from.'),
@@ -62,7 +58,7 @@ export const FetchURLInputSchema = z.object({
 
 export type FetchURLInput = z.Infer<typeof FetchURLInputSchema>;
 
-// ── Implementation ───────────────────────────────────────────────────
+// ── 实现 ───────────────────────────────────────────────────
 
 export class FetchURLTool implements BuiltinTool<FetchURLInput> {
   readonly name = 'FetchURL' as const;
@@ -100,9 +96,8 @@ export class FetchURLTool implements BuiltinTool<FetchURLInput> {
 
       const builder = new ToolResultBuilder({ maxLineLength: null });
       builder.write(content);
-      // Tell the LLM whether it received the whole body or only the
-      // extracted article text, so it can judge how complete the
-      // content is.
+      // 告知 LLM 它收到的是完整响应体还是仅提取的文章文本，
+      // 以便判断内容的完整程度。
       const message =
         kind === 'passthrough'
           ? 'The returned content is the full response body, returned verbatim.'

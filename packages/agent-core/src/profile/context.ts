@@ -41,14 +41,14 @@ export async function loadAgentsMd(kaos: Kaos, brandHome?: string): Promise<stri
     return true;
   };
 
-  // User-level files come first so any project-level AGENTS.md overrides them.
-  // The brand dir follows KIMI_CODE_HOME (default ~/.kimi-code); the generic
-  // .agents dir stays under the real OS home so it can be shared across tools.
+  // 用户级文件优先，以便项目级 AGENTS.md 可以覆盖它们。
+  // 品牌目录遵循 KIMI_CODE_HOME（默认 ~/.kimi-code）；通用
+  // .agents 目录保留在真实 OS 主目录下，以便跨工具共享。
   const realHome = kaos.gethome();
   const brandDir = brandHome ?? join(realHome, '.kimi-code');
   await collect(join(brandDir, 'AGENTS.md'));
 
-  // Generic user-level dir (.agents) matches skill discovery.
+  // 通用用户级目录（.agents）匹配技能发现。
   const genericDirs = [join(realHome, '.agents')];
   const genericFiles = genericDirs.flatMap((dir) =>
     ['AGENTS.md', 'agents.md'].map((name) => join(dir, name)),
