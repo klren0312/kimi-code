@@ -569,28 +569,10 @@ export function logLlmResponse(res: LlmCommunicationResponse): void {
 // ============================================================================
 
 /**
- * Load the HTML page for the web viewer from the external file.
- * The HTML file is located in the same directory as this TypeScript file.
+ * Import the HTML page for the web viewer using the raw-text loader.
+ * This ensures the HTML content is embedded in the bundle at build time.
  */
-function loadHtmlPage(): string {
-  const htmlPath = join(import.meta.dirname, 'llm-viewer.html');
-  try {
-    return readFileSync(htmlPath, 'utf-8');
-  } catch {
-    // Fallback: minimal HTML if file not found
-    return '<html><body><h1>Error: llm-viewer.html not found</h1></body></html>';
-  }
-}
-
-/** Cached HTML page content */
-let htmlPageCache: string | null = null;
-
-function getHtmlPage(): string {
-  if (htmlPageCache === null) {
-    htmlPageCache = loadHtmlPage();
-  }
-  return htmlPageCache;
-}
+import HTML_PAGE from './llm-viewer.html?raw';
 
 // ============================================================================
 // HTTP Server
@@ -673,7 +655,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
   // HTML page for the web viewer
   if (url.pathname === '/' || url.pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(getHtmlPage());
+    res.end(HTML_PAGE);
     return;
   }
 
