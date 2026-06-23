@@ -1,106 +1,121 @@
 /*
- * Configuration file for Kimi Code Monitor
- * Edit this file to configure your device
+ * Kimi Code Monitor 配置文件
+ * 修改此文件来配置你的设备参数
+ *
+ * 使用说明:
+ *   1. 修改 WIFI_SSID 和 WIFI_PASSWORD 为你的 WiFi 信息
+ *   2. 修改 SERVER_HOST 为你电脑的局域网 IP 地址
+ *   3. 其他参数一般无需修改
  */
 
 #ifndef CONFIG_H
 #define CONFIG_H
 
 // ============================================================================
-// WiFi Configuration
+// WiFi 配置
 // ============================================================================
 
-// Your WiFi network credentials
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// WiFi 热点名称和密码
+#define WIFI_SSID "openwrt"
+#define WIFI_PASSWORD "QWERqwer1234!"
 
-// WiFi connection timeout (ms)
+// WiFi 连接超时时间（毫秒），超时后会报告连接失败
 #define WIFI_TIMEOUT_MS 30000
 
-// WiFi reconnect interval (ms)
+// WiFi 断线后重连间隔（毫秒）
 #define WIFI_RECONNECT_MS 10000
 
 // ============================================================================
-// Server Configuration
+// 服务器配置
 // ============================================================================
 
-// Kimi Code Log Server IP address
-// This should be your computer's local IP address
-#define SERVER_HOST "192.168.1.100"
+// Kimi Code 日志服务器的 IP 地址
+// 填写你电脑在局域网中的 IP（运行 kimi-code 的机器）
+#define SERVER_HOST "192.168.5.40"
 
-// Server port (default: 9877)
+// 服务器端口（默认 9877，与 kimi-code 的 --sse-port 参数一致）
 #define SERVER_PORT 9877
 
-// SSE reconnect interval (ms)
+// SSE 断线后重连间隔（毫秒）
 #define SSE_RECONNECT_MS 5000
 
-// HTTP request timeout (ms)
+// HTTP 请求超时时间（毫秒），用于审批提交等 POST 请求
 #define HTTP_TIMEOUT_MS 5000
 
 // ============================================================================
-// Display Configuration
+// 显示配置
 // ============================================================================
 
-// Display rotation (0-3)
-// 0: Portrait
-// 1: Landscape
-// 2: Portrait (flipped)
-// 3: Landscape (flipped)
+// 屏幕旋转方向 (0-3)
+//   0: 竖屏（正常）
+//   1: 横屏（90° 顺时针）← 推荐
+//   2: 竖屏（翻转 180°）
+//   3: 横屏（270° 顺时针）
 #define DISPLAY_ROTATION 1
 
-// Maximum log lines to keep in buffer
+// 日志缓冲区最大条数（环形队列，满了会丢弃最旧的）
 #define MAX_LOG_LINES 20
 
-// Display refresh interval (ms)
+// 显示刷新基准间隔（毫秒），用于计算最小刷新间隔
 #define DISPLAY_REFRESH_MS 100
 
-// Log line height (pixels)
-#define LOG_LINE_HEIGHT 16
+// 墨水屏最小刷新间隔（毫秒）
+// 墨水屏全刷需要 ~300ms，设置太小会导致闪烁
+// 只有当 displayDirty=true 且距上次刷新超过此间隔时才会更新屏幕
+#define DISPLAY_MIN_REFRESH_MS 500
 
-// Status bar height (pixels)
-#define STATUS_BAR_HEIGHT 24
+// 全局刷新间隔: 每做 N 次快速局部刷新后，做一次全刷清残影
+// 局部刷新速度快不闪烁，但多次后会累积残影；全刷闪一次但画面干净
+// 设为 0 则每次都全刷（不推荐）
+#define FULL_REFRESH_EVERY 10
 
-// Footer height (pixels)
-#define FOOTER_HEIGHT 20
+// 日志每行高度（像素），需匹配 textSize(2) 的字号（约 16px 高）
+#define LOG_LINE_HEIGHT 20
+
+// 顶部状态栏高度（像素），需容纳 textSize(2)
+#define STATUS_BAR_HEIGHT 32
+
+// 底部提示栏高度（像素），需容纳 textSize(2)
+#define FOOTER_HEIGHT 28
 
 // ============================================================================
-// Approval Configuration
+// 审批配置
 // ============================================================================
 
-// Auto-approve all requests (for testing only!)
-// WARNING: Do not enable in production!
+// 自动批准所有审批请求（仅用于测试！）
+// 警告: 生产环境请勿开启！
 #define AUTO_APPROVE false
 
-// Auto-approve for session (requires AUTO_APPROVE=true)
+// 自动批准范围为会话级（需要 AUTO_APPROVE=true 才生效）
 #define AUTO_APPROVE_SESSION false
 
-// Approval timeout (ms) - 0 to disable
+// 审批超时时间（毫秒），0 表示不超时
 #define APPROVAL_TIMEOUT_MS 0
 
 // ============================================================================
-// Debug Configuration
+// 调试配置
 // ============================================================================
 
-// Enable serial debug output
+// 是否启用串口调试输出
 #define DEBUG_ENABLED true
 
-// Serial baud rate
+// 串口波特率
 #define DEBUG_BAUD_RATE 115200
 
 // ============================================================================
-// Advanced Configuration
+// 高级配置（一般无需修改）
 // ============================================================================
 
-// SSE buffer size
+// SSE 读取缓冲区大小（字节）
 #define SSE_BUFFER_SIZE 8192
 
-// JSON document size for parsing
+// JSON 解析文档大小（字节），影响能解析的最大 JSON
 #define JSON_DOC_SIZE 8192
 
-// Touch debounce time (ms)
+// 触摸去抖时间（毫秒），防止一次触摸被识别为多次
 #define TOUCH_DEBOUNCE_MS 200
 
-// Button debounce time (ms)
+// 按钮去抖时间（毫秒），防止一次按键被识别为多次
 #define BUTTON_DEBOUNCE_MS 200
 
 #endif // CONFIG_H
