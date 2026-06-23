@@ -76,7 +76,11 @@ export interface BackgroundTaskInfoBase {
   /** 描述此任务功能的简短人类可读标签。 */
   readonly description: string;
   readonly status: BackgroundTaskStatus;
-  /** 任务向管理器注册时的 Unix 时间戳（毫秒）。 */
+  /**
+   * `false` means a tool call is still waiting on this task in the
+   * foreground. Omitted legacy records should be treated as detached.
+   */
+  readonly detached?: boolean;
   readonly startedAt: number;
   /** 任务到达终态时的 Unix 时间戳（毫秒），仍在运行时为 `null`。 */
   readonly endedAt: number | null;
@@ -147,10 +151,7 @@ export interface BackgroundTask {
    * 输出在可用时通过 `sink.appendOutput()` 流式传输。任务应监听 `sink.signal` 以处理取消。
    */
   start(sink: BackgroundTaskSink): void | Promise<void>;
-  /**
-   * 强制终止的升级钩子。当 SIGTERM 宽限期（5 秒）过期且任务仍未结算时，由管理器调用。
-   * 实现应发送 SIGKILL 或等效信号。可选——无法强制停止的任务可以省略此方法。
-   */
+  onDetach?(): void;
   forceStop?(): Promise<void>;
   /**
    * 将特定于类型的字段合并到基础信息快照中。管理器使用预填充的

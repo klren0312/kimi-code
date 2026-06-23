@@ -12,7 +12,7 @@
  */
 
 import type { Agent } from '../..';
-import { isWithinDirectory } from '../../../tools/policies/path-access';
+import { isWithinWorkspace } from '../../../tools/policies/path-access';
 import { findGitWorkTreeMarker } from '../../../tools/support/git-worktree';
 import type { PermissionPolicy, PermissionPolicyContext, PermissionPolicyResult } from '../types';
 import { writeFileAccesses } from './file-access-ask';
@@ -36,7 +36,15 @@ export class GitCwdWriteApprovePermissionPolicy implements PermissionPolicy {
 
     const writeAccesses = writeFileAccesses(context);
     if (writeAccesses.length === 0) return;
-    if (!writeAccesses.every((access) => isWithinDirectory(access.path, cwd, 'posix'))) {
+    if (
+      !writeAccesses.every((access) =>
+        isWithinWorkspace(
+          access.path,
+          { workspaceDir: cwd, additionalDirs: this.agent.getAdditionalDirs() },
+          'posix',
+        ),
+      )
+    ) {
       return;
     }
 

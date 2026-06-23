@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 import {
   CombinedAutocompleteProvider,
@@ -20,28 +20,34 @@ export interface SlashAutocompleteCommand extends SlashCommand {
 
 interface FsMentionCandidate {
   readonly path: string;
+  readonly absolutePath: string;
   readonly isDirectory: boolean;
 }
 
 /**
  * Kimi 对 pi-tui 组合自动补全提供器的包装。
  *
- * 文件/文件夹提及功能在 fd 可用时使用 pi-tui 的 fd 后端提供器。
- * 在托管 fd 下载期间（或不可用时），一个小型文件系统回退
- * 保持基本的 `@` 文件和文件夹补全可用。
- * 普通路径补全仍由 pi-tui 的 readdir 后端路径补全器处理。
- * 此包装器还保留了 Kimi 特有的斜杠命令守卫。
+ * File / folder mention behavior uses pi-tui's fd-backed provider when fd is
+ * available and only the current working directory is involved. While managed fd
+ * is downloading, when it is unavailable, or when the session has additional
+ * roots, a small filesystem fallback keeps `@` file and folder completion usable
+ * across every root. Ordinary path completion is still handled by pi-tui's
+ * readdir-backed path completer. This wrapper also keeps Kimi-specific
+ * slash-command guards.
  */
 export class FileMentionProvider implements AutocompleteProvider {
   private readonly inner: CombinedAutocompleteProvider;
+  private readonly additionalDirs: readonly string[];
 
   constructor(
     private readonly slashCommands: SlashAutocompleteCommand[],
     private readonly workDir: string,
     private readonly fdPath: string | null,
+    additionalDirs: readonly string[] = [],
   ) {
-    // 构建一个包含别名条目的扩展列表，
-    // 使内部的参数补全也能通过别名找到命令。
+    this.additionalDirs = additionalDirs.map((dir) => normalizePath(resolve(workDir, dir)));
+    // Build an expanded list that includes alias entries so that
+    // inner's argument completion can find commands by alias too.
     const expanded: SlashAutocompleteCommand[] = [];
     for (const cmd of slashCommands) {
       expanded.push(cmd);
@@ -77,14 +83,24 @@ export class FileMentionProvider implements AutocompleteProvider {
 
     const atPrefix = extractAtPrefix(textBeforeCursor);
     if (atPrefix !== null) {
-      if (this.fdPath === null) {
-        return getFsMentionSuggestions(this.workDir, atPrefix, options.signal);
+      if (this.fdPath === null || this.additionalDirs.length > 0) {
+        return getFsMentionSuggestions(
+          this.workDir,
+          this.additionalDirs,
+          atPrefix,
+          options.signal,
+        );
       }
       try {
         return await this.inner.getSuggestions(lines, cursorLine, cursorCol, options);
       } catch {
-        // 如果 fd 意外启动失败，保持 @ 补全可用。
-        return getFsMentionSuggestions(this.workDir, atPrefix, options.signal);
+        // If fd fails to spawn unexpectedly, keep @ completion usable.
+        return getFsMentionSuggestions(
+          this.workDir,
+          this.additionalDirs,
+          atPrefix,
+          options.signal,
+        );
       }
     }
 
@@ -147,6 +163,11 @@ export class FileMentionProvider implements AutocompleteProvider {
       }
     }
 
+    const slashArgumentSuggestions = await getSlashArgumentSuggestions(this.slashCommands, textBeforeCursor);
+    if (slashArgumentSuggestions !== null) {
+      return slashArgumentSuggestions;
+    }
+
     try {
       return await this.inner.getSuggestions(lines, cursorLine, cursorCol, options);
     } catch {
@@ -165,7 +186,7 @@ export class FileMentionProvider implements AutocompleteProvider {
   }
 }
 
-function extractAtPrefix(text: string): string | null {
+export function extractAtPrefix(text: string): string | null {
   let tokenStart = 0;
   for (let i = text.length - 1; i >= 0; i -= 1) {
     if (PATH_DELIMITERS.has(text[i] ?? '')) {
@@ -179,13 +200,14 @@ function extractAtPrefix(text: string): string | null {
 
 function getFsMentionSuggestions(
   workDir: string,
+  additionalDirs: readonly string[],
   atPrefix: string,
   signal: AbortSignal,
 ): AutocompleteSuggestions | null {
   if (signal.aborted) return null;
 
   const query = atPrefix.slice(1);
-  const candidates = collectFsMentionCandidates(workDir, signal);
+  const candidates = collectFsMentionCandidates(workDir, additionalDirs, signal);
   if (candidates.length === 0 || signal.aborted) return null;
 
   const ranked = rankFsMentionCandidates(candidates, query).slice(0, MAX_FALLBACK_SUGGESTIONS);
@@ -197,44 +219,69 @@ function getFsMentionSuggestions(
   };
 }
 
-function collectFsMentionCandidates(workDir: string, signal: AbortSignal): FsMentionCandidate[] {
-  const result: FsMentionCandidate[] = [];
-  const stack = [''];
+function collectFsMentionCandidates(
+  workDir: string,
+  additionalDirs: readonly string[],
+  signal: AbortSignal,
+): FsMentionCandidate[] {
+  const candidatesByAbsolutePath = new Map<string, FsMentionCandidate>();
+  const roots = [
+    { root: normalizePath(resolve(workDir)), isAdditionalDir: false },
+    ...additionalDirs.map((dir) => ({
+      root: normalizePath(resolve(workDir, dir)),
+      isAdditionalDir: true,
+    })),
+  ];
+  let scanned = 0;
 
-  while (stack.length > 0 && result.length < MAX_FALLBACK_SCAN) {
-    if (signal.aborted) break;
-    const relativeDir = stack.pop() ?? '';
-    const absoluteDir = relativeDir.length === 0 ? workDir : join(workDir, relativeDir);
-    let entries;
-    try {
-      entries = readdirSync(absoluteDir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+  for (const { root, isAdditionalDir } of roots) {
+    const stack = [''];
 
-    for (const entry of entries) {
-      if (signal.aborted || result.length >= MAX_FALLBACK_SCAN) break;
-      if (entry.name === '.git') continue;
-
-      const relativePath = normalizePath(relativeDir.length === 0 ? entry.name : join(relativeDir, entry.name));
-      const isSymlink = entry.isSymbolicLink();
-      let isDirectory = entry.isDirectory();
-      if (!isDirectory && isSymlink) {
-        try {
-          isDirectory = statSync(join(workDir, relativePath)).isDirectory();
-        } catch {
-          // 损坏的符号链接或权限错误——保持为文件候选。
-        }
+    while (stack.length > 0 && scanned < MAX_FALLBACK_SCAN) {
+      if (signal.aborted) break;
+      const relativeDir = stack.pop() ?? '';
+      const absoluteDir = relativeDir.length === 0 ? root : join(root, relativeDir);
+      let entries;
+      try {
+        entries = readdirSync(absoluteDir, { withFileTypes: true });
+      } catch {
+        continue;
       }
 
-      result.push({ path: relativePath, isDirectory });
-      if (isDirectory && !isSymlink) {
-        stack.push(relativePath);
+      for (const entry of entries) {
+        if (signal.aborted || scanned >= MAX_FALLBACK_SCAN) break;
+        if (entry.name === '.git') continue;
+
+        const relativePath = normalizePath(
+          relativeDir.length === 0 ? entry.name : join(relativeDir, entry.name),
+        );
+        const absolutePath = normalizePath(join(absoluteDir, entry.name));
+        const isSymlink = entry.isSymbolicLink();
+        let isDirectory = entry.isDirectory();
+        if (!isDirectory && isSymlink) {
+          try {
+            isDirectory = statSync(absolutePath).isDirectory();
+          } catch {
+            // Broken symlink or permission error — keep it as a file candidate.
+          }
+        }
+
+        scanned += 1;
+        if (!candidatesByAbsolutePath.has(absolutePath)) {
+          candidatesByAbsolutePath.set(absolutePath, {
+            path: isAdditionalDir ? absolutePath : relativePath,
+            absolutePath,
+            isDirectory,
+          });
+        }
+        if (isDirectory && !isSymlink) {
+          stack.push(relativePath);
+        }
       }
     }
   }
 
-  return result;
+  return [...candidatesByAbsolutePath.values()];
 }
 
 function rankFsMentionCandidates(
@@ -284,12 +331,58 @@ function toMentionItem(candidate: FsMentionCandidate): AutocompleteItem {
   return {
     value,
     label,
-    description: valuePath,
+    description: candidate.absolutePath,
   };
 }
 
 function normalizePath(path: string): string {
   return path.replaceAll('\\', '/');
+}
+
+async function getSlashArgumentSuggestions(
+  slashCommands: readonly SlashAutocompleteCommand[],
+  textBeforeCursor: string,
+): Promise<AutocompleteSuggestions | null> {
+  const parsed = parseSlashArgumentContext(textBeforeCursor, slashCommands);
+  if (parsed === null) return null;
+
+  const items = await parsed.command.getArgumentCompletions?.(parsed.argumentPrefix);
+  if (items === undefined || items === null || items.length === 0) return null;
+
+  return {
+    prefix: parsed.argumentPrefix,
+    items,
+  };
+}
+
+function parseSlashArgumentContext(
+  textBeforeCursor: string,
+  slashCommands: readonly SlashAutocompleteCommand[],
+): { command: SlashAutocompleteCommand; argumentPrefix: string } | null {
+  const whitespaceMatch = textBeforeCursor.match(/^\/(\S+)\s+(\S*)$/);
+  if (whitespaceMatch !== null) {
+    const [, commandName = '', argumentPrefix = ''] = whitespaceMatch;
+    const command = findSlashCommand(slashCommands, commandName);
+    if (command === undefined) return null;
+    if (!textBeforeCursor.endsWith(' ') && argumentPrefix.length === 0) return null;
+    return { command, argumentPrefix };
+  }
+
+  const pathLikeMatch = textBeforeCursor.match(/^\/([^/\s]+)(\/.*)$/);
+  const commandName = pathLikeMatch?.[1];
+  const argumentPrefix = pathLikeMatch?.[2];
+  if (commandName === undefined || argumentPrefix === undefined) return null;
+
+  const command = findSlashCommand(slashCommands, commandName);
+  if (command === undefined) return null;
+  return { command, argumentPrefix };
+}
+
+function findSlashCommand(
+  slashCommands: readonly SlashAutocompleteCommand[],
+  commandName: string,
+): SlashAutocompleteCommand | undefined {
+  return slashCommands.find((cmd) => cmd.name === commandName || (cmd.aliases ?? []).includes(commandName));
 }
 
 function shouldSuppressLeadingWhitespaceSlashPath(

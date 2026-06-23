@@ -6,6 +6,98 @@ outline: 2
 
 This page documents the changes in each Kimi Code CLI release.
 
+## 0.19.1 (2026-06-23)
+
+### Bug Fixes
+
+- Fix ACP editors such as Zed failing to start a new thread.
+- Fix the web sidebar's unread dots getting out of sync across browser tabs.
+- Clear all per-session state when a session is archived or removed, so archived sessions no longer leave orphaned data behind.
+
+### Refactors
+
+- Consolidate web client localStorage access and split the root state store and app shell into focused composables.
+
+## 0.19.0 (2026-06-22)
+
+### Features
+
+- Added the ability to add extra workspace directories:
+  - Use the `/add-dir <path>` command to add extra working directories to the current session, or remember them for the project.
+  - Use `kimi --add-dir <path>` to add them on startup.
+  - Project-level local config is now managed in `.kimi-code/local.toml`; we recommend adding it to your `.gitignore`.
+- Allow long-running foreground commands and subagents to be moved into background tasks with `Ctrl+B`, and inspect them via the `/tasks` panel.
+
+### Bug Fixes
+
+- Surface provider safety-policy blocks instead of silently treating them as completed turns, and prevent the context token count from dropping to zero after a filtered response.
+- Fix provider requests failing when restored conversation history contains empty text content blocks.
+- Detect the real image format from file contents when reading media, so a mismatched filename extension no longer produces a data URL the model API rejects.
+- Fix commands flashing an empty console window on Windows.
+- Stop showing unread dots on cancelled or failed sessions in the web sidebar.
+
+### Polish
+
+- Speed up session snapshot loading with a direct disk reader and a request timeout safeguard, keeping the previous path as a legacy fallback.
+- Show longer branch names in the web chat header and expose the full name on hover.
+- Keep the web page title fixed instead of changing with the session or workspace name.
+- Polish file mention UX.
+
+### Refactors
+
+- Unify image format detection when sniffing fails.
+- Consolidate web client localStorage access and decouple appearance/notification state into dedicated modules.
+
+## 0.18.0 (2026-06-18)
+
+### Features
+
+- Add session filtering to the web sidebar, filtering by title and the last user prompt.
+- Add scroll-up lazy loading for older messages in the web chat session view.
+- Add an environment variable to cap AgentSwarm concurrency during the initial ramp, so large swarms do not trip provider rate limits as easily.
+
+### Bug Fixes
+
+- Fix the web app only loading the 20 most recent sessions.
+- Fix web slash skill selection sending immediately and allow slash search to match skill names by substring.
+- Fix the highlighted web slash command not staying visible while navigating a long slash menu.
+- Fix incorrect display after archiving the last session.
+- Fix the web login slash command description to match the browser authorization flow.
+
+### Polish
+
+- Redesign the web OAuth login dialog so the order of steps is unambiguous.
+- Show the current version in web settings.
+- Allow long web slash command names and descriptions to wrap without overflowing the slash menu.
+- Add `/reload` suggestion in plugin-change hints.
+
+## 0.17.1 (2026-06-17)
+
+### Bug Fixes
+
+- Fix the `kimi web` command failing to start in the background.
+- Stop the background local server from locking the directory it was started in.
+- Prevent the web login dialog from closing when clicking the backdrop.
+
+### Polish
+
+- Group the default model dropdown in web settings by provider.
+
+## 0.17.0 (2026-06-17)
+
+### Features
+
+- Add Kimi Code Web mode, which you can start with `kimi web` or `/web` in the CLI, and continue sessions in a browser chat interface.
+
+### Bug Fixes
+
+- Show the underlying connection error when OAuth token refresh fails after internal retries, instead of prompting for login. Token refresh failures are no longer re-retried at the agent loop level.
+- Restore the turn counter from persisted loop events on resume so post-resume turns no longer reuse turn ids that already appear in history.
+
+### Polish
+
+- Skip debug TPS when the output stream is too short to measure reliably.
+
 ## 0.16.0 (2026-06-16)
 
 ### Features

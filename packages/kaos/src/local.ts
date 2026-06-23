@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import {
   appendFile,
@@ -34,6 +34,20 @@ const isWindows: boolean = process.platform === 'win32';
 function cycleKey(s: { dev: number; ino: number }): string | null {
   if (s.ino === 0) return null;
   return `${String(s.dev)}:${String(s.ino)}`;
+}
+
+export function buildLocalSpawnOptions(
+  isWindows: boolean,
+  cwd: string,
+  env: Record<string, string> | undefined,
+): SpawnOptions {
+  return {
+    cwd,
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: !isWindows,
+    windowsHide: true,
+  };
 }
 
 class LocalProcess implements KaosProcess {
@@ -527,16 +541,11 @@ export class LocalKaos implements Kaos {
       throw new Error('LocalKaos.exec(): at least one argument (the command to run) is required.');
     }
     const restArgs = args.slice(1);
-    const child = spawn(command, restArgs, {
-      cwd: this._cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // POSIX `detached:true` 使子进程成为进程组领导者，这样
-      // `LocalProcess.kill()` 可以向整个进程树发信号。在 Windows 上无效
-      // （那里由 `taskkill /T` 处理进程树）。我们不调用 `child.unref()`
-      // 因为父进程仍然通过 `wait()` 等待子进程退出。
-      detached: !isWindows,
-      env: this._buildExecEnv(),
-    });
+    const child = spawn(
+      command,
+      restArgs,
+      buildLocalSpawnOptions(isWindows, this._cwd, this._buildExecEnv()),
+    );
     await waitForSpawn(child);
     return new LocalProcess(child);
   }
@@ -549,12 +558,11 @@ export class LocalKaos implements Kaos {
       );
     }
     const restArgs = args.slice(1);
-    const child = spawn(command, restArgs, {
-      cwd: this._cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: !isWindows,
-      env: this._buildExecEnv(env),
-    });
+    const child = spawn(
+      command,
+      restArgs,
+      buildLocalSpawnOptions(isWindows, this._cwd, this._buildExecEnv(env)),
+    );
     await waitForSpawn(child);
     return new LocalProcess(child);
   }

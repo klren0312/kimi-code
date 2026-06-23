@@ -136,16 +136,16 @@ export class ContextMemory {
     });
   }
 
-  /**
-   * 如果上下文中的最后一条消息匹配给定的谓词，则移除它。
-   *
-   * 优先检查延迟消息队列的尾部，然后检查历史记录。
-   * 如果成功移除消息则返回 true，如果尾部不匹配则返回 false。
-   * 注入逻辑在发现应当抑制注入时，用它来撤销刚刚添加的消息。
-   *
-   * @param matcher - 接收消息来源并返回是否应弹出该消息的谓词。
-   * @returns 是否成功移除了消息。
-   */
+  appendLocalCommandStdout(content: string): void {
+    const text = `<local-command-stdout>\n${content.trim()}\n</local-command-stdout>`;
+    this.appendMessage({
+      role: 'user',
+      content: [{ type: 'text', text }],
+      toolCalls: [],
+      origin: { kind: 'injection', variant: 'local-command-stdout' },
+    });
+  }
+
   popMatchedMessage(matcher: (origin: PromptOrigin | undefined) => boolean): boolean {
     const lastDeferred = this.deferredMessages.at(-1);
     const last = lastDeferred ?? this._history.at(-1);
@@ -419,13 +419,26 @@ export class ContextMemory {
         this.openSteps.delete(event.uuid);
         if (event.usage !== undefined) {
           const openStepIndex = openStep === undefined ? -1 : this._history.indexOf(openStep);
-          this._tokenCount =
+          const coveredCount =
+            openStepIndex === -1 ? this._history.length : openStepIndex + 1;
+          const totalUsage =
             event.usage.inputCacheRead +
             event.usage.inputCacheCreation +
             event.usage.inputOther +
             event.usage.output;
-          this.tokenCountCoveredMessageCount =
-            openStepIndex === -1 ? this._history.length : openStepIndex + 1;
+          if (totalUsage > 0) {
+            this._tokenCount = totalUsage;
+          } else {
+            // The provider reported zero usage (e.g. content filter). Do not
+            // overwrite the accumulated context token count with 0; add an
+            // estimate for the newly covered messages so the invariant between
+            // _tokenCount and tokenCountCoveredMessageCount stays intact.
+            const previousCoveredCount = this.tokenCountCoveredMessageCount;
+            this._tokenCount += estimateTokensForMessages(
+              this._history.slice(previousCoveredCount, coveredCount),
+            );
+          }
+          this.tokenCountCoveredMessageCount = coveredCount;
         }
         this.flushDeferredMessagesIfToolExchangeClosed();
         return;

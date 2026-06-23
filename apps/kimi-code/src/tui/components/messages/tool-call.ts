@@ -46,6 +46,10 @@ const PROGRESS_URL_RE = /https?:\/\/\S+/g;
 const ABORTED_MARK = '⊘';
 const MAX_LIVE_OUTPUT_CHARS = 50_000;
 
+/** Delay before a long-running foreground Bash/Agent card advertises Ctrl+B. */
+const DETACH_HINT_DELAY_MS = 10_000;
+const DETACH_HINT_TEXT = 'Press Ctrl+B to run in background';
+
 type SubagentTextKind = 'thinking' | 'text';
 type SubagentPhase = 'queued' | 'spawning' | 'running' | 'done' | 'failed' | 'backgrounded';
 
@@ -520,12 +524,22 @@ export class ToolCallComponent extends Container {
   // ── 来自 subagent.spawned/started/completed/failed 的子代理生命周期状态 ──
   private subagentPhase: SubagentPhase | undefined;
   /**
-   * 后台子代理的权威终端阶段。当后台任务达到终端状态时——无论是实时（后台代理失败/被终止）
-   * 还是恢复时（协调器将仍在运行的任务重新分类为 `lost`）——通过
-   * `setBackgroundTaskTerminalStatus` 从 `BackgroundTaskInfo.status` 设置。
-   * 在两种渲染路径中（独立时的 `getDerivedSubagentPhase` 和分组时的 `getSubagentSnapshot`）
-   * 优先于 spawn-success ToolResult，否则会将所有已终止的后台代理
-   * （包括丢失的）错误标记为 `✓ Completed`。
+   * Distinguishes a foreground subagent that the user detached via Ctrl+B from
+   * one that started in the background. Both set `subagentPhase = 'backgrounded'`,
+   * but only the detached one should keep showing `◐ backgrounded` after its
+   * spawn-success ToolResult lands — a started-in-background agent reads as
+   * `done` once its result arrives.
+   */
+  private detachedFromForeground = false;
+  /**
+   * Authoritative terminal phase for a backgrounded subagent. Set from
+   * `BackgroundTaskInfo.status` via `setBackgroundTaskTerminalStatus` once
+   * the backing task reaches a terminal state — either live (a bg agent
+   * fails / is killed) or on resume (reconcile reclassifies a still-running
+   * task as `lost`). Beats the spawn-success ToolResult in both render
+   * paths (`getDerivedSubagentPhase` for standalone, `getSubagentSnapshot`
+   * for grouped), which would otherwise mislabel every terminated
+   * background agent — including lost ones — as `✓ Completed`.
    */
   private backgroundTaskTerminalPhase: 'done' | 'failed' | undefined;
   private subagentContextTokens: number | undefined;
@@ -548,10 +562,19 @@ export class ToolCallComponent extends Container {
   private liveOutput = '';
 
   /**
-   * 当此组件被借用为隐藏状态容器时，由组容器（`AgentGroupComponent` 或
-   * `ReadGroupComponent`）注册。任何状态变化（子代理元数据、阶段、子工具、结果等）
-   * 都会触发节流的组重渲染。`undefined` 表示没有组订阅，独立渲染不受影响。
-   * ToolCallComponent 一次只能属于一个组，因此一个监听器槽位就够了。
+   * Advertises `Ctrl+B` on a foreground Bash/Agent card that has been running
+   * for {@link DETACH_HINT_DELAY_MS}. Cleared when the result lands.
+   */
+  private detachHintTimer: ReturnType<typeof setTimeout> | undefined;
+  private detachHintVisible = false;
+
+  /**
+   * Registered by a group container (`AgentGroupComponent` or
+   * `ReadGroupComponent`) when this component is borrowed as a hidden state
+   * container. Any state change (subagent meta, phase, sub-tool, result, etc.)
+   * triggers a throttled group re-render. `undefined` means no group is
+   * subscribed and standalone rendering is unaffected. A ToolCallComponent can
+   * only belong to one group at a time, so one listener slot is enough.
    */
   private onSnapshotChange: (() => void) | undefined;
 
@@ -578,6 +601,7 @@ export class ToolCallComponent extends Container {
     this.buildSubagentBlock();
     this.syncStreamingProgressTimer();
     this.syncSubagentElapsedTimer();
+    this.startDetachHintTimer();
   }
 
   override invalidate(): void {
@@ -601,6 +625,8 @@ export class ToolCallComponent extends Container {
     // 如果不清除，已完成的工具会同时显示流式状态行和最终输出。
     this.progressLines = [];
     this.liveOutput = '';
+    this.detachHintVisible = false;
+    this.stopDetachHintTimer();
     this.finalizeSubagentElapsedIfNeeded();
     this.syncStreamingProgressTimer();
     this.syncSubagentElapsedTimer();
@@ -657,6 +683,7 @@ export class ToolCallComponent extends Container {
   dispose(): void {
     this.stopStreamingProgressTimer();
     this.stopSubagentElapsedTimer();
+    this.stopDetachHintTimer();
   }
 
   /**
@@ -746,21 +773,21 @@ export class ToolCallComponent extends Container {
       this.getCombinedSubagentText(),
       this.workspaceDir,
     );
-    // 终端状态优先级：SDK `tool.result` 对 Agent 工具调用具有权威性。
-    // 一旦到达，强制使用 done/failed 而非中间的 spawning/running 状态，原因有二：
-    //   1. 回放不会重放 spawned/completed/failed 事件，因此 `subagentPhase`
-    //      保持 undefined，必须使用 result。
-    //   2. 实时类型验证失败可能跳过 `subagent.failed`，或 `tool.result` 可能先到达；
-    //      否则 UI 可能卡在 'spawning' 状态并持续显示 `Initializing...`。
-    // 没有结果的中间状态仍使用 `subagentPhase`。
-    // `backgrounded` 没有结果，因为后台代理不进入转录。
-    const derivedPhase: ToolCallSubagentSnapshot['phase'] =
-      this.backgroundTaskTerminalPhase ??
-      (this.result !== undefined
-        ? this.result.is_error
-          ? 'failed'
-          : 'done'
-        : this.subagentPhase);
+    // Terminal-state priority: SDK `tool.result` is authoritative for Agent
+    // tool calls. Once it arrives, force done/failed over intermediate
+    // spawning/running states for two reasons:
+    //   1. Replay does not replay spawned/completed/failed events, so
+    //      `subagentPhase` stays undefined and result must be used.
+    //   2. Live type-validation failures may skip `subagent.failed`, or
+    //      `tool.result` may arrive first; otherwise the UI can stay stuck at
+    //      'spawning' and keep showing `Initializing...`.
+    // Intermediate states without a result still use `subagentPhase`.
+    // `backgrounded` has no result because background agents do not enter the
+    // transcript — but a foreground subagent detached via Ctrl+B keeps
+    // `subagentPhase === 'backgrounded'` even after its ToolResult lands, so
+    // the group card shows `◐ backgrounded` rather than `✓ Completed`. Reuse
+    // the standalone derivation so both paths agree.
+    const derivedPhase = this.getDerivedSubagentPhase();
     const errorText =
       this.subagentError ?? (derivedPhase === 'failed' ? this.result?.output : undefined);
     return {
@@ -871,6 +898,46 @@ export class ToolCallComponent extends Container {
     if (this.streamingProgressTimer === undefined) return;
     clearInterval(this.streamingProgressTimer);
     this.streamingProgressTimer = undefined;
+  }
+
+  /** Only foreground Bash/Agent calls can be detached via Ctrl+B. */
+  private isDetachHintEligible(): boolean {
+    return this.toolCall.name === 'Bash' || this.toolCall.name === 'Agent';
+  }
+
+  private startDetachHintTimer(): void {
+    if (!this.isDetachHintEligible()) return;
+    if (this.result !== undefined) return;
+    if (this.ui === undefined) return;
+    if (this.toolCall.name === 'Agent') {
+      // Subagents are long-running by nature; advertise Ctrl+B immediately
+      // instead of waiting out the delay used for short Bash commands.
+      if (this.detachHintVisible) return;
+      this.detachHintVisible = true;
+      this.rebuildBody();
+      this.ui?.requestRender();
+      return;
+    }
+    if (this.detachHintTimer !== undefined) return;
+    this.detachHintTimer = setTimeout(() => {
+      this.detachHintTimer = undefined;
+      if (this.result !== undefined) return;
+      this.detachHintVisible = true;
+      this.rebuildBody();
+      this.ui?.requestRender();
+    }, DETACH_HINT_DELAY_MS);
+  }
+
+  private stopDetachHintTimer(): void {
+    if (this.detachHintTimer === undefined) return;
+    clearTimeout(this.detachHintTimer);
+    this.detachHintTimer = undefined;
+  }
+
+  private buildDetachHintBlock(): void {
+    if (!this.detachHintVisible) return;
+    if (this.result !== undefined) return;
+    this.addChild(new Text(currentTheme.dim(DETACH_HINT_TEXT), 2, 0));
   }
 
   private syncSubagentElapsedTimer(): void {
@@ -1054,8 +1121,25 @@ export class ToolCallComponent extends Container {
   }
 
   /**
-   * 后台 AgentTool 调用的子代理 id，路由在协调后台任务生命周期事件时
-   * 用于查找工具调用的后台子代理。
+   * Mark a foreground subagent as detached-to-background. Called when a
+   * `background.task.started` event arrives for this agent (i.e. the user
+   * pressed Ctrl+B). Keeps the card showing `◐ backgrounded` instead of
+   * flipping to `✓ Completed` when the spawn-success ToolResult lands.
+   */
+  markBackgrounded(): void {
+    if (this.detachedFromForeground) return;
+    this.detachedFromForeground = true;
+    this.subagentPhase = 'backgrounded';
+    this.headerText.setText(this.buildHeader());
+    this.rebuildContent();
+    this.notifySnapshotChange();
+    this.ui?.requestRender();
+  }
+
+  /**
+   * Subagent id for the backing AgentTool call, used by routing to find a
+   * tool call's backing subagent when reconciling background task lifecycle
+   * events.
    *
    * 两个写入方，按优先级排列：
    *   1. 内存中的 `subagentAgentId`——由 `setSubagentMeta` /
@@ -1296,6 +1380,7 @@ export class ToolCallComponent extends Container {
       this.children.pop();
     }
     this.buildProgressBlock();
+    this.buildDetachHintBlock();
     this.buildLiveOutputBlock();
     this.buildContent();
     this.buildSubagentBlock();
@@ -1308,6 +1393,7 @@ export class ToolCallComponent extends Container {
     this.buildCallPreview();
     this.callPreviewEndIndex = this.children.length;
     this.buildProgressBlock();
+    this.buildDetachHintBlock();
     this.buildLiveOutputBlock();
     this.buildContent();
     this.buildSubagentBlock();
@@ -1503,6 +1589,14 @@ export class ToolCallComponent extends Container {
   private getDerivedSubagentPhase(): SubagentPhase | undefined {
     if (this.backgroundTaskTerminalPhase !== undefined) {
       return this.backgroundTaskTerminalPhase;
+    }
+    // A foreground subagent detached via Ctrl+B keeps showing `backgrounded`
+    // even after its spawn-success ToolResult lands, so the card doesn't flip
+    // to `✓ Completed` and look like the work actually finished. Agents that
+    // started in the background (`detachedFromForeground === false`) read as
+    // `done` once their result lands.
+    if (this.detachedFromForeground && this.subagentPhase === 'backgrounded') {
+      return 'backgrounded';
     }
     if (this.result !== undefined) return this.result.is_error ? 'failed' : 'done';
     return this.subagentPhase;

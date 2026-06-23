@@ -36,6 +36,7 @@ import {
   SensitiveFileAccessAskPermissionPolicy,
 } from './file-access-ask';
 import { GitCwdWriteApprovePermissionPolicy } from './git-cwd-write-approve';
+import { GoalStartReviewAskPermissionPolicy } from './goal-start-review-ask';
 import { PlanModeGuardDenyPermissionPolicy } from './plan-mode-guard-deny';
 import { PlanModeToolApprovePermissionPolicy } from './plan-mode-tool-approve';
 import { PreToolCallHookPermissionPolicy } from './pre-tool-call-hook';
@@ -75,7 +76,11 @@ export function createPermissionDecisionPolicies(agent: Agent): PermissionPolicy
     new UserConfiguredAllowPermissionPolicy(agent),
     // ExitPlanMode 活跃 plan_review + 非空计划 + 非自动模式 → 询问（自行跟踪 plan_submitted/plan_resolved）。运行在会话历史之前，避免过时的会话批准绕过新计划体的审查。
     new ExitPlanModeReviewAskPermissionPolicy(agent),
-    // EnterPlanMode、对计划文件的 Write/Edit 或无可操作 plan_review 的 ExitPlanMode → 批准。
+    // CreateGoal (non-auto) → ask with the same start menu as /goal: choose the
+    // permission mode to run the goal under, or decline. Applies the mode, then
+    // lets the tool create the goal.
+    new GoalStartReviewAskPermissionPolicy(agent),
+    // EnterPlanMode, Write/Edit on the plan file, or ExitPlanMode with no actionable plan_review → approve.
     new PlanModeToolApprovePermissionPolicy(agent),
     // 访问敏感文件（.env、SSH 密钥、凭证）→ 询问。
     new SensitiveFileAccessAskPermissionPolicy(),

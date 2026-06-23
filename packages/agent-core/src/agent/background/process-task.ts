@@ -1,21 +1,12 @@
-/**
- * 子进程（bash 命令）的后台任务实现。
- *
- * 封装一个 {@link KaosProcess}，使长时间运行的 shell 命令可以在后台执行，
- * 同时主代理继续工作。任务将 stdout 和 stderr 流式传输到管理器的输出缓冲区，
- * 监听 sink 的中止信号以发送 SIGTERM，并在宽限期后通过 `forceStop()` 升级为 SIGKILL。
- */
-
-import type { Readable } from 'node:stream';
-import { finished } from 'node:stream/promises';
-
 import type { KaosProcess } from '@moonshot-ai/kaos';
+import type { Readable } from 'node:stream';
 
 import { errorMessage } from '../../loop/errors';
 import type {
   BackgroundTask,
   BackgroundTaskInfoBase,
   BackgroundTaskSink,
+  BackgroundTaskSettlement,
 } from './task';
 
 /**
@@ -33,7 +24,13 @@ export interface ProcessBackgroundTaskInfo extends BackgroundTaskInfoBase {
   readonly exitCode: number | null;
 }
 
-/** 等待 stdout/stderr 流排空的最大时间（毫秒），超时后放弃。 */
+export type ProcessBackgroundTaskOutputKind = 'stdout' | 'stderr';
+
+export type ProcessBackgroundTaskOutputCallback = (
+  kind: ProcessBackgroundTaskOutputKind,
+  text: string,
+) => void;
+
 const STREAM_DRAIN_GRACE_MS = 250;
 
 /**
@@ -56,6 +53,7 @@ export class ProcessBackgroundTask implements BackgroundTask {
     readonly proc: KaosProcess,
     readonly command: string,
     readonly description: string,
+    private readonly onOutput?: ProcessBackgroundTaskOutputCallback,
   ) {}
 
   /**
@@ -63,14 +61,13 @@ export class ProcessBackgroundTask implements BackgroundTask {
    * 监听中止信号，并等待进程退出。在 `finally` 中确保流被排空且进程被释放。
    */
   async start(sink: BackgroundTaskSink): Promise<void> {
-    const streams = [this.proc.stdout, this.proc.stderr] as const;
-    const appendOutput = (chunk: string): void => {
-      sink.appendOutput(chunk);
-    };
-    for (const stream of streams) {
-      stream.setEncoding('utf8');
-      stream.on('data', appendOutput);
-    }
+    const streamDrained = Promise.all([
+      observeProcessStream(this.proc.stdout, 'stdout', sink, this.onOutput),
+      observeProcessStream(this.proc.stderr, 'stderr', sink, this.onOutput),
+    ]).then(() => undefined);
+    // Attach a rejection handler immediately; start() still awaits the same
+    // promise after proc.wait() so stream errors keep failing the task.
+    void streamDrained.catch(() => {});
 
     const requestStop = (): void => {
       void this.proc.kill('SIGTERM').catch(() => {});
@@ -81,26 +78,26 @@ export class ProcessBackgroundTask implements BackgroundTask {
       sink.signal.addEventListener('abort', requestStop, { once: true });
     }
 
+    let settlement: BackgroundTaskSettlement;
     try {
       const exitCode = await this.proc.wait();
+      await waitForStreamDrain(streamDrained);
       this.exitCode = exitCode;
-      await sink.settle({
+      settlement = {
         status: sink.signal.aborted ? 'killed' : exitCode === 0 ? 'completed' : 'failed',
-      });
+      };
     } catch (error: unknown) {
+      await waitForStreamDrainSettled(streamDrained);
       this.exitCode = this.proc.exitCode;
-      await sink.settle({
+      settlement = {
         status: sink.signal.aborted ? 'killed' : 'failed',
         stopReason: sink.signal.aborted ? undefined : errorMessage(error),
-      });
+      };
     } finally {
       sink.signal.removeEventListener('abort', requestStop);
-      await waitForStreamDrain(streams);
-      for (const stream of streams) {
-        stream.off('data', appendOutput);
-      }
       await this.disposeProcess();
     }
+    await sink.settle(settlement);
   }
 
   /**
@@ -140,17 +137,11 @@ export class ProcessBackgroundTask implements BackgroundTask {
   }
 }
 
-/**
- * 等待所有可读流排空（发出 'end' 事件）或超时。
- *
- * 这防止管理器在最后的输出块从进程的 stdout/stderr 管道读取完成之前就进行结算。
- * 超时确保如果流永远不会关闭，我们不会无限期挂起。
- */
-async function waitForStreamDrain(streams: readonly Readable[]): Promise<void> {
+async function waitForStreamDrain(streamDrained: Promise<void>): Promise<void> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.all(streams.map((stream) => finished(stream).catch(() => {}))),
+      streamDrained,
       new Promise<void>((resolve) => {
         timeout = setTimeout(resolve, STREAM_DRAIN_GRACE_MS);
         timeout.unref?.();
@@ -159,4 +150,77 @@ async function waitForStreamDrain(streams: readonly Readable[]): Promise<void> {
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
+}
+
+async function waitForStreamDrainSettled(streamDrained: Promise<void>): Promise<void> {
+  try {
+    await waitForStreamDrain(streamDrained);
+  } catch {
+    /* original process/stream error wins */
+  }
+}
+
+function observeProcessStream(
+  stream: Readable,
+  kind: ProcessBackgroundTaskOutputKind,
+  sink: BackgroundTaskSink,
+  onOutput?: ProcessBackgroundTaskOutputCallback,
+): Promise<void> {
+  stream.setEncoding('utf8');
+  const onData = (chunk: string): void => {
+    if (chunk.length === 0) return;
+    sink.appendOutput(chunk);
+    onOutput?.(kind, chunk);
+  };
+  stream.on('data', onData);
+
+  return new Promise<void>((resolve, reject) => {
+    let ended = false;
+    const settle = (callback: () => void): void => {
+      cleanup();
+      callback();
+    };
+    const done = (): void => {
+      settle(resolve);
+    };
+    const fail = (error: unknown): void => {
+      settle(() => reject(error));
+    };
+    const onEnd = (): void => {
+      ended = true;
+      done();
+    };
+    const onClose = (): void => {
+      if (ended || sink.signal.aborted) {
+        done();
+        return;
+      }
+
+      fail(createPrematureCloseError());
+    };
+    const onError = (error: Error): void => {
+      // When the task is aborted we intentionally destroy the streams, which
+      // can emit errors. Swallow those expected errors; surface anything else.
+      if (sink.signal.aborted) {
+        done();
+      } else {
+        fail(error);
+      }
+    };
+    const cleanup = (): void => {
+      stream.removeListener('data', onData);
+      stream.removeListener('end', onEnd);
+      stream.removeListener('close', onClose);
+      stream.removeListener('error', onError);
+    };
+    stream.once('end', onEnd);
+    stream.once('close', onClose);
+    stream.once('error', onError);
+  });
+}
+
+function createPrematureCloseError(): Error {
+  const error = new Error('Premature close') as NodeJS.ErrnoException;
+  error.code = 'ERR_STREAM_PREMATURE_CLOSE';
+  return error;
 }

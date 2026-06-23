@@ -16,6 +16,7 @@
 
 import { join } from 'pathe';
 
+import { normalizeAdditionalDirs } from '../config';
 import { ErrorCodes, KimiError, makeErrorPayload } from '#/errors';
 import { log } from '#/logging/logger';
 import type { Logger } from '#/logging/types';
@@ -135,6 +136,7 @@ export interface AgentOptions {
   readonly experimentalFlags?: ExperimentalFlagResolver;
   /** 重放构建器选项 */
   readonly replay?: ReplayBuilderOptions;
+  readonly additionalDirs?: readonly string[];
 }
 
 /**
@@ -246,11 +248,8 @@ export class Agent {
   /** 会话恢复的重放构建器 */
   readonly replayBuilder: ReplayBuilder;
 
-  /**
-   * 创建新的 Agent 实例。
-   *
-   * @param options - Agent 的配置选项
-   */
+  private additionalDirs: readonly string[];
+
   constructor(options: AgentOptions) {
     // 基础配置
     this.type = options.type ?? 'main';
@@ -280,6 +279,7 @@ export class Agent {
     this.log = options.log ?? log;
     this.telemetry = options.telemetry ?? noopTelemetryClient;
     this.experimentalFlags = options.experimentalFlags ?? new FlagResolver();
+    this.additionalDirs = normalizeAdditionalDirs(options.additionalDirs ?? []);
 
     // 初始化内部管理器
     this.llmRequestLogger = new LlmRequestLogger(this.log);
@@ -329,16 +329,17 @@ export class Agent {
     this._kaos = kaos;
   }
 
-  /**
-   * 获取带日志和认证包装的 LLM 生成函数。
-   *
-   * 此 getter 返回原始生成函数的包装版本，它会：
-   * 1. 在设置了 KIMI_CODE_LOG_LLM=1 时记录 LLM 请求/响应
-   * 2. 处理认证（OAuth token、API 密钥）
-   * 3. 测量请求持续时间
-   *
-   * @returns 包装后的生成函数
-   */
+  getAdditionalDirs(): readonly string[] {
+    return this.additionalDirs;
+  }
+
+  setAdditionalDirs(additionalDirs: readonly string[]): void {
+    this.additionalDirs = normalizeAdditionalDirs(additionalDirs);
+    if (this.config.hasProvider) {
+      this.tools.initializeBuiltinTools();
+    }
+  }
+
   get generate(): typeof generate {
     return async (provider, systemPrompt, tools, history, callbacks, options) => {
       // 检查 LLM 通信日志是否启用
@@ -447,6 +448,7 @@ export class Agent {
       skills: this.skills?.registry,
       cwdListing: context?.cwdListing,
       agentsMd: context?.agentsMd,
+      additionalDirsInfo: context?.additionalDirsInfo,
     });
     this.config.update({ profileName: profile.name, systemPrompt });
     this.tools.setActiveTools(profile.tools);
@@ -600,7 +602,7 @@ export class Agent {
       stopBackground: (payload) => {
         void this.background.stop(payload.taskId, payload.reason);
       },
-      // 清除对话上下文
+      detachBackground: (payload) => this.background.detach(payload.taskId),
       clearContext: () => {
         this.context.clear();
       },

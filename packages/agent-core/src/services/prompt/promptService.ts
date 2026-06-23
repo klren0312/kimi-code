@@ -94,7 +94,7 @@ interface PromptState {
   body: PromptSubmission;
   createdAt: string;
   turnId: number | null;
-  /** 在顶层 turn 的 `turn.ended` 时设置（reason='completed'|'failed'）。 */
+  /** Set on `turn.ended` for the top-level turn (reason='completed'|'failed'|'filtered'). */
   completed: boolean;
   /** 在 reason='cancelled' 的 `turn.ended` 或成功的 abort RPC 后设置。 */
   aborted: boolean;
@@ -202,7 +202,7 @@ function isTurnStarted(e: Event): e is Event & { type: 'turn.started'; turnId: n
 function isTurnEnded(e: Event): e is Event & {
   type: 'turn.ended';
   turnId: number;
-  reason: 'completed' | 'cancelled' | 'failed';
+  reason: 'completed' | 'cancelled' | 'failed' | 'filtered';
 } {
   return (e as { type?: string }).type === 'turn.ended';
 }
@@ -822,7 +822,7 @@ export class PromptService
         sessionId: sid,
         promptId: state.promptId,
         finishedAt: new Date().toISOString(),
-        reason: reason === 'failed' ? 'failed' : 'completed',
+        reason: reason === 'failed' || reason === 'filtered' ? 'failed' : 'completed',
       };
       this._active.delete(key);
       // 在发布合成事件之前先触发类型化监听器。

@@ -25,6 +25,8 @@ import type { ToolCallComponent, ToolCallSubagentSnapshot } from './tool-call';
 
 const THROTTLE_MS = 200;
 
+const DETACH_HINT_TEXT = 'Press Ctrl+B to run in background';
+
 interface AgentEntry {
   readonly toolCallId: string;
   readonly tc: ToolCallComponent;
@@ -129,6 +131,9 @@ export class AgentGroupComponent extends Container {
       const isLast = idx === snapshots.length - 1;
       this.appendLines(snap, isLast);
     });
+    if (this.shouldShowDetachHint(snapshots)) {
+      this.bodyContainer.addChild(new Text(currentTheme.dim(DETACH_HINT_TEXT), 2, 0));
+    }
 
     this.lastFlushPhases.clear();
     this.entries.forEach((entry, i) => {
@@ -201,7 +206,22 @@ export class AgentGroupComponent extends Container {
     this.bodyContainer.addChild(new Text(`  ${branch2}    ${dim(activity)}`, 0, 0));
   }
 
-  /** 释放节流定时器，防止已销毁的组件稍后触发刷新。 */
+  /**
+   * Show the Ctrl+B hint while at least one agent in the group is still
+   * running in the foreground (i.e. can be detached). Hide it once every
+   * agent is done, failed, or already backgrounded.
+   */
+  private shouldShowDetachHint(snapshots: readonly ToolCallSubagentSnapshot[]): boolean {
+    return snapshots.some(
+      (s) =>
+        s.phase === 'running' ||
+        s.phase === 'queued' ||
+        s.phase === 'spawning' ||
+        s.phase === undefined,
+    );
+  }
+
+  /** Releases throttle timers so destroyed components cannot refresh later. */
   override invalidate(): void {
     if (this._invalidating) {
       super.invalidate();

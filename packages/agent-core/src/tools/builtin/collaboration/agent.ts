@@ -5,9 +5,9 @@
  * 它使用 `SessionSubagentHost`（通过构造函数注入而非通过 Runtime）来创建
  * 进程内的子代理循环实例。
  *
- * 两种模式：
- *   - **前台**（默认）：阻塞父轮次，`await handle.completion`
- *   - **后台**：立即返回 agent id；结果通过通知传递。
+ * Foreground and background subagents both run through BackgroundManager.
+ * Foreground calls wait for the task to finish unless it is detached through
+ * the background-task RPC.
  *
  * `ToolResult.content` 是文本形式的；由 `AgentToolOutputSchema` 暴露的结构化输出
  * 仅用于漂移保护，运行时不消费。
@@ -27,11 +27,7 @@ import {
   type SessionSubagentHost,
   type SubagentHandle,
 } from '../../../session/subagent-host';
-import {
-  createDeadlineAbortSignal,
-  isUserCancellation,
-  type DeadlineAbortSignal,
-} from '../../../utils/abort';
+import { isUserCancellation } from '../../../utils/abort';
 import { AgentBackgroundTask, type BackgroundManager } from '../../../agent/background';
 import { toInputJsonSchema } from '../../support/input-schema';
 import { matchesGlobRuleSubject } from '../../support/rule-match';
@@ -110,16 +106,18 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
   readonly parameters: Record<string, unknown> = toInputJsonSchema(AgentToolInputSchema);
   constructor(
     private readonly subagentHost: SessionSubagentHost,
-    private readonly backgroundManager?: BackgroundManager | undefined,
+    private readonly backgroundManager: BackgroundManager,
     subagents?: ResolvedAgentProfile['subagents'] | undefined,
     options?: {
       log?: Logger;
+      allowBackground?: boolean | undefined;
     },
   ) {
     const log = options?.log;
+    this.allowBackground = options?.allowBackground ?? true;
     const typeLines = buildSubagentDescriptions(subagents);
     const baseDescription = `${AGENT_DESCRIPTION_BASE}\n\n${
-      this.backgroundManager !== undefined ? AGENT_BACKGROUND_DESCRIPTION : AGENT_BACKGROUND_DISABLED_DESCRIPTION
+      this.allowBackground ? AGENT_BACKGROUND_DESCRIPTION : AGENT_BACKGROUND_DISABLED_DESCRIPTION
     }`;
     this.description = typeLines
       ? `${baseDescription}\n\nAvailable agent types (pass via subagent_type):\n${typeLines}`
@@ -128,6 +126,7 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
   }
 
   private readonly log?: Logger;
+  private readonly allowBackground: boolean;
 
   async resolveExecution(args: AgentToolInput): Promise<ToolExecution> {
     let profileName = args.subagent_type?.length ? args.subagent_type : 'coder';
@@ -154,11 +153,10 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
   private async execution(
     args: AgentToolInput,
     {
-    toolCallId,
-    signal,
+      toolCallId,
+      signal,
     }: ExecutableToolContext,
   ): Promise<ExecutableToolResult> {
-    let foregroundDeadline: DeadlineAbortSignal | undefined;
     try {
       signal.throwIfAborted();
       const runInBackground = args.run_in_background === true;
@@ -175,39 +173,40 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
         };
       }
 
-      if (runInBackground) {
-        if (this.backgroundManager === undefined) {
-          return {
-            output: BACKGROUND_AGENT_UNAVAILABLE,
-            isError: true,
-          };
-        }
+      if (runInBackground && !this.allowBackground) {
+        return {
+          output: BACKGROUND_AGENT_UNAVAILABLE,
+          isError: true,
+        };
       }
-      const backgroundController = runInBackground ? new AbortController() : undefined;
-      foregroundDeadline =
-        !runInBackground ? createDeadlineAbortSignal(signal, DEFAULT_SUBAGENT_TIMEOUT_MS) : undefined;
 
-      const options = {
+      const controller = new AbortController();
+      const abortBeforeRegister = (): void => {
+        controller.abort(signal.reason);
+      };
+      if (!runInBackground) {
+        signal.addEventListener('abort', abortBeforeRegister, { once: true });
+      }
+
+      const operation = resumeAgentId !== undefined && resumeAgentId.length > 0 ? 'resume' : 'spawn';
+      const runOptions = {
         parentToolCallId: toolCallId,
         prompt: args.prompt,
         description: args.description,
         runInBackground,
-        signal: backgroundController?.signal ?? foregroundDeadline?.signal ?? signal,
+        signal: controller.signal,
       };
-
       let handle: SubagentHandle;
-      const operation = resumeAgentId !== undefined && resumeAgentId.length > 0 ? 'resume' : 'spawn';
       try {
-        if (resumeAgentId !== undefined && resumeAgentId.length > 0) {
-          handle = await this.subagentHost.resume(resumeAgentId, options);
-        } else {
-          const profileName = requestedProfileName ?? 'coder';
-          handle = await this.subagentHost.spawn({
-            profileName,
-            ...options,
-          });
-        }
+        handle =
+          operation === 'resume'
+            ? await this.subagentHost.resume(resumeAgentId!, runOptions)
+            : await this.subagentHost.spawn({
+                profileName: requestedProfileName ?? 'coder',
+                ...runOptions,
+              });
       } catch (error) {
+        signal.removeEventListener('abort', abortBeforeRegister);
         this.log?.warn('subagent launch failed', {
           toolCallId,
           runInBackground,
@@ -219,103 +218,150 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
         throw error;
       }
 
-      if (runInBackground) {
-        let taskId: string;
-        try {
-          taskId = this.backgroundManager!.registerTask(
-            new AgentBackgroundTask(handle.completion, args.description, {
-              timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
-              agentId: handle.agentId,
-              subagentType: handle.profileName,
-              abort: () => {
-                backgroundController?.abort();
-              },
-            }),
-          );
-        } catch (error) {
-          backgroundController?.abort();
-          void handle.completion.catch(() => {});
-          this.log?.warn('background agent task registration failed', {
-            toolCallId,
-            agentId: handle.agentId,
-            subagentType: handle.profileName,
-            error,
-          });
-          return {
-            output: error instanceof Error ? error.message : String(error),
-            isError: true,
-          };
-        }
-        const lines = [
-          `task_id: ${taskId}`,
-          'status: running',
-          `agent_id: ${handle.agentId}`,
-          `actual_subagent_type: ${handle.profileName}`,
-          'automatic_notification: true',
-          '',
-          `description: ${args.description}`,
-          '',
-          `next_step: The completion arrives automatically in a later turn — no polling needed. To peek at progress without blocking, call TaskOutput(task_id="${taskId}", block=false).`,
-          `resume_hint: To continue or recover this same subagent later, call Agent(resume="${handle.agentId}", prompt="..."). The parameter is agent_id ("${handle.agentId}"), NOT task_id ("${taskId}") or source_id from a later <notification>. Recovery cases: a later <notification type="task.lost" | "task.failed" | "task.killed"> for this subagent — its conversation history is preserved across session restarts and resume will pick it up.`,
-        ];
-        return { output: lines.join('\n') };
+      let taskId: string;
+      try {
+        taskId = this.backgroundManager.registerTask(
+          new AgentBackgroundTask(handle, args.description, this.subagentHost, controller),
+          {
+            detached: runInBackground,
+            timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
+            signal: runInBackground ? undefined : signal,
+          },
+        );
+        signal.removeEventListener('abort', abortBeforeRegister);
+      } catch (error) {
+        controller.abort();
+        void handle.completion.catch(() => {});
+        signal.removeEventListener('abort', abortBeforeRegister);
+        this.log?.warn('background agent task registration failed', {
+          toolCallId,
+          agentId: handle.agentId,
+          subagentType: handle.profileName,
+          error,
+        });
+        return {
+          output: error instanceof Error ? error.message : String(error),
+          isError: true,
+        };
       }
 
-      try {
-        const result = await handle.completion;
-        const lines = [
-          `agent_id: ${handle.agentId}`,
-          `actual_subagent_type: ${handle.profileName}`,
-          'status: completed',
-          '',
-          '[summary]',
-          result.result,
-        ];
-        return { output: lines.join('\n') };
-      } catch (error) {
-        let message: string;
-        const timedOut = foregroundDeadline?.timedOut() === true;
-        if (timedOut) {
-          message = `Agent timed out after ${DEFAULT_SUBAGENT_TIMEOUT_DESCRIPTION}.`;
-        } else if (isUserCancellation(signal.reason)) {
-          message =
-            'The user manually interrupted this subagent (and any sibling agents launched alongside it). This was a deliberate user action, not a system error, a timeout, or a capacity/concurrency limit. Do not retry automatically or speculate about why it failed — wait for the user\'s next instruction.';
-        } else if (isAbortError(error)) {
-          message = 'The subagent was stopped before it finished.';
-        } else {
-          message = error instanceof Error ? error.message : String(error);
-        }
-        const lines = [
-          `agent_id: ${handle.agentId}`,
-          `actual_subagent_type: ${handle.profileName}`,
-          'status: failed',
-          '',
-          `subagent error: ${message}`,
-        ];
-        if (timedOut) {
-          lines.push(
-            `resume_hint: Continue with Agent(resume="${handle.agentId}", prompt="continue"). Use agent_id only; do not set subagent_type. The subagent retains its prior context; redo any unfinished tool call if its result was lost.`,
-          );
-        }
-        return { output: lines.join('\n'), isError: true };
+      if (runInBackground) {
+        return {
+          output: formatBackgroundAgentResult(
+            taskId,
+            handle,
+            args.description,
+            this.allowBackground,
+          ),
+        };
       }
+
+      const release = await this.backgroundManager.waitForForegroundRelease(taskId);
+      if (release === 'detached') {
+        return {
+          output: formatBackgroundAgentResult(
+            taskId,
+            handle,
+            args.description,
+            this.allowBackground,
+          ),
+        };
+      }
+      return await this.formatForegroundResult(taskId, handle);
     } catch (error) {
-      let message: string;
-      if (foregroundDeadline?.timedOut() === true) {
-        message = `Agent timed out after ${DEFAULT_SUBAGENT_TIMEOUT_DESCRIPTION}.`;
-      } else if (isUserCancellation(signal.reason)) {
-        message =
-          'The user manually interrupted this subagent (and any sibling agents launched alongside it). This was a deliberate user action, not a system error, a timeout, or a capacity/concurrency limit. Do not retry automatically or speculate about why it failed — wait for the user\'s next instruction.';
-      } else if (isAbortError(error)) {
-        message = 'The subagent was stopped before it finished.';
-      } else {
-        message = error instanceof Error ? error.message : String(error);
-      }
-      return { output: `subagent error: ${message}`, isError: true };
-    } finally {
-      foregroundDeadline?.clear();
+      return { output: `subagent error: ${launchErrorMessage(error, signal)}`, isError: true };
     }
   }
+
+  private async formatForegroundResult(
+    taskId: string,
+    handle: SubagentHandle,
+  ): Promise<ExecutableToolResult> {
+    const info = this.backgroundManager.getTask(taskId);
+    if (info?.status === 'completed') {
+      return {
+        output: formatForegroundAgentSuccess(
+          handle,
+          await this.backgroundManager.readOutput(taskId),
+        ),
+      };
+    }
+    const timedOut = info?.status === 'timed_out';
+    const message =
+      timedOut
+        ? `Agent timed out after ${DEFAULT_SUBAGENT_TIMEOUT_DESCRIPTION}.`
+        : info?.stopReason === 'Interrupted by user'
+          ? USER_INTERRUPTED_SUBAGENT_MESSAGE
+          : info?.stopReason !== undefined
+            ? info.stopReason
+            : 'The subagent was stopped before it finished.';
+    return {
+      output: formatForegroundAgentFailure(handle, message, timedOut),
+      isError: true,
+    };
+  }
+}
+
+const USER_INTERRUPTED_SUBAGENT_MESSAGE =
+  'The user manually interrupted this subagent (and any sibling agents launched alongside it). This was a deliberate user action, not a system error, a timeout, or a capacity/concurrency limit. Do not retry automatically or speculate about why it failed — wait for the user\'s next instruction.';
+
+function formatBackgroundAgentResult(
+  taskId: string,
+  handle: SubagentHandle,
+  description: string,
+  allowBackground: boolean,
+): string {
+  return [
+    `task_id: ${taskId}`,
+    'status: running',
+    `agent_id: ${handle.agentId}`,
+    `actual_subagent_type: ${handle.profileName}`,
+    'automatic_notification: true',
+    '',
+    `description: ${description}`,
+    '',
+    allowBackground
+      ? `next_step: The completion arrives automatically in a later turn — no polling needed. To peek at progress without blocking, call TaskOutput(task_id="${taskId}", block=false).`
+      : 'next_step: The completion arrives automatically in a later turn.',
+    `resume_hint: To continue or recover this same subagent later, call Agent(resume="${handle.agentId}", prompt="..."). The parameter is agent_id ("${handle.agentId}"), NOT task_id ("${taskId}") or source_id from a later <notification>. Recovery cases: a later <notification type="task.lost" | "task.failed" | "task.killed"> for this subagent — its conversation history is preserved across session restarts and resume will pick it up.`,
+  ].join('\n');
+}
+
+function formatForegroundAgentSuccess(handle: SubagentHandle, result: string): string {
+  return [
+    `agent_id: ${handle.agentId}`,
+    `actual_subagent_type: ${handle.profileName}`,
+    'status: completed',
+    '',
+    '[summary]',
+    result,
+  ].join('\n');
+}
+
+function formatForegroundAgentFailure(
+  handle: SubagentHandle,
+  message: string,
+  timedOut: boolean,
+): string {
+  const lines = [
+    `agent_id: ${handle.agentId}`,
+    `actual_subagent_type: ${handle.profileName}`,
+    'status: failed',
+    '',
+    `subagent error: ${message}`,
+  ];
+  if (timedOut) {
+    lines.push(
+      `resume_hint: Continue with Agent(resume="${handle.agentId}", prompt="continue"). Use agent_id only; do not set subagent_type. The subagent retains its prior context; redo any unfinished tool call if its result was lost.`,
+    );
+  }
+  return lines.join('\n');
+}
+
+function launchErrorMessage(error: unknown, signal: AbortSignal): string {
+  if (isUserCancellation(signal.reason)) return USER_INTERRUPTED_SUBAGENT_MESSAGE;
+  if (isAbortError(error)) return 'The subagent was stopped before it finished.';
+  return error instanceof Error ? error.message : String(error);
 }
 
 function buildSubagentDescriptions(subagents: ResolvedAgentProfile['subagents']): string {

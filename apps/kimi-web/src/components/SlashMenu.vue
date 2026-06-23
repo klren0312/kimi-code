@@ -1,6 +1,7 @@
 <!-- apps/kimi-web/src/components/SlashMenu.vue -->
 <!-- Popup list of slash commands shown above the Composer textarea. -->
 <script setup lang="ts">
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SlashCommand } from '../lib/slashCommands';
 
@@ -15,13 +16,23 @@ const emit = defineEmits<{
   select: [item: SlashCommand];
   hover: [index: number];
 }>();
+
+const itemRefs = ref<HTMLElement[]>([]);
+
+watch(
+  () => props.activeIndex,
+  (idx) => {
+    itemRefs.value[idx]?.scrollIntoView({ block: 'nearest' });
+  },
+);
 </script>
 
 <template>
   <div v-if="items.length > 0" class="slash-menu" role="listbox">
     <div
       v-for="(item, i) in items"
-      :key="item.name"
+      :ref="(el) => { if (el) itemRefs[i] = el as HTMLElement }"
+      :key="`${item.name}-${i}`"
       class="slash-item"
       :class="{ active: i === props.activeIndex }"
       role="option"
@@ -51,8 +62,9 @@ const emit = defineEmits<{
 }
 
 .slash-item {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: minmax(90px, 32%) minmax(0, 1fr);
+  align-items: start;
   gap: 10px;
   padding: 5px 12px;
   cursor: pointer;
@@ -73,12 +85,23 @@ const emit = defineEmits<{
 .slash-name {
   color: var(--blue);
   font-weight: 600;
-  min-width: 90px;
-  flex-shrink: 0;
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .slash-desc {
   color: var(--dim);
   font-size: calc(var(--ui-font-size) - 2.5px);
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .slash-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
 }
 </style>
