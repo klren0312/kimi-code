@@ -44,6 +44,8 @@ const POLL_INTERVAL_MS = 200;
 const DEFAULT_DAEMON_LOG_LEVEL = 'info';
 
 export interface EnsureDaemonOptions {
+  /** Host to bind (defaults to 127.0.0.1). */
+  host?: string;
   /** Preferred port; on conflict a free port is chosen automatically. */
   port?: number;
   /** Pino log level for the spawned daemon (defaults to `info`). */
@@ -178,6 +180,7 @@ export function resolveDaemonProgram(
 }
 
 interface SpawnDaemonChildOptions {
+  host: string;
   port: number;
   logLevel: string;
   debugEndpoints?: boolean;
@@ -193,6 +196,8 @@ export function spawnDaemonChild(options: SpawnDaemonChildOptions): void {
     'server',
     'run',
     '--daemon',
+    '--host',
+    options.host,
     '--port',
     String(options.port),
     '--log-level',
@@ -244,6 +249,7 @@ function sleep(ms: number): Promise<void> {
  * detached process after this returns.
  */
 export async function ensureDaemon(options: EnsureDaemonOptions = {}): Promise<EnsureDaemonResult> {
+  const host = options.host ?? DEFAULT_SERVER_HOST;
   const preferred = options.port ?? DEFAULT_SERVER_PORT;
   const logLevel = options.logLevel ?? DEFAULT_DAEMON_LOG_LEVEL;
 
@@ -260,8 +266,9 @@ export async function ensureDaemon(options: EnsureDaemonOptions = {}): Promise<E
   }
 
   // 2. No reusable daemon — pick a free port and spawn one detached.
-  const port = await resolveDaemonPort(DEFAULT_SERVER_HOST, preferred);
+  const port = await resolveDaemonPort(host, preferred);
   spawnDaemonChild({
+    host,
     port,
     logLevel,
     debugEndpoints: options.debugEndpoints,

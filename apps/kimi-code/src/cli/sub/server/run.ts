@@ -29,6 +29,7 @@ import { createKimiCodeHostIdentity, getHostPackageRoot, getVersion } from '../.
 import { ensureDaemon } from './daemon';
 import {
   DEFAULT_FOREGROUND_LOG_LEVEL,
+  DEFAULT_SERVER_HOST,
   DEFAULT_SERVER_PORT,
   parseServerOptions,
   VALID_LOG_LEVELS,
@@ -69,6 +70,11 @@ export function buildRunCommand(cmd: Command, options: { defaultOpen: boolean })
       '--port <port>',
       `Bind port (default ${DEFAULT_SERVER_PORT})`,
       String(DEFAULT_SERVER_PORT),
+    )
+    .option(
+      '--host <host>',
+      `Bind host (default ${DEFAULT_SERVER_HOST})`,
+      DEFAULT_SERVER_HOST,
     )
     .option(
       '--log-level <level>',
@@ -159,6 +165,7 @@ export async function startServerBackground(
   options: ParsedServerOptions,
 ): Promise<{ origin: string }> {
   const { origin } = await ensureDaemon({
+    host: options.host,
     port: options.port,
     logLevel: options.logLevel,
     debugEndpoints: options.debugEndpoints,

@@ -55,7 +55,7 @@ describe('kimi server', () => {
       ?.commands.find((c) => c.name() === 'run');
     expect(run).toBeDefined();
     const longs = run!.options.map((o) => o.long).filter(Boolean);
-    expect(longs).not.toContain('--host');
+    expect(longs).toContain('--host');
     expect(longs).toContain('--port');
     expect(longs).toContain('--log-level');
     expect(longs).toContain('--debug-endpoints');
@@ -87,7 +87,7 @@ describe('kimi server', () => {
     const longs = web!.options.map((o) => o.long).filter(Boolean);
     // web defaults to opening → the option is the negative form --no-open
     expect(longs).toContain('--no-open');
-    expect(longs).not.toContain('--host');
+    expect(longs).toContain('--host');
     expect(longs).toContain('--port');
   });
 });
@@ -664,7 +664,7 @@ describe('spawnDaemonChild', () => {
     spawnMock.mockReturnValue({ unref: vi.fn(), once: vi.fn() } as unknown as ChildProcess);
 
     const { spawnDaemonChild, daemonLogPath } = await import('#/cli/sub/server/daemon');
-    spawnDaemonChild({ port: 58627, logLevel: 'info' });
+    spawnDaemonChild({ host: '127.0.0.1', port: 58627, logLevel: 'info' });
 
     expect(spawnMock).toHaveBeenCalledOnce();
     const [program, args, options] = spawnMock.mock.calls[0]!;
