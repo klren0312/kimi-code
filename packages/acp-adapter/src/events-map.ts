@@ -21,6 +21,18 @@ import type {
 import { displayBlockToAcpContent, toolResultToAcpContent } from './convert';
 import type { AcpStopReason } from './types';
 
+// ── 中文概述 ──
+// 本模块负责将 SDK 内部事件（assistant delta、tool call、thinking 等）
+// 映射为 ACP 协议的 `session/update` 通知消息。
+// 核心功能：
+//   - 助手消息流式片段 → agent_message_chunk
+//   - 工具调用生命周期（创建/增量/完成） → tool_call / tool_call_update
+//   - 想法流式片段 → agent_thought_chunk
+//   - 待办列表/计划 → plan 更新
+//   - 可用命令与配置选项的更新通知
+// 每个映射函数都是纯函数，接收 SDK 事件并输出 ACP SessionNotification。
+
+// 中文：将 SDK 的助手消息增量事件转换为 ACP 的 agent_message_chunk 通知
 /**
  * Build an ACP `session/update` notification with an
  * `agent_message_chunk` payload from an SDK `assistant.delta` event.
@@ -44,6 +56,7 @@ export function assistantDeltaToSessionUpdate(
   };
 }
 
+// 中文：将 SDK 的回合结束原因映射为 ACP 的 stopReason（completed/cancelled/failed → end_turn/cancelled）
 /**
  * Map an SDK {@link TurnEndReason} to an ACP `stopReason`.
  *
@@ -68,6 +81,7 @@ export function turnEndReasonToStopReason(reason: TurnEndReason): AcpStopReason 
   }
 }
 
+// 中文：构造 ACP 工具调用 ID，格式为 `${turnId}:${toolCallId}`，防止不同回合的同名工具调用冲突
 /**
  * Build the ACP `toolCallId` for a wire-level tool call.
  *
@@ -81,6 +95,7 @@ export function acpToolCallId(turnId: number, toolCallId: string): string {
   return `${turnId}:${toolCallId}`;
 }
 
+// 中文：根据工具名称推断 ACP ToolKind 类型（Read→read, Write→edit, Bash→execute 等），未知工具默认 other
 /**
  * Heuristic map from a Kimi tool's `name` to ACP {@link ToolKind}.
  *
@@ -112,6 +127,7 @@ export function inferToolKind(name: string): ToolKind {
   }
 }
 
+// 中文：安全地将工具参数序列化为 JSON 字符串，BigInt 或循环引用等异常情况降级为 String() 转换
 /**
  * Best-effort JSON stringification for tool args.
  *
@@ -133,6 +149,7 @@ export function stringifyArgs(args: unknown): string {
   }
 }
 
+// 中文：将 SDK 的 tool.call.started 事件转换为 ACP 的 tool_call（CREATE）通知，包含工具类型、标题、参数和可选 diff 内容
 /**
  * Build the ACP `session/update` for the **initial** `tool_call` create
  * notification from an SDK `tool.call.started` event.
@@ -153,6 +170,7 @@ export function toolCallStartToSessionUpdate(
       content: { type: 'text', text: stringifyArgs(event.args) },
     },
   ];
+  // 中文：如果工具附带了 diff 类型的展示块（如文件修改前后对比），则插入到内容数组开头
   // If the tool attached a diff-bearing display (kind: 'diff' or
   // 'file_io' with both before/after set), prepend an inline diff
   // entry so the client can render it alongside the textual args
@@ -178,6 +196,7 @@ export function toolCallStartToSessionUpdate(
   };
 }
 
+// 中文：将工具参数增量片段追加到累加器，并发送累积后的 tool_call_update 通知（content 为全量替换语义）
 /**
  * Build a `tool_call_update` for a streaming arguments delta.
  *
@@ -209,6 +228,7 @@ export function toolCallDeltaToSessionUpdate(
   };
 }
 
+// 中文：延迟创建——当 tool.call.delta 先于 tool.call.started 到达时，用首个增量事件懒创建 tool_call 通知
 /**
  * Build the initial ACP `tool_call` (CREATE) notification from the
  * **first** `tool.call.delta` event for a given `toolCallId`.
@@ -258,6 +278,7 @@ export function toolCallLazyCreateToSessionUpdate(
   };
 }
 
+// 中文：当懒创建的 tool_call 已存在时，将随后到达的 tool.call.started 元数据作为 tool_call_update 升级发送
 /**
  * Build a `tool_call_update` that finalises a lazy-created tool call
  * once `tool.call.started` arrives.
@@ -306,6 +327,7 @@ export function toolCallStartedUpgradeToSessionUpdate(
   };
 }
 
+// 中文：将工具进度事件转换为 tool_call_update，仅处理 kind='status' 的状态文本更新，其他类型返回 null
 /**
  * Map an SDK `tool.progress` event to an ACP `tool_call_update`.
  *
@@ -332,6 +354,7 @@ export function toolProgressToSessionUpdate(
   return null;
 }
 
+// 中文：将思考增量事件转换为 ACP 的 agent_thought_chunk 通知，结构类似 agent_message_chunk 但用于模型思考内容
 /**
  * Map a `thinking.delta` event to an `agent_thought_chunk` notification.
  *
@@ -351,6 +374,7 @@ export function thinkingDeltaToSessionUpdate(
   };
 }
 
+// 中文：将工具执行结果转换为终端态 tool_call_update 通知，content 全量替换为最终输出，状态为 completed 或 failed
 /**
  * Map a `tool.result` event to the **terminal** `tool_call_update`
  * notification for that call.
@@ -379,6 +403,7 @@ export function toolResultToSessionUpdate(
   };
 }
 
+// 中文：将 SDK 的 TodoList 展示块转换为 ACP 的 plan 会话更新，包含计划条目列表（pending/in_progress/completed）
 /**
  * Translate the kimi-code TodoList display block into an ACP `plan`
  * session update.
@@ -406,6 +431,7 @@ export function todoListToSessionUpdate(
   turnId: number,
   items: ReadonlyArray<{ title: string; status: string }>,
 ): SessionNotification | null {
+  // 中文：turnId 保留用于未来调试日志，ACP plan 是会话级别的全量替换，无需嵌入 turnId
   // turnId is accepted for symmetry with other events-map helpers and
   // for future debug-log enrichment; the ACP `plan` wire shape is
   // session-scoped (types.gen.d.ts:3499 — "The client replaces the
@@ -426,6 +452,7 @@ export function todoListToSessionUpdate(
   };
 }
 
+// 中文：内部辅助函数——将 kimi-code 的 TodoStatus 映射为 ACP PlanEntryStatus，未知状态降级为 pending
 function mapTodoStatus(status: string): PlanEntryStatus {
   switch (status) {
     case 'pending':
@@ -440,6 +467,7 @@ function mapTodoStatus(status: string): PlanEntryStatus {
   }
 }
 
+// 中文：从工具输入展示块中提取 TodoList 并转换为 ACP plan 更新，非 todo_list 类型返回 null
 /**
  * If the given {@link ToolInputDisplay} carries a TodoList payload,
  * project it into an ACP `plan` session update. Returns `null` for
@@ -459,6 +487,7 @@ export function planFromDisplayBlock(
   return todoListToSessionUpdate(sessionId, turnId, display.items);
 }
 
+// 中文：构建可用命令更新通知，当前 SDK 层暂无斜杠命令数据源，发送空列表以确保客户端收到确定性更新
 /**
  * Build a one-shot ACP `available_commands_update` session
  * notification. The Kimi adapter sits at the SDK layer, beneath the
@@ -482,6 +511,7 @@ export function availableCommandsUpdateNotification(
   };
 }
 
+// 中文：构建配置选项更新通知，在模型或模式切换后发送，供 ACP 客户端（如 Zed）刷新下拉菜单选中状态
 /**
  * Build a `config_option_update` session notification.
  *

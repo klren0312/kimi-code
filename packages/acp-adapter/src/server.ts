@@ -59,6 +59,16 @@ import { listModelsFromHarness } from './model-catalog';
 import { DEFAULT_MODE_ID } from './modes';
 import { negotiateVersion, type AcpVersionSpec } from './version';
 
+// ── 中文概述 ──
+// 本模块实现 ACP 协议的服务端处理逻辑，是客户端（如 Zed、JetBrains）与 Kimi 引擎之间的桥梁。
+// 核心职责：
+//   1. 处理 ACP `initialize` 握手，协商协议版本并声明 Agent 能力
+//   2. 管理会话生命周期：`session/new`（创建）、`session/load`（加载并回放历史）、`session/resume`（恢复但不回放）
+//   3. 转发用户提示词（`prompt`）到对应会话，支持取消操作
+//   4. 处理会话配置变更（模型切换、模式切换、思考模式开关）
+//   5. 提供认证流程（终端认证方式）和会话列表查询
+//   6. 通过 `runAcpServer` / `runAcpServerWithStream` 启动服务，桥接 Node stdio 到 ACP JSON-RPC 通道
+
 /**
  * Per-session snapshot returned by the {@link AcpServer} caller's
  * `slashCommands` resolver. Carries both what gets advertised in the
@@ -71,11 +81,13 @@ import { negotiateVersion, type AcpVersionSpec } from './version';
  * commands) can omit it and get the previous "always passthrough"
  * behavior.
  */
+// 中文：每次会话的斜杠命令快照，包含广告给客户端的命令列表和技能命令映射（用于拦截 `/skill:<name>` 并路由到 activateSkill）
 export interface SlashCommandsSnapshot {
   readonly commands: ReadonlyArray<AvailableCommand>;
   readonly skillCommandMap?: ReadonlyMap<string, string>;
 }
 
+// 中文：斜杠命令解析器类型——可以是静态数组、快照对象、或接收 Session 返回命令列表的异步函数
 type SlashCommandsResolver =
   | ReadonlyArray<AvailableCommand>
   | SlashCommandsSnapshot
@@ -86,11 +98,13 @@ type SlashCommandsResolver =
       | ReadonlyArray<AvailableCommand>
       | SlashCommandsSnapshot);
 
+// 中文：解析后的斜杠命令结果，保证包含命令列表和技能命令映射（即使输入没有提供映射也为空 Map）
 interface ResolvedSlashCommands {
   readonly commands: ReadonlyArray<AvailableCommand>;
   readonly skillCommandMap: ReadonlyMap<string, string>;
 }
 
+// 中文：将斜杠命令输入统一转换为 ResolvedSlashCommands 格式——数组输入补充空映射，快照输入提取字段
 function toResolvedSlashCommands(
   input: ReadonlyArray<AvailableCommand> | SlashCommandsSnapshot,
 ): ResolvedSlashCommands {
@@ -110,6 +124,7 @@ function toResolvedSlashCommands(
  * Mirrors the original semantics exactly: any provider with `hasToken`
  * set counts as authed.
  */
+// 中文：检查 Harness 是否已认证——只要任一 provider 持有 token 即视为已认证
 async function harnessIsAuthed(harness: KimiHarness): Promise<boolean> {
   const status = await harness.auth.status();
   return status.providers.some((entry) => entry.hasToken === true);
@@ -127,13 +142,21 @@ async function harnessIsAuthed(harness: KimiHarness): Promise<boolean> {
  * supplied) is forwarded to every {@link AcpSession} so the session can
  * push `session/update` chunks back to the client.
  */
+// 中文：ACP 服务端主类——实现 Agent 接口，负责路由所有 ACP 请求到 KimiHarness 和 AcpSession
 export class AcpServer implements Agent {
+  // 中文：协议版本协商结果，initialize 之后可用
   private negotiated: AcpVersionSpec | undefined;
+  // 中文：客户端在 initialize 阶段声明的能力集合
   private clientCapabilities: ClientCapabilities | undefined;
+  // 中文：活跃会话映射表，sessionId → AcpSession
   private readonly sessions = new Map<string, AcpSession>();
+  // 中文：Agent 身份元信息（名称、版本等），在 initialize 响应中返回给客户端
   private readonly agentInfo: Implementation | undefined;
+  // 中文：终端认证所需的环境变量，供客户端启动 `kimi login` 子进程时使用
   private readonly terminalAuthEnv: Readonly<Record<string, string>> | undefined;
+  // 中文：旧版终端认证的二进制路径，用于不支持 AuthMethodTerminal 的客户端
   private readonly terminalAuthLegacyCommand: string | undefined;
+  // 中文：斜杠命令解析函数，将 SlashCommandsResolver 统一包装为异步函数
   private readonly resolveSlashCommands: (
     session: Session,
   ) => Promise<ResolvedSlashCommands>;
@@ -211,6 +234,7 @@ export class AcpServer implements Agent {
     return this.sessions.get(sessionId);
   }
 
+  // 中文：处理 ACP `initialize` 握手——协商协议版本，声明 Agent 能力（加载会话、提示词能力、MCP 能力等），返回认证方式
   async initialize(params: InitializeRequest): Promise<InitializeResponse> {
     this.negotiated = negotiateVersion(params.protocolVersion);
     this.clientCapabilities = params.clientCapabilities;
@@ -247,6 +271,7 @@ export class AcpServer implements Agent {
     };
   }
 
+  // 中文：创建新会话——检查认证、预生成会话 ID、构建 AcpKaos（可选）、通过 Harness 创建会话、注册 AcpSession、推送配置选项和可用命令
   async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
     if (!(await harnessIsAuthed(this.harness))) {
       throw RequestError.authRequired();
@@ -265,6 +290,7 @@ export class AcpServer implements Agent {
     // record verbatim. The `@ts-expect-error` documents this contract;
     // if the SDK ever switches from spread-passthrough to explicit field
     // copy, this line breaks and we revisit the boundary.
+    // 中文：将 ACP 客户端提供的 MCP 服务器配置转换为 SDK 格式，不支持的传输类型会被警告丢弃
     const mcpServers = acpMcpServersToConfigs(params.mcpServers);
     if (!this.conn) {
       // Defensive: every code path that constructs `AcpServer` (the
@@ -358,6 +384,7 @@ export class AcpServer implements Agent {
    * `loadSession` calls `replayHistory()` here, whereas `resumeSession`
    * deliberately skips it (per ACP spec G4 / plan gap-4.3).
    */
+  // 中文：加载已有会话——恢复磁盘上的会话状态，回放历史记录并推送 `session/update` 通知给客户端
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
     const { session, acpSession, configOptions } = await this.setupSessionFromExisting({
       cwd: params.cwd,
@@ -396,6 +423,7 @@ export class AcpServer implements Agent {
    * `replayHistory()` call. See plan G4 (lines 106-170) for the
    * rationale, and gap-4.1 for the matching capability advertisement.
    */
+  // 中文：恢复会话（轻量版）——与 loadSession 共享设置逻辑，但不回放历史（客户端已自行维护对话记录）
   async resumeSession(params: ResumeSessionRequest): Promise<ResumeSessionResponse> {
     const { session, configOptions } = await this.setupSessionFromExisting({
       cwd: params.cwd,
@@ -433,6 +461,7 @@ export class AcpServer implements Agent {
    * mapping is also preserved so unknown-session errors surface as a
    * structured JSON-RPC failure rather than a generic internal error.
    */
+  // 中文：loadSession 和 resumeSession 的共享设置流程——认证检查、连接验证、MCP 解析、恢复会话、构建配置选项
   private async setupSessionFromExisting(params: {
     cwd: string;
     sessionId: string;
@@ -490,6 +519,7 @@ export class AcpServer implements Agent {
     // dropdown's highlight matches the model the resumed turn will
     // actually use — falling back to the harness-level default
     // resolution when the resume state lacks a `modelAlias`.
+    // 中文：从恢复状态中读取模型别名，若无则回退到 Harness 默认模型解析
     const resumeState = session.getResumeState?.();
     const resumedModelAlias = resumeState?.agents?.['main']?.config?.modelAlias;
     const currentModelId =
@@ -501,6 +531,7 @@ export class AcpServer implements Agent {
     // effort level reads as "thinking on" because the ACP surface only
     // exposes the boolean axis. Falls back to the harness-level default
     // when the resume state lacks the field.
+    // 中文：思考模式投影——非 'off' 的思考等级映射为布尔值 true（ACP 仅暴露布尔轴）
     const resumedThinkingLevel = resumeState?.agents?.['main']?.config?.thinkingLevel;
     const currentThinkingEnabled =
       typeof resumedThinkingLevel === 'string'
@@ -539,6 +570,7 @@ export class AcpServer implements Agent {
    * `SessionImpl` ctor and every tool downstream sees the same
    * reference — no AsyncLocalStorage involved.
    */
+  // 中文：按需构建 AcpKaos——仅当客户端声明了文件系统反向 RPC 能力时才创建，否则返回 undefined
   private async maybeBuildAcpKaos(sessionId: string): Promise<AcpKaos | undefined> {
     const fs = this.clientCapabilities?.fs;
     if (!fs?.readTextFile && !fs?.writeTextFile) {
@@ -551,6 +583,7 @@ export class AcpServer implements Agent {
     return new AcpKaos(this.conn, sessionId, innerKaos);
   }
 
+  // 中文：确保内部 LocalKaos 实例已创建（惰性初始化，全服务器共享一个实例）
   private async ensureInnerKaos(): Promise<Kaos> {
     if (!this.innerKaos) {
       this.innerKaos = await LocalKaos.create();
@@ -568,6 +601,7 @@ export class AcpServer implements Agent {
    * landed on disk. Mirrors kimi-cli `acp/server.py:374-398` semantics
    * (plan G3, lines 68-104).
    */
+  // 中文：处理认证请求——验证方法为 'login' 后重新检查 token 是否可用，不触发实际 OAuth 流程
   async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse | void> {
     if (params.methodId !== 'login') {
       throw RequestError.invalidParams(
@@ -581,6 +615,7 @@ export class AcpServer implements Agent {
     // void = empty success body (ACP allows AuthenticateResponse | void).
   }
 
+  // 中文：处理用户提示词——查找对应会话并转发 prompt 到 AcpSession
   async prompt(params: PromptRequest): Promise<PromptResponse> {
     const acpSession = this.sessions.get(params.sessionId);
     if (!acpSession) {
@@ -589,6 +624,7 @@ export class AcpServer implements Agent {
     return acpSession.prompt(params.prompt);
   }
 
+  // 中文：取消会话操作——cancel 是 JSON-RPC 通知，不允许返回错误，因此未知会话仅记录警告
   async cancel(params: CancelNotification): Promise<void> {
     const acpSession = this.sessions.get(params.sessionId);
     if (!acpSession) {
@@ -619,6 +655,7 @@ export class AcpServer implements Agent {
    * `SetSessionModeResponse | void` union) so the wire payload is the
    * canonical empty success.
    */
+  // 中文：设置会话模式——将 modeId 转发到 AcpSession，未知模式由 AcpSession 抛出 invalid_params
   async setSessionMode(params: SetSessionModeRequest): Promise<SetSessionModeResponse | void> {
     const acpSession = this.sessions.get(params.sessionId);
     if (!acpSession) {
@@ -637,6 +674,7 @@ export class AcpServer implements Agent {
    * (e.g. an unknown model) propagate as-is so the JSON-RPC layer can
    * surface a structured failure.
    */
+  // 中文：实验性方法——设置会话模型，将 modelId 转发到 AcpSession，SDK 错误直接传播给客户端
   async unstable_setSessionModel(
     params: SetSessionModelRequest,
   ): Promise<SetSessionModelResponse | void> {
@@ -671,6 +709,7 @@ export class AcpServer implements Agent {
    * (`unstable_setSessionModel` / `setSessionMode` / `setSessionConfigOption`)
    * through the same notification channel with identical shape.
    */
+  // 中文：通用配置选项分发——按 configId 路由到 setModel / setMode / setThinking，返回更新后的配置快照
   async setSessionConfigOption(
     params: SetSessionConfigOptionRequest,
   ): Promise<SetSessionConfigOptionResponse> {
@@ -696,6 +735,7 @@ export class AcpServer implements Agent {
         // other string (including a stale `true` / `false` boolean
         // sent by a pre-Phase-16 client) reads as "off" rather than
         // silently flipping based on truthiness.
+        // 中文：严格等于 'on' 为启用，其他值均视为关闭（确保解析确定性）
         await acpSession.setThinking(value === 'on');
         break;
       }
@@ -726,6 +766,7 @@ export class AcpServer implements Agent {
    * where the response is built in a single shot from the harness'
    * full snapshot.
    */
+  // 中文：列出会话——可按 cwd 过滤，将 SDK 的 SessionSummary 映射为 ACP 的 SessionInfo 格式
   async listSessions(params: ListSessionsRequest): Promise<ListSessionsResponse> {
     // ACP `cwd` ↔ SDK `workDir`. The filter is optional; treat
     // `null` (the schema-allowed sentinel for "no filter") the same
@@ -753,6 +794,7 @@ export class AcpServer implements Agent {
    * mode-list extensions through here once the adapter has access to
    * the kimi-code app's registry. Phase 11 keeps it as a no-op stub.
    */
+  // 中文：ACP 扩展方法存根——当前未实现，抛出 MethodNotFound 错误以提供结构化失败响应
   async extMethod(
     method: string,
     _params: Record<string, unknown>,
@@ -768,6 +810,7 @@ export class AcpServer implements Agent {
    * promises; throwing is the only way to signal "unsupported" back to
    * the connection layer.
    */
+  // 中文：ACP 扩展通知存根——当前未实现，抛出 MethodNotFound 以避免静默丢弃
   async extNotification(method: string, _params: Record<string, unknown>): Promise<void> {
     throw RequestError.methodNotFound(method);
   }
@@ -792,6 +835,7 @@ export class AcpServer implements Agent {
    * Logged at `warn` when a fallback fires so a dev who forgot to set
    * `default_model = ...` sees a breadcrumb in the agent log.
    */
+  // 中文：解析当前模型 ID——优先使用 Harness 配置的 defaultModel，否则回退到模型目录第一个条目
   private async resolveCurrentModelId(): Promise<string> {
     // Minimal-stub harnesses (no `getConfig`) skip the catalog entirely
     // and return the empty string silently. The old code path was the
@@ -844,6 +888,7 @@ export class AcpServer implements Agent {
    * routinely omit `getConfig`. The swallow-and-fallback path keeps
    * the test ergonomics symmetric.
    */
+  // 中文：解析思考模式初始状态——读取 Harness 配置的 defaultThinking，返回布尔值表示是否启用
   private async resolveCurrentThinkingEnabled(): Promise<boolean> {
     if (typeof this.harness.getConfig !== 'function') return false;
     try {
@@ -881,6 +926,7 @@ export class AcpServer implements Agent {
    * stubs); {@link AcpSession} treats absence as "silent passthrough"
    * via {@link safeTrack}.
    */
+  // 中文：构建遥测追踪函数包装器——将 harness.track 包装为 TelemetryTrackFn，用于 AcpSession 发送无 PII 的面包屑事件
   private makeTelemetryTrack(): TelemetryTrackFn | undefined {
     const harness = this.harness;
     if (typeof harness.track !== 'function') return undefined;
@@ -892,12 +938,14 @@ export class AcpServer implements Agent {
     };
   }
 
+  // 中文：延迟调度可用命令更新通知——通过 setTimeout(0) 异步执行，避免阻塞当前请求
   private scheduleAvailableCommandsUpdate(sessionId: string): void {
     setTimeout(() => {
       void this.emitAvailableCommandsUpdate(sessionId);
     }, 0);
   }
 
+  // 中文：推送可用命令更新通知给客户端——解析斜杠命令、注入到 AcpSession、通过 session/update 发送给客户端
   private async emitAvailableCommandsUpdate(sessionId: string): Promise<void> {
     if (!this.conn) return;
     const acpSession = this.sessions.get(sessionId);
@@ -941,6 +989,7 @@ export class AcpServer implements Agent {
    * user content, no IDE identity, no client capabilities — keeping
    * the breadcrumb PII-free.
    */
+  // 中文：发送会话启动遥测事件——仅记录 sessionId 和 mode（new/load/resume），无用户内容或 PII
   private trackSessionStarted(sessionId: string, mode: 'new' | 'load' | 'resume'): void {
     const track = this.harness.track?.bind(this.harness);
     if (typeof track !== 'function') return;
@@ -961,6 +1010,7 @@ export class AcpServer implements Agent {
  * Useful for tests that build the stream with `ndJsonStream` over an
  * in-memory pair instead of process stdio.
  */
+// 中文：在指定的 ACP Stream 上驱动 AcpServer——适用于测试场景（内存流对）或自定义 I/O
 export async function runAcpServerWithStream(
   harness: KimiHarness,
   stream: Stream,
@@ -995,6 +1045,7 @@ export async function runAcpServerWithStream(
  * was called exactly once without touching the real Node signal
  * handlers (which vitest itself relies on).
  */
+// 中文：在 Node stdio（或自定义流）上启动 ACP 服务——桥接 Node Readable/Writable 到 Web 流，注册信号处理优雅关闭
 export async function runAcpServer(
   harness: KimiHarness,
   opts?: {
@@ -1040,6 +1091,7 @@ export async function runAcpServer(
   const stream = ndJsonStream(Writable.toWeb(output), Readable.toWeb(input));
   const signals = opts?.signals ?? process;
 
+  // 中文：幂等清理——防止信号触发和自然关闭重复调用 harness.close()
   let cleanedUp = false;
   const cleanup = async (signal?: NodeJS.Signals): Promise<void> => {
     // Idempotent: signal-then-natural-close (or vice-versa) must not
@@ -1111,7 +1163,9 @@ export async function runAcpServer(
  *                    Invalid timestamps fall back to `null` rather
  *                    than producing `Invalid Date` strings on the wire.
  */
+// 中文：将 SDK 的 SessionSummary 投影为 ACP 的 SessionInfo 格式——处理字段名映射（workDir→cwd）、时间戳转换（epoch ms→ISO 8601）、空值规范化
 function sessionSummaryToSessionInfo(summary: SessionSummary): SessionInfo {
+  // 中文：时间戳转换：epoch 毫秒数 → ISO 8601 字符串，无效时间戳回退为 null
   let updatedAt: string | null = null;
   if (typeof summary.updatedAt === 'number' && Number.isFinite(summary.updatedAt)) {
     const date = new Date(summary.updatedAt);
@@ -1119,6 +1173,7 @@ function sessionSummaryToSessionInfo(summary: SessionSummary): SessionInfo {
       updatedAt = date.toISOString();
     }
   }
+  // 中文：标题规范化：空字符串转为 null，便于客户端通过 === null 检测"无标题"状态
   const titleRaw = summary.title;
   const title = typeof titleRaw === 'string' && titleRaw.length > 0 ? titleRaw : null;
   return {

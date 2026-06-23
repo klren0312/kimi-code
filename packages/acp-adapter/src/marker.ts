@@ -1,3 +1,9 @@
+// ── 中文概述 ──
+// 本模块定义了输出隐藏标记（HideOutputMarker）。
+// 工具可以在结果 output 中附加此标记，通知 ACP 适配器抑制文本输出。
+// 典型场景：终端工具已通过 ACP terminal/* 通道输出内容，
+// 为避免 Zed UI 重复渲染，适配器检测到标记后会短路返回空内容。
+
 /**
  * Sentinel object that a tool can attach to its result `output` to
  * signal the ACP adapter to suppress this tool's textual output.
@@ -18,10 +24,12 @@
  * worker_threads boundary), losing identity but preserving the field.
  * Both checks live in `isHideOutputMarker`.
  */
+// 中文：输出隐藏标记的冻结单例对象，通过 __kind 字段标识
 export const HideOutputMarker = Object.freeze({
   __kind: 'acp-hide-output' as const,
 });
 
+// 中文：输出隐藏标记的类型，从常量值推导
 export type HideOutputMarker = typeof HideOutputMarker;
 
 /**
@@ -30,6 +38,8 @@ export type HideOutputMarker = typeof HideOutputMarker;
  * strings whose text happens to contain `'acp-hide-output'` — only
  * structural identity counts).
  */
+// 中文：类型守卫，检测值是否为输出隐藏标记
+// 支持两种检测方式：引用相等（快速路径）和结构匹配（跨 worker_threads 场景的兜底）
 export function isHideOutputMarker(value: unknown): value is HideOutputMarker {
   if (value === HideOutputMarker) return true;
   return (

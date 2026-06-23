@@ -28,6 +28,13 @@ import {
   type StatResult,
 } from '@moonshot-ai/kaos';
 
+// ── 中文概述 ──
+// 本模块实现了 `AcpKaos` —— 一个桥接 ACP 客户端文件读写的 Kaos 适配器。
+// 核心职责：将文本读写操作通过 ACP 反向 RPC 通道转发给客户端（如 Zed 编辑器），
+// 其余操作（路径、进程执行、二进制读取等）委托给内部 Kaos 实例（通常是 LocalKaos）。
+// 设计模式：装饰器/代理模式 —— 在不修改工具代码的前提下注入 ACP 文件桥接能力。
+// 当客户端不支持 fs.read_text_file / write_text_file 时，直接使用底层 Kaos，对工具透明。
+
 /**
  * `Kaos` that routes `read*` / `write*` through the ACP reverse-RPC
  * channel and delegates everything else to `inner`.
@@ -39,16 +46,18 @@ import {
  * cwd-relative resolution, route through `inner.normpath` first or use
  * `withCwd()` to bind a base.
  */
+// 中文：ACP 文件系统桥接器 —— 将文件读写通过 ACP RPC 转发，其余操作委托给内部 Kaos
 export class AcpKaos implements Kaos {
   constructor(
-    private readonly conn: AgentSideConnection,
-    private readonly sessionId: string,
-    private readonly inner: Kaos,
+    private readonly conn: AgentSideConnection, // ACP 客户端连接实例
+    private readonly sessionId: string,         // ACP 会话标识
+    private readonly inner: Kaos,               // 内部 Kaos 实例，处理非文件操作
   ) {}
 
   // ── identity ────────────────────────────────────────────────────────
 
   /** Distinguishable name so logs / `name` checks can disambiguate. */
+  // 中文：返回带前缀的标识名，用于日志区分 ACP 桥接与本地 Kaos
   get name(): string {
     return `acp(${this.inner.name})`;
   }
@@ -57,7 +66,7 @@ export class AcpKaos implements Kaos {
     return this.inner.osEnv;
   }
 
-  // ── path operations: delegate to inner ─────────────────────────────
+  // ── 路径操作：全部委托给内部 Kaos ─────────────────────────────
 
   pathClass(): 'posix' | 'win32' {
     return this.inner.pathClass();
@@ -85,6 +94,7 @@ export class AcpKaos implements Kaos {
    * continues to hit the ACP bridge rather than silently dropping back
    * to local filesystem reads.
    */
+  // 中文：创建绑定新工作目录的 AcpKaos 实例，确保后续相对路径读写仍走 ACP 桥接
   withCwd(cwd: string): Kaos {
     return new AcpKaos(this.conn, this.sessionId, this.inner.withCwd(cwd));
   }
@@ -113,7 +123,7 @@ export class AcpKaos implements Kaos {
     return this.inner.mkdir(path, options);
   }
 
-  // ── reads: route through ACP `fs/readTextFile` ─────────────────────
+  // ── 文件读取：通过 ACP fs/readTextFile 路由 ─────────────────────────
 
   /**
    * Read the file via ACP. Decoding parameters (`encoding`, `errors`)
@@ -122,6 +132,7 @@ export class AcpKaos implements Kaos {
    * no bytes to re-decode. Tools that need byte-exact decoding control
    * should be routed through a non-ACP Kaos.
    */
+  // 中文：通过 ACP RPC 读取文本文件内容；encoding 参数仅为接口兼容，实际被忽略
   async readText(
     path: string,
     _options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
@@ -142,6 +153,7 @@ export class AcpKaos implements Kaos {
    * touch). The ACP bridge only owns the *text* surface; raw bytes
    * stay on the local filesystem via `inner`.
    */
+  // 中文：二进制读取绕过 ACP，直接走本地文件系统（ACP 仅支持文本，不能处理图片等二进制数据）
   readBytes(path: string, n?: number): Promise<Buffer> {
     return this.inner.readBytes(path, n);
   }
@@ -151,6 +163,7 @@ export class AcpKaos implements Kaos {
    * `readText` / `readLines`, used only by text-read callers for sniffing.
    * Keep `readBytes` local so binary callers such as ReadMediaFile stay safe.
    */
+  // 中文：从 ACP 读取文本并截取前 n 个字符的 UTF-8 字节预览，用于文件类型嗅探
   async readTextPreview(path: string, n: number): Promise<Buffer> {
     const text = await this.readText(path);
     return Buffer.from(text.slice(0, n), 'utf8');
@@ -163,12 +176,14 @@ export class AcpKaos implements Kaos {
    * (e.g. {@link ReadTool}, which renders CRLF endings) behave identically
    * whether the underlying Kaos is local or ACP-bridged.
    */
+  // 中文：按行异步生成器读取文件内容，每行保留 \n 终止符，兼容 LocalKaos 行为
   async *readLines(
     path: string,
     options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
   ): AsyncGenerator<string> {
     const text = await this.readText(path, options);
     if (text.length === 0) return;
+    // 中文：逐字符扫描 \n，按行切分并 yield；保留每行末尾的换行符
     let start = 0;
     for (let i = 0; i < text.length; i++) {
       if (text.charCodeAt(i) === 0x0a /* \n */) {
@@ -176,10 +191,11 @@ export class AcpKaos implements Kaos {
         start = i + 1;
       }
     }
+    // 中文：如果文件末尾没有 \n，最后一行也要 yield
     if (start < text.length) yield text.slice(start);
   }
 
-  // ── writes: route through ACP `fs/writeTextFile` ───────────────────
+  // ── 文件写入：通过 ACP fs/writeTextFile 路由 ─────────────────────────
 
   /**
    * Write text via ACP. `encoding` is ignored — ACP wire format is
@@ -195,17 +211,20 @@ export class AcpKaos implements Kaos {
    * Returns `data.length` (chars) to match {@link LocalKaos.writeText}'s
    * contract.
    */
+  // 中文：通过 ACP 写入文本文件；追加模式通过"先读后写"模拟（ACP 无原生 append 支持）
   async writeText(
     path: string,
     data: string,
     options?: { mode?: 'w' | 'a'; encoding?: BufferEncoding },
   ): Promise<number> {
     if (options?.mode === 'a') {
+      // 中文：追加模式 —— 先读取已有内容，拼接新内容后整体写回
       let existing = '';
       try {
         existing = await this.readText(path);
       } catch (err) {
         if (!isNotFoundError(err)) throw err;
+        // 中文：文件不存在时视为空内容（与 Python open('a') 行为一致）
         existing = '';
       }
       await this.acpWrite(path, existing + data);
@@ -220,11 +239,13 @@ export class AcpKaos implements Kaos {
    * payloads will be lossy; the intended use case is text writes
    * (Read/Write/Edit tools), not binary streaming.
    */
+  // 中文：将原始字节按 UTF-8 编码写入文件（非 UTF-8 内容会损失，主要用于文本工具）
   async writeBytes(path: string, data: Buffer): Promise<number> {
     await this.acpWrite(path, data.toString('utf8'));
     return data.byteLength;
   }
 
+  // 中文：内部方法 —— 通过 ACP RPC 调用 writeTextFile，失败时包装为 KaosError
   private async acpWrite(path: string, content: string): Promise<void> {
     const rpcPath = this.toClientPath(path);
     try {
@@ -234,12 +255,13 @@ export class AcpKaos implements Kaos {
     }
   }
 
+  // 中文：Windows 路径适配 —— 将 / 分隔符替换为 \，非 Win32 系统直接返回原路径
   private toClientPath(path: string): string {
     if (this.inner.pathClass() !== 'win32') return path;
     return path.replaceAll('/', '\\');
   }
 
-  // ── process execution: delegate to inner ───────────────────────────
+  // ── 进程执行：全部委托给内部 Kaos ────────────────────────────────
 
   exec(...args: string[]): Promise<KaosProcess> {
     return this.inner.exec(...args);
@@ -259,11 +281,11 @@ export class AcpKaos implements Kaos {
  * post-construction so structured-clone consumers (logs, debuggers)
  * can still walk the chain.
  */
+// 中文：将原始 RPC 错误包装为 KaosError，手动挂载 cause 链以便调试器遍历错误链
 function wrapKaosError(prefix: string, cause: unknown): KaosError {
   const causeMessage = cause instanceof Error ? cause.message : String(cause);
   const err = new KaosError(`${prefix}: ${causeMessage}`);
-  // Mutating `cause` after construction is the cheapest way to preserve
-  // it without touching the kaos package (denylist forbids edits there).
+  // 中文：KaosError 构造函数不支持 cause 参数，因此在创建后手动赋值（避免修改 kaos 包）
   (err as Error & { cause?: unknown }).cause = cause;
   return err;
 }
@@ -277,7 +299,9 @@ function wrapKaosError(prefix: string, cause: unknown): KaosError {
  * mentioning "not found" could otherwise be misclassified and cause append
  * mode to overwrite existing content.
  */
+// 中文：判断错误是否为"文件不存在"（通过遍历 cause 链查找 ACP SDK 的 resourceNotFound 错误码）
 function isNotFoundError(err: unknown): boolean {
+  // 中文：遍历错误链（cause 链），查找 RequestError 且错误码为 -32002（资源未找到）
   const visited = new Set<unknown>();
   let cur: unknown = err;
   while (cur !== undefined && cur !== null && !visited.has(cur)) {

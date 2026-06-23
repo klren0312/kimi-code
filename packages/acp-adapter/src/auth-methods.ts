@@ -15,6 +15,12 @@
 
 import type { AuthMethod } from '@agentclientprotocol/sdk';
 
+// ── 中文概述 ──
+// 本模块负责构建 ACP 的 `terminal-auth` 认证方法声明。
+// 支持两条路径：
+//   1. ACP 0.23 标准 `type:'terminal'` — 客户端拼接 args 启动登录流程
+//   2. 旧版 `_meta['terminal-auth']` — 兼容尚未支持标准字段的客户端（如旧版 Zed、JetBrains 插件）
+
 /**
  * Build the `terminal-auth` method advertised to ACP clients.
  *
@@ -26,6 +32,7 @@ import type { AuthMethod } from '@agentclientprotocol/sdk';
  *    spawn `<binary> login` (top-level subcommand). When omitted, the
  *    `_meta` fallback is left off entirely.
  */
+// 中文：构建终端认证方法对象，支持标准 ACP 路径和旧版 _meta 回退路径
 export function buildTerminalAuthMethod(
   opts: {
     env?: Readonly<Record<string, string>>;
@@ -33,6 +40,7 @@ export function buildTerminalAuthMethod(
   } = {},
 ): AuthMethod {
   const env = opts.env ?? {};
+  // 中文：构造标准 ACP 0.23 terminal 认证方法
   const method: AuthMethod = {
     id: 'login',
     type: 'terminal',
@@ -45,6 +53,7 @@ export function buildTerminalAuthMethod(
     args: ['--login'],
     env: { ...env },
   };
+  // 中文：若提供了 legacyCommand，附加旧版 _meta 回退以兼容旧客户端
   if (opts.legacyCommand !== undefined && opts.legacyCommand.length > 0) {
     (method as AuthMethod & { _meta: { 'terminal-auth': unknown } })._meta = {
       'terminal-auth': {
@@ -71,4 +80,5 @@ export function buildTerminalAuthMethod(
  * only need the default shape can import it directly without going
  * through the factory.
  */
+// 中文：默认的终端认证方法实例（无环境变量、无旧版回退），供测试直接导入使用
 export const TERMINAL_AUTH_METHOD: AuthMethod = buildTerminalAuthMethod();

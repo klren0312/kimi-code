@@ -38,6 +38,16 @@ import type { KimiHarness } from '@moonshot-ai/kimi-code-sdk';
 import { ACP_MODES, type AcpModeId } from './modes';
 import { listModelsFromHarness, type AcpModelEntry } from './model-catalog';
 
+// ── 中文概述 ──
+// 本模块负责构建 ACP 协议的统一配置选项面板（SessionConfigOption[]）。
+// 该面板在 session/new、session/load 时返回，并通过 config_option_update 刷新。
+// v0 版本包含最多三个配置项：
+//   1. model（模型选择）—— 从模型目录投影而来，每个目录条目对应一行。
+//   2. thinking（思考模式开关）—— 仅当前模型支持 thinking 时显示；Phase 16 改为
+//      双项 select（off/on）以兼容 Zed 客户端的芯片条渲染。
+//   3. mode（运行模式）—— 固定的 4 模式分类（default/plan/auto/yolo）。
+// 顺序为 [model, ...(thinking?), mode]，是协议约定的一部分。
+
 /**
  * Project the catalog into the `SessionConfigOption` `model` arm.
  *
@@ -58,10 +68,12 @@ import { listModelsFromHarness, type AcpModelEntry } from './model-catalog';
  * the model and thinking authoritative state before the snapshot is
  * built — so the value reaching this builder is always already-split.
  */
+// 中文：将模型目录投影为 SessionConfigOption 的 model 选项，每个目录条目生成一行下拉项
 export function buildModelOption(
   models: readonly AcpModelEntry[],
   currentBaseModelId: string,
 ): SessionConfigOption {
+  // 中文：将模型目录映射为 select 选项数组，value 为模型 id，name 为显示名称
   const options: SessionConfigSelectOption[] = models.map((model) => ({
     value: model.id,
     name: model.name,
@@ -104,10 +116,12 @@ export function buildModelOption(
  * omitting `off` is the wire-level equivalent of the TUI's greyed-out
  * `Off (Unsupported)` segment.
  */
+// 中文：构建 thinking 思考模式开关选项。alwaysThinking 模型只显示锁定的 "on" 选项，不允许关闭。
 export function buildThinkingOption(
   enabled: boolean,
   alwaysThinking = false,
 ): SessionConfigOption {
+  // 中文：alwaysThinking 模型（如内置推理模型）—— 只提供 on 选项，客户端无法关闭思考
   if (alwaysThinking) {
     return {
       type: 'select',
@@ -118,6 +132,7 @@ export function buildThinkingOption(
       options: [{ value: 'on', name: 'Thinking On' }],
     };
   }
+  // 中文：普通模型 —— 提供 off/on 两个选项，根据当前状态设置 currentValue
   return {
     type: 'select',
     id: 'thinking',
@@ -137,7 +152,9 @@ export function buildThinkingOption(
  * auto → yolo) so the client renders the dropdown the same way Phase 12
  * did via the dedicated `modes:` field.
  */
+// 中文：将 ACP_MODES 固定的 4 模式分类投影为 SessionConfigOption 的 mode 选项
 export function buildModeOption(currentModeId: AcpModeId): SessionConfigOption {
+  // 中文：将 ACP_MODES 映射为 select 选项数组，保持默认 → plan → auto → yolo 的顺序
   const options: SessionConfigSelectOption[] = ACP_MODES.map((mode) => ({
     value: mode.id,
     name: mode.name,
@@ -182,20 +199,26 @@ export function buildModeOption(currentModeId: AcpModeId): SessionConfigOption {
  * `readonly T[]` as not assignable to `T[]` even when callers never
  * mutate it.
  */
+// 中文：组合完整的 v0 配置选项面板 —— [model, ...(thinking?), mode]
+// 从 harness 获取模型目录，根据当前模型是否支持 thinking 决定是否插入 thinking 开关
 export async function buildSessionConfigOptions(
   harness: KimiHarness,
   currentBaseModelId: string,
   currentThinkingEnabled: boolean,
   currentModeId: AcpModeId,
 ): Promise<SessionConfigOption[]> {
+  // 中文：从 SDK harness 获取模型目录，查找当前选中的模型条目
   const models = await listModelsFromHarness(harness);
   const currentModelEntry = models.find((m) => m.id === currentBaseModelId);
+  // 中文：仅当当前模型支持 thinking 时才显示 thinking 开关
   const showThinking = currentModelEntry?.thinkingSupported === true;
+  // 中文：alwaysThinking 模型（如推理专用模型）锁定思考为开启状态
   const alwaysThinking = currentModelEntry?.alwaysThinking === true;
   const out: SessionConfigOption[] = [buildModelOption(models, currentBaseModelId)];
   if (showThinking) {
     // Always-thinking models render locked-on regardless of the session's
     // recorded toggle state — agent-core clamps the runtime the same way.
+    // 中文：alwaysThinking 模型强制锁定为开启，忽略会话中记录的开关状态
     out.push(buildThinkingOption(alwaysThinking || currentThinkingEnabled, alwaysThinking));
   }
   out.push(buildModeOption(currentModeId));

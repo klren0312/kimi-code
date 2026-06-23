@@ -24,12 +24,18 @@
 
 import type { KimiHarness, ModelAlias } from '@moonshot-ai/kimi-code-sdk';
 
+// ── 中文概述 ──
+// 本模块负责将 harness 的模型配置转换为 ACP `configOptions` 选择器所需的扁平模型列表。
+// 核心功能：从 harness 配置中提取模型别名信息，派生 thinking（思考）能力标记，
+// 输出可供 ACP 客户端渲染的模型目录。曾位于 SDK 中，后移至适配器以保持 SDK 接口精简。
+
 /**
  * One catalog row per configured model alias, suitable for an ACP
  * picker. `description` is left optional so the harness can populate it
  * later without breaking callers; ACP UIs treat it as a flavour-text
  * subtitle.
  */
+// 中文：ACP 模型目录的单条记录，供客户端模型选择器使用
 export interface AcpModelEntry {
   readonly id: string;
   readonly name: string;
@@ -45,13 +51,18 @@ export interface AcpModelEntry {
  * ACP-picker-specific UX — moving it into the kernel would bake an
  * adapter concern into a place that doesn't need to know about ACP.
  */
+// 中文：支持通过开关切换 thinking 模式的模型白名单（不依赖名称或能力声明）
 const TOGGLEABLE_THINKING_MODELS = new Set(['kimi-for-coding', 'kimi-code']);
 
+// 中文：派生模型是否支持 thinking 模式——通过能力声明、模型名称启发式或白名单判断
 export function deriveThinkingSupported(alias: ModelAlias): boolean {
+  // 中文：优先检查显式声明的能力
   const declared = alias.capabilities ?? [];
   if (declared.includes('thinking') || declared.includes('always_thinking')) return true;
+  // 中文：其次通过模型名称中的关键词匹配（thinking/reason 为常开型）
   const lower = alias.model.toLowerCase();
   if (lower.includes('thinking') || lower.includes('reason')) return true;
+  // 中文：最后检查是否在可切换 thinking 的白名单中
   if (TOGGLEABLE_THINKING_MODELS.has(alias.model)) return true;
   return false;
 }
@@ -63,6 +74,7 @@ export function deriveThinkingSupported(alias: ModelAlias): boolean {
  * `thinkingSupported`, but only an explicit (server-derived) declaration
  * may remove the off option from the client.
  */
+// 中文：判断模型是否为始终开启 thinking 模式（无法关闭），仅依据显式能力声明
 export function deriveAlwaysThinking(alias: ModelAlias): boolean {
   return (alias.capabilities ?? []).includes('always_thinking');
 }
@@ -75,9 +87,11 @@ export function deriveAlwaysThinking(alias: ModelAlias): boolean {
  * degenerate config without forcing every test stub to provide every
  * field.
  */
+// 中文：从 harness 配置中提取所有模型别名，转换为 ACP 模型目录条目列表
 export async function listModelsFromHarness(
   harness: KimiHarness,
 ): Promise<readonly AcpModelEntry[]> {
+  // 中文：兼容不完整测试桩——getConfig 不存在时返回空数组
   if (typeof harness.getConfig !== 'function') return [];
   let models: Record<string, ModelAlias> | undefined;
   try {
@@ -87,6 +101,7 @@ export async function listModelsFromHarness(
     return [];
   }
   if (models === undefined) return [];
+  // 中文：遍历模型配置，生成扁平化的 AcpModelEntry 数组
   const out: AcpModelEntry[] = [];
   for (const [id, alias] of Object.entries(models)) {
     out.push({

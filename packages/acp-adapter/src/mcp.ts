@@ -29,6 +29,11 @@ import type { McpServer, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { McpServerConfig } from '@moonshot-ai/agent-core';
 import { log } from '@moonshot-ai/kimi-code-sdk';
 
+// ── 中文概述 ──
+// 本模块负责将 ACP 协议的 MCP 服务器配置转换为 kimi 内核的 `McpServerConfig` 格式。
+// 支持 http、sse、stdio 三种传输类型，acp 类型暂不支持（记录警告并丢弃）。
+// 转换后以服务器名为 key 输出 Record，供 session 创建/恢复时传入内核。
+
 /**
  * Convert an ACP `McpServer[]` into the kernel-native
  * `Record<string, McpServerConfig>` keyed by server name. Unsupported
@@ -40,11 +45,13 @@ import { log } from '@moonshot-ai/kimi-code-sdk';
  * `acp` carry an explicit `type` field; stdio is identified by the
  * ABSENCE of `type`. We branch accordingly.
  */
+// 中文：将 ACP MCP 服务器数组转换为内核格式的 Record，以服务器名为 key
 export function acpMcpServersToConfigs(
   servers: readonly McpServer[] | undefined,
 ): Record<string, McpServerConfig> {
   if (!servers || servers.length === 0) return {};
   const out: Record<string, McpServerConfig> = {};
+  // 中文：逐个转换，不支持的传输类型会被 acpMcpServerToConfig 过滤掉
   for (const server of servers) {
     const converted = acpMcpServerToConfig(server);
     if (converted !== null) out[converted.name] = converted.config;
@@ -52,6 +59,7 @@ export function acpMcpServersToConfigs(
   return out;
 }
 
+// 中文：转换单个 ACP MCP 服务器配置为内核格式；返回 null 表示不支持该传输类型
 function acpMcpServerToConfig(
   server: McpServer,
 ): { name: string; config: McpServerConfig } | null {
@@ -59,6 +67,7 @@ function acpMcpServerToConfig(
   // (see ACP schema 0.23 — stdio is the bare `McpServerStdio` shape
   // in the discriminated union). Anything without an explicit `type`
   // is treated as stdio.
+  // 中文：ACP schema 0.23 中 stdio 类型无 type 字段，通过缺失 type 来识别
   if (!('type' in server) || typeof server.type !== 'string') {
     const stdio = server as McpServerStdio;
     const config: McpServerConfig = {
@@ -91,6 +100,7 @@ function acpMcpServerToConfig(
       // Defensive: future ACP transports land here too. The cast is the
       // narrowest way to read `name`/`type` off the leftover variant
       // without re-declaring the union.
+      // 中文：不支持的传输类型（含 acp 及未来新增类型），记录警告后丢弃
       const fallback = server as { name?: string; type?: string };
       log.warn('acp: dropping unsupported MCP server transport', {
         name: fallback.name,
@@ -101,6 +111,7 @@ function acpMcpServerToConfig(
   }
 }
 
+// 中文：将 ACP 的 headers 数组格式转换为内核所需的 Record<string, string> 格式
 function headersArrayToRecord(
   headers: ReadonlyArray<{ readonly name: string; readonly value: string }>,
 ): Record<string, string> {
@@ -109,6 +120,7 @@ function headersArrayToRecord(
   return out;
 }
 
+// 中文：将 ACP 的环境变量数组格式转换为内核所需的 Record<string, string> 格式
 function envArrayToRecord(
   env: ReadonlyArray<{ readonly name: string; readonly value: string }>,
 ): Record<string, string> {

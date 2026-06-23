@@ -4,6 +4,19 @@
 
 **启用方式**: 设置环境变量 `KIMI_CODE_LOG_LLM=1` 后启动 Kimi Code CLI
 
+**环境变量**:
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `KIMI_CODE_LOG_LLM` | 启用日志（设为 `1` 启用） | - |
+| `KIMI_CODE_LOG_LLM_HOST` | 监听地址（设为 `0.0.0.0` 支持局域网访问） | `127.0.0.1` |
+| `KIMI_CODE_LOG_LLM_PORT` | 监听端口 | `9877` |
+
+**局域网访问示例**:
+```bash
+KIMI_CODE_LOG_LLM=1 KIMI_CODE_LOG_LLM_HOST=0.0.0.0 kimi
+```
+
 ---
 
 ## 目录

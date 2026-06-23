@@ -58,6 +58,17 @@ import { acpModeToToggles, DEFAULT_MODE_ID, isAcpModeId, type AcpModeId } from '
 import { outcomeToQuestionAnswer, questionItemToPermissionOptions } from './question';
 import { detectSlashIntent } from './slash';
 
+// ── 中文概述 ──
+// 本模块是 ACP 协议适配器的核心会话层，负责将 ACP 协议的 session 操作
+// 转译为 Kimi SDK 的 Session 接口调用。
+// 核心职责：
+// - 管理会话的模型、思考模式、运行模式等配置状态（适配器侧权威副本）
+// - 处理 prompt 请求：拦截斜杠命令（技能/内置命令/未知命令）或转发给 SDK
+// - 将 SDK 事件流（assistant.delta、tool.call、turn.ended 等）实时转换为 ACP session/update 通知
+// - 桥接审批请求（handleApproval）和问答请求（handleQuestion）的反向 RPC 通道
+// - 重放历史会话记录（replayHistory），用于客户端重新连接时恢复状态
+// - 错误映射：将认证类错误映射为 authRequired，其他映射为 internalError
+
 /**
  * Telemetry sink threaded into {@link AcpSession} so reverse-RPC bridges
  * (`handleApproval`, `handleQuestion`) can emit PII-free breadcrumbs
@@ -65,6 +76,7 @@ import { detectSlashIntent } from './slash';
  * the session is a silent passthrough (matches the Phase 11.2 stub-
  * tolerant pattern in `server.ts:trackSessionStarted`).
  */
+// 中文：遥测追踪函数类型，用于在反向 RPC 桥接中发射无 PII 的面包屑事件
 export type TelemetryTrackFn = (
   event: string,
   properties?: Record<string, unknown>,
@@ -79,6 +91,7 @@ export type TelemetryTrackFn = (
  * so `prompt()` can emit `session/update` chunks back to the client
  * without re-plumbing the connection through the call stack.
  */
+// 中文：ACP 会话适配器类，封装 Kimi SDK Session，管理配置状态并桥接 ACP 协议与 SDK 事件流
 export class AcpSession {
   /**
    * The most recently observed turnId from the underlying SDK event
@@ -93,6 +106,7 @@ export class AcpSession {
    * unreachable in practice; the `undefined` fallback in
    * `buildPermissionToolCallUpdate` exists for defence-in-depth.
    */
+  // 中文：当前活跃轮次 ID，用于在审批请求中组装 ACP 前缀工具调用 ID（${turnId}:${rawId}）
   private currentTurnId: number | undefined = undefined;
 
   /**
@@ -104,6 +118,7 @@ export class AcpSession {
    * a `,thinking` suffix even when the client originally sent one
    * through `unstable_setSessionModel`.
    */
+  // 中文：适配器侧权威的当前基础模型 ID（不含 ,thinking 后缀）
   private currentModelIdInternal: string;
 
   /**
@@ -123,6 +138,7 @@ export class AcpSession {
    * (Phase 16 wire form: 2-entry `select` `off` / `on`; pre-Phase-16
    * was `SessionConfigBoolean`).
    */
+  // 中文：适配器侧权威的思考模式开关状态，映射到 SDK 的 effort-level（true→'high', false→'off'）
   private currentThinkingEnabledInternal = false;
 
   /**
@@ -131,6 +147,7 @@ export class AcpSession {
    * land so the next `config_option_update` notification reflects the
    * new mode. Always one of the four PLAN D9 literals.
    */
+  // 中文：适配器侧权威的当前运行模式 ID（default/plan/auto/yolo 四种之一）
   private currentModeIdInternal: AcpModeId = DEFAULT_MODE_ID;
 
   /**
@@ -145,6 +162,7 @@ export class AcpSession {
    * to an empty map so adapter-level unit tests (which never call
    * `setSkillCommandMap`) behave as a no-op passthrough.
    */
+  // 中文：斜杠命令名 → 技能名称的映射表，用于拦截 /skill:<name> 并路由到 activateSkill
   private skillCommandMap: ReadonlyMap<string, string> = new Map();
 
   /**
@@ -152,6 +170,7 @@ export class AcpSession {
    * `/help` so the response matches the client's `available_commands_update`
    * snapshot, including dynamically discovered skill commands.
    */
+  // 中文：最近一次通告给 ACP 客户端的可用命令列表，供 /help 响应使用
   private availableCommands: readonly AvailableCommand[] = [];
 
   constructor(
@@ -206,6 +225,8 @@ export class AcpSession {
   ) {
     this.currentModelIdInternal = initialModelId ?? '';
     this.currentThinkingEnabledInternal = initialThinkingEnabled ?? false;
+    // 中文：在会话构造时注册审批桥接处理器（而非每次 prompt 时），
+    // 因为 setApprovalHandler 的作用域是整个 SDK 会话而非单个轮次
     // Register the approval bridge once, at session-construction time —
     // NOT per-prompt — because `setApprovalHandler` is scoped to the
     // SDK session, not the individual turn. The handler captures `this`
@@ -219,6 +240,7 @@ export class AcpSession {
     if (typeof this.session.setApprovalHandler === 'function') {
       this.session.setApprovalHandler((req) => this.handleApproval(req));
     }
+    // 中文：同样的模式，注册问答桥接处理器（AskUserQuestion 反向 RPC 通道）
     // Same pattern as the approval handler, but for the AskUserQuestion
     // reverse-RPC channel (Phase 13.1). Pre-Phase-13 builds of the SDK
     // do not expose `setQuestionHandler`, and unit-test stubs may omit
@@ -229,6 +251,7 @@ export class AcpSession {
   }
 
   /** ACP-level session identifier — matches the underlying SDK session id. */
+  // 中文：获取 ACP 会话标识符，与底层 SDK 会话 ID 一致
   get id(): string {
     return this.session.id;
   }
@@ -239,6 +262,7 @@ export class AcpSession {
    * the response's `configOptions` snapshot after a model / mode /
    * thinking change.
    */
+  // 中文：获取适配器侧当前基础模型 ID
   get currentModelId(): string {
     return this.currentModelIdInternal;
   }
@@ -248,6 +272,7 @@ export class AcpSession {
    * {@link AcpServer.setSessionConfigOption} to build the response's
    * `configOptions` snapshot.
    */
+  // 中文：获取适配器侧当前思考模式开关状态
   get currentThinkingEnabled(): boolean {
     return this.currentThinkingEnabledInternal;
   }
@@ -257,6 +282,7 @@ export class AcpSession {
    * {@link AcpServer.setSessionConfigOption} to build the response's
    * `configOptions` snapshot after a model / mode change.
    */
+  // 中文：获取适配器侧当前运行模式 ID
   get currentModeId(): AcpModeId {
     return this.currentModeIdInternal;
   }
@@ -267,6 +293,7 @@ export class AcpSession {
    * repeated cancels (or a cancel on an already-finished turn) are
    * acceptable.
    */
+  // 中文：转发 ACP session/cancel 请求到 SDK 会话（幂等操作）
   async cancel(): Promise<void> {
     await this.session.cancel();
   }
@@ -278,6 +305,7 @@ export class AcpSession {
    * `listSkills()` snapshot that builds the client palette, so the map
    * stays in lockstep with what the client advertises.
    */
+  // 中文：设置斜杠命令到技能名称的映射表
   setSkillCommandMap(map: ReadonlyMap<string, string>): void {
     this.skillCommandMap = map;
   }
@@ -287,6 +315,7 @@ export class AcpSession {
    * resolver snapshot. This keeps `available_commands_update`, `/help`, and
    * skill slash interception in lockstep.
    */
+  // 中文：从解析器快照中同步设置命令面板和技能路由映射，保持三者一致
   setAvailableCommands(
     commands: readonly AvailableCommand[],
     skillCommandMap: ReadonlyMap<string, string>,
@@ -331,11 +360,13 @@ export class AcpSession {
    * Unknown model errors bubble up from the SDK as-is; the caller in
    * `AcpServer.unstable_setSessionModel` decides how to translate them.
    */
+  // 中文：设置模型 ID，支持旧格式 "model,thinking" 后缀自动拆分（模型+思考开关）
   async setModel(modelId: ModelId): Promise<void> {
     const suffix = ',thinking';
     const hasSuffix = modelId.endsWith(suffix);
     const baseKey = hasSuffix ? modelId.slice(0, -suffix.length) : modelId;
     await this.session.setModel(baseKey);
+    // 中文：如果携带 ,thinking 后缀，同步开启思考模式
     if (hasSuffix && typeof this.session.setThinking === 'function') {
       await this.session.setThinking(THINKING_ON_LEVEL);
       this.currentThinkingEnabledInternal = true;
@@ -365,8 +396,10 @@ export class AcpSession {
    * came in through the funnel and the response itself already
    * carries a fresh snapshot.
    */
+  // 中文：切换思考模式开关，将布尔值映射为 SDK 的 effort-level 字符串
   async setThinking(enabled: boolean): Promise<void> {
     if (!enabled && (await this.currentModelAlwaysThinking())) {
+      // 中文：当前模型声明了 always_thinking，忽略关闭请求但仍刷新快照
       // The current model cannot disable thinking (declared
       // 'always_thinking'); silently ignore the off request — agent-core
       // clamps the runtime the same way — but still refresh the snapshot
@@ -387,6 +420,7 @@ export class AcpSession {
    * Harness-less adapter unit tests resolve to false — the agent-core
    * runtime clamp still protects the actual request in that case.
    */
+  // 中文：检查当前模型是否声明了 always_thinking（始终开启思考）
   private async currentModelAlwaysThinking(): Promise<boolean> {
     if (!this.harness) return false;
     const models = await listModelsFromHarness(this.harness);
@@ -429,11 +463,13 @@ export class AcpSession {
    *    the `config_option_update` notification is suppressed (the client
    *    will see the rejection and can re-query state).
    */
+  // 中文：设置运行模式（default/plan/auto/yolo），转换为计划模式和权限两组 SDK 开关
   async setMode(modeId: SessionModeId): Promise<void> {
     if (!isAcpModeId(modeId)) {
       throw RequestError.invalidParams({ modeId }, `Unknown sessionModeId: ${modeId}`);
     }
     const { plan, permission } = acpModeToToggles(modeId);
+    // 中文：按顺序设置计划模式和权限，然后更新配置快照
     await this.session.setPlanMode(plan);
     await this.session.setPermission(permission);
     this.currentModeIdInternal = modeId;
@@ -458,6 +494,7 @@ export class AcpSession {
    * update is a streaming concern, not load-bearing for the SDK call
    * that triggered it.
    */
+  // 中文：构建并推送 config_option_update 通知，将当前模型/思考/模式状态快照发送给客户端
   private async emitConfigOptionUpdate(): Promise<void> {
     if (!this.harness) return;
     try {
@@ -516,6 +553,8 @@ export class AcpSession {
    * batch — completion ordering is what tells the caller (`loadSession`)
    * that the response is safe to return.
    */
+  // 中文：重放历史会话记录，将持久化的消息逐条转换为 ACP session/update 通知
+  // 用于客户端重新连接时恢复到断点前的显示状态
   async replayHistory(agentId: string = MAIN_AGENT_ID): Promise<void> {
     const sessionId = this.id;
     const conn = this.conn;
@@ -538,6 +577,7 @@ export class AcpSession {
     // Map from SDK toolCallId → owning synthetic turnId, populated when
     // the assistant message that issued the call is replayed and read
     // when the tool result lands. Lives for the duration of one replay.
+    // 中文：工具调用 ID → 所属合成轮次 ID 的映射表，在重放期间维护
     const toolCallTurnIds = new Map<string, number>();
 
     for (const message of agent.context.history) {
@@ -570,6 +610,7 @@ export class AcpSession {
    * shell. Awaits every `sessionUpdate` so the replay completes in
    * order (see {@link replayHistory} JSDoc for the rationale).
    */
+  // 中文：重放单条历史消息，根据角色（user/assistant/tool）分发到不同的转换逻辑
   private async replayMessage(
     message: ContextMessage,
     sessionId: string,
@@ -583,6 +624,7 @@ export class AcpSession {
   ): Promise<void> {
     switch (message.role) {
       case 'user':
+        // 中文：用户消息——逐段发送 user_message_chunk
         for (const part of message.content) {
           if (part.type === 'text' && part.text) {
             await conn.sessionUpdate({
@@ -596,6 +638,7 @@ export class AcpSession {
         }
         return;
       case 'assistant': {
+        // 中文：助手消息——开始新轮次，重放文本/思考内容和工具调用
         ctx.beginAssistantTurn();
         const turnId = ctx.getTurnId();
         for (const part of message.content) {
@@ -608,6 +651,7 @@ export class AcpSession {
         return;
       }
       case 'tool': {
+        // 中文：工具结果消息——查找对应的工具调用 ID 并发送完成/失败状态
         const rawToolCallId = message.toolCallId;
         if (!rawToolCallId) {
           // Tool result with no correlation id — log and skip rather
@@ -638,10 +682,12 @@ export class AcpSession {
       }
       default:
         // system / unknown roles — ACP has no analogue; skip.
+        // 中文：系统/未知角色——ACP 无对应语义，跳过
         return;
     }
   }
 
+  // 中文：重放助手消息中的单个内容部分（文本或思考），转换为对应的 session/update 通知
   private async replayAssistantContentPart(
     part: ContextMessage['content'][number],
     sessionId: string,
@@ -673,6 +719,7 @@ export class AcpSession {
     // dedicated assistant-media chunk.
   }
 
+  // 中文：重放历史中的合成工具调用通知（工具结果在 tool 角色消息中单独处理）
   private async replaySyntheticToolCall(
     toolCall: NonNullable<ContextMessage['toolCalls']>[number],
     sessionId: string,
@@ -720,6 +767,7 @@ export class AcpSession {
    *    rejection is propagated as a `prompt` request error so the client
    *    sees a JSON-RPC error rather than a hung request.
    */
+  // 中文：处理 ACP session/prompt 请求——先拦截斜杠命令，再转发给 SDK 执行
   async prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse> {
     const parts = acpBlocksToPromptParts(blocks);
     const sessionId = this.id;
@@ -730,8 +778,10 @@ export class AcpSession {
     // directly: skills route to `Session.activateSkill(...)`, ACP-owned
     // built-ins route to local SDK queries, and unknown slash commands are
     // reported locally instead of being forwarded to the model as text.
+    // 中文：检测输入中的斜杠命令意图，按类型分发处理
     const intent = detectLeadingSlashIntent(blocks, this.skillCommandMap);
     if (intent.kind === 'skill') {
+      // 中文：技能命令——路由到 Session.activateSkill 执行
       this.emitTelemetry('acp_skill_activated', { skill_name: intent.skillName });
       const skillName = intent.skillName;
       const skillArgs = intent.args;
@@ -744,15 +794,19 @@ export class AcpSession {
       );
     }
     if (intent.kind === 'builtin') {
+      // 中文：内置命令（compact/status/usage/mcp/tasks/help）——本地执行
       return this.runBuiltInCommand(intent.name, intent.args);
     }
     if (intent.kind === 'unknown') {
+      // 中文：未知斜杠命令——返回错误提示
       return this.runUnknownSlashCommand(intent.name);
     }
 
+    // 中文：普通文本提示——转发给 SDK prompt 执行
     return this.runTurnBody(sessionId, conn, () => this.session.prompt(parts));
   }
 
+  // 中文：执行内置 ACP 命令（compact/status/usage/mcp/tasks/help），返回结果消息
   private async runBuiltInCommand(
     name: AcpBuiltinSlashCommandName,
     args: string,
@@ -788,6 +842,7 @@ export class AcpSession {
     return { stopReason: 'end_turn' };
   }
 
+  // 中文：处理未知的斜杠命令，返回提示信息
   private async runUnknownSlashCommand(name: string): Promise<PromptResponse> {
     await this.emitLocalCommandMessage(
       `Unknown ACP command: /${name}. Use /help to see available commands.`,
@@ -795,6 +850,7 @@ export class AcpSession {
     return { stopReason: 'end_turn' };
   }
 
+  // 中文：向客户端推送一条本地命令结果消息（agent_message_chunk）
   private async emitLocalCommandMessage(text: string): Promise<void> {
     await this.conn.sessionUpdate({
       sessionId: this.id,
@@ -805,6 +861,7 @@ export class AcpSession {
     });
   }
 
+  // 中文：执行上下文压缩命令（/compact），监听压缩生命周期事件并返回结果
   private async runCompactCommand(args: string): Promise<void> {
     const instruction = args.trim() || undefined;
     let started = false;
@@ -816,6 +873,7 @@ export class AcpSession {
     // which case `compact()` itself rejects). We resolve on whichever
     // terminal event arrives first and ignore the rest, so a follow-up
     // `error` after a cancelled never causes a double-settle.
+    // 中文：监听压缩事件流，在首个终止事件到达时结算（防止重复结算）
     const completion = new Promise<CompactionOutcome>((resolve, reject) => {
       const settle = (action: () => void): void => {
         if (settled) return;
@@ -850,6 +908,7 @@ export class AcpSession {
         // (begin() throws synchronously and rejects compact()), but
         // dropping pre-start errors would silently hang the prompt if
         // the worker is ever restructured.
+        // 中文：捕获压缩错误事件（即使在 started 之前到达）
         if (event.type === 'error') {
           settle(() => reject(new Error(event.message)));
         }
@@ -884,6 +943,8 @@ export class AcpSession {
    * subscription's `turn.started` / `turn.ended` semantics apply
    * uniformly.
    */
+  // 中文：prompt 的核心执行体——订阅 SDK 事件流，将实时事件转换为 ACP session/update 通知
+  // 支持 prompt 和 activateSkill 两种入口，共享同一套事件监听和结算逻辑
   private runTurnBody(
     sessionId: string,
     conn: AgentSideConnection,
@@ -898,6 +959,7 @@ export class AcpSession {
       // map and no state leaks across concurrent or sequential turns.
       // Keyed on the **SDK** `toolCallId` (not the ACP-prefixed one)
       // because the SDK delta events only carry the raw id.
+      // 中文：每个工具调用的流式参数累积器，按 SDK toolCallId 索引
       const argsByToolCall = new Map<string, { args: string }>();
       // Set of **wire-level** (turn-prefixed) tool-call ids for which
       // we have already sent the `tool_call` CREATE notification. The
@@ -918,6 +980,7 @@ export class AcpSession {
       // reuse the same raw id across turns within one prompt, and
       // each turn produces a distinct wire-level tool call that needs
       // its own CREATE.
+      // 中文：已发送 tool_call CREATE 的线级 ID 集合，用于处理 delta-before-started 的乱序问题
       const startedToolCalls = new Set<string>();
       const initialActiveTurnId = this.currentTurnId;
       let hasReceivedOwnTurnStarted = false;
@@ -938,6 +1001,7 @@ export class AcpSession {
         // Subagent turn events carry their own `turnId`; filtering on
         // `agentId` keeps `currentTurnId` aligned with the parent turn
         // that the approval prompt actually belongs to.
+        // 中文：跟踪活跃轮次 ID（仅主线程事件），供 handleApproval 组装前缀工具调用 ID
         if (
           'turnId' in event &&
           typeof event.turnId === 'number' &&
@@ -946,6 +1010,7 @@ export class AcpSession {
           this.currentTurnId = event.turnId;
         }
         if (event.type === 'error') {
+          // 中文：错误事件——如果另一个轮次正活跃且自身尚未开始，立即拒绝
           if (settled) return;
           if (!isFromMainAgent(event)) return;
           if (event.code !== ErrorCodes.TURN_AGENT_BUSY) return;
@@ -975,6 +1040,7 @@ export class AcpSession {
           // would force the next delta to wait for the previous flush.
           // Fire-and-forget keeps the stream pumping; we log push
           // failures rather than dropping them silently.
+          // 中文：助手文本增量——fire-and-forget 推送 agent_message_chunk 以保持流式管道畅通
           conn
             .sessionUpdate(assistantDeltaToSessionUpdate(sessionId, event))
             .catch((err) => {
@@ -986,6 +1052,7 @@ export class AcpSession {
           return;
         }
         if (event.type === 'thinking.delta') {
+          // 中文：思考内容增量——fire-and-forget 推送 agent_thought_chunk
           if (!isFromMainAgent(event)) return;
           conn
             .sessionUpdate(thinkingDeltaToSessionUpdate(sessionId, event))
@@ -1004,6 +1071,7 @@ export class AcpSession {
           // append) so each subsequent delta emits the cumulative args
           // string; if we seeded with an empty string the first delta
           // would silently drop the initial args from the rendered card.
+          // 中文：用字符串化的初始参数初始化累积器（REPLACE-content 语义）
           argsByToolCall.set(event.toolCallId, { args: stringifyArgs(event.args) });
           // Branch on whether a streaming delta already lazy-created
           // the wire `tool_call` for this id:
@@ -1013,8 +1081,10 @@ export class AcpSession {
           //    card and `status` flips to `'in_progress'`.
           //  - NO  → no prior deltas (e.g. provider doesn't stream args);
           //    take the original path and emit the `tool_call` CREATE.
+          // 中文：判断 delta 是否已提前 lazy-create 了 wire tool_call，决定发送 CREATE 还是升级 UPDATE
           const startedWireId = acpToolCallId(event.turnId, event.toolCallId);
           if (startedToolCalls.has(startedWireId)) {
+            // 中文：已有 CREATE——发送升级通知（补充 title/kind/rawInput 等元数据）
             conn
               .sessionUpdate(toolCallStartedUpgradeToSessionUpdate(sessionId, event))
               .catch((err) => {
@@ -1025,6 +1095,7 @@ export class AcpSession {
                 });
               });
           } else {
+            // 中文：无先前 delta——按常规路径发送 tool_call CREATE
             startedToolCalls.add(startedWireId);
             conn
               .sessionUpdate(toolCallStartToSessionUpdate(sessionId, event))
@@ -1043,6 +1114,7 @@ export class AcpSession {
           // into the tool_call card; only `todo_list` becomes a plan.
           // The emission is fire-and-forget under the same idle-stream
           // discipline as the assistant deltas above.
+          // 中文：如果工具暴露了 TodoList 展示，额外推送 plan 通知供客户端渲染 TODO 列表
           if (event.display) {
             const planNote = planFromDisplayBlock(sessionId, event.turnId, event.display);
             if (planNote !== null) {
@@ -1065,8 +1137,10 @@ export class AcpSession {
           // from the delta — Zed otherwise sees a `tool_call_update`
           // for an unknown id and surfaces "Tool call not found" until
           // the start eventually lands.
+          // 中文：工具调用参数增量——如果尚未发送 CREATE，则从 delta 事件 lazy-create
           const deltaWireId = acpToolCallId(event.turnId, event.toolCallId);
           if (!startedToolCalls.has(deltaWireId)) {
+            // 中文：首次 delta——lazy-create tool_call 并初始化累积器
             const initial = event.argumentsPart ?? '';
             argsByToolCall.set(event.toolCallId, { args: initial });
             startedToolCalls.add(deltaWireId);
@@ -1083,6 +1157,7 @@ export class AcpSession {
           }
           // Subsequent delta — accumulate then emit an update with the
           // cumulative args text (REPLACE-content semantics).
+          // 中文：后续 delta——累积参数并推送增量更新（REPLACE-content 语义）
           let acc = argsByToolCall.get(event.toolCallId);
           if (!acc) {
             acc = { args: '' };
@@ -1100,6 +1175,7 @@ export class AcpSession {
           return;
         }
         if (event.type === 'tool.progress') {
+          // 中文：工具进度更新——转换并推送（部分工具不产生进度通知则跳过）
           if (!isFromMainAgent(event)) return;
           const note = toolProgressToSessionUpdate(sessionId, event);
           if (note === null) return;
@@ -1113,6 +1189,7 @@ export class AcpSession {
           return;
         }
         if (event.type === 'tool.result') {
+          // 中文：工具执行结果——转换并推送完成状态的 tool_call_update
           if (!isFromMainAgent(event)) return;
           conn
             .sessionUpdate(toolResultToSessionUpdate(sessionId, event))
@@ -1126,6 +1203,7 @@ export class AcpSession {
           return;
         }
         if (event.type === 'turn.ended') {
+          // 中文：轮次结束事件——结算 Promise，清理状态，清理事件订阅
           if (settled) return;
           if (!isFromMainAgent(event)) return;
           settled = true;
@@ -1137,6 +1215,7 @@ export class AcpSession {
             // codes still resolve with `end_turn` (the spec discourages
             // signaling errors through `stopReason`; the failure is
             // observable in the log).
+            // 中文：失败的轮次——认证类错误映射为 authRequired，其他错误降级为 end_turn
             log.warn('acp: turn ended with failed reason', {
               sessionId,
               error: event.error,
@@ -1156,6 +1235,7 @@ export class AcpSession {
             // Drop the turnId so a late-arriving approval (e.g. an SDK
             // reverse-RPC racing the turn boundary) falls back to the raw
             // SDK id rather than re-prefixing with a stale value.
+            // 中文：清除轮次 ID，防止迟到的审批请求使用过期值
             this.currentTurnId = undefined;
             unsub();
           }
@@ -1163,6 +1243,7 @@ export class AcpSession {
         }
       });
 
+      // 中文：启动 SDK 调用（prompt 或 activateSkill），捕获同步/异步拒绝并映射为 ACP 错误
       kick().catch((err) => {
         if (settled) return;
         settled = true;
@@ -1194,12 +1275,14 @@ export class AcpSession {
    * method is invoked by the SDK reverse-RPC layer whenever the loop
    * needs human authorization to proceed with a tool call.
    */
+  // 中文：审批桥接——将 SDK 审批请求通过 ACP requestPermission 转发给客户端，等待用户决策
   private async handleApproval(req: ApprovalRequest): Promise<ApprovalResponse> {
     const toolCall = buildPermissionToolCallUpdate(this.currentTurnId, req);
     const options = approvalRequestToPermissionOptions(req);
     // Phase 13.2 telemetry breadcrumb: how many discrete options does
     // the plan_review surface carry? PII-free (just a count), matches
     // the Phase 11.2 telemetry discipline.
+    // 中文：遥测——记录 plan_review 选项数量（无 PII）
     if (req.display.kind === 'plan_review') {
       const count = req.display.options?.length ?? 0;
       this.emitTelemetry('plan_review_options_count', { count });
@@ -1209,6 +1292,7 @@ export class AcpSession {
       // the fire-and-forget `sessionUpdate` notifications elsewhere in
       // this file), so the SDK call site naturally blocks on the
       // user's decision before the tool runs.
+      // 中文：向客户端发起权限请求并等待用户决策（阻塞式 RPC）
       const response = await this.conn.requestPermission({
         sessionId: this.id,
         options: [...options],
@@ -1221,12 +1305,14 @@ export class AcpSession {
       // is a no-op for `cancelled` outcomes, unknown optionIds, and
       // plan_* optionIds (Phase 13.2 — the plan_review branch attaches
       // selectedLabel inside `permissionResponseToApprovalResponse`).
+      // 中文：将客户端响应映射为 SDK 审批响应，并附加选中选项的标签
       return attachSelectedLabel(
         response,
         permissionResponseToApprovalResponse(req, response),
         options,
       );
     } catch (err) {
+      // 中文：RPC 失败时降级为拒绝（安全优先原则：无法确认意图时拒绝比批准更安全）
       log.warn('acp: requestPermission failed; rejecting', {
         sessionId: this.id,
         toolCallId: req.toolCallId,
@@ -1260,6 +1346,7 @@ export class AcpSession {
    * canonical "user dismissed" branch (`rpc.ts:567`). Returning `null`
    * is strictly safer than fabricating an answer the user did not give.
    */
+  // 中文：问答桥接——将 SDK AskUserQuestion 请求复用 ACP requestPermission 通道转发给客户端
   private async handleQuestion(req: QuestionRequest): Promise<QuestionAnswers | null> {
     const questions = req.questions;
     if (questions.length === 0) {
@@ -1271,6 +1358,7 @@ export class AcpSession {
       return null;
     }
     if (questions.length > 1) {
+      // 中文：多问题降级——仅询问第一个问题，记录丢弃数量
       log.warn('acp: handleQuestion degrading to first question only', {
         sessionId: this.id,
         dropped: questions.length - 1,
@@ -1282,10 +1370,12 @@ export class AcpSession {
     }
     const q = questions[0]!;
     if (q.multiSelect === true) {
+      // 中文：多选降级为单选——记录遥测
       this.emitTelemetry('question_degraded', { reason: 'multi_select' });
     }
     const options = questionItemToPermissionOptions(q, 0);
     const rawToolCallId = req.toolCallId ?? 'ask-user';
+    // 中文：组装前缀工具调用 ID（格式 ${turnId}:${rawId}）
     const toolCallId =
       this.currentTurnId !== undefined
         ? acpToolCallId(this.currentTurnId, rawToolCallId)
@@ -1305,12 +1395,15 @@ export class AcpSession {
         // Dismissed via skip / cancel / unknown optionId — telemetry
         // matches the ask-user tool's existing `question_dismissed`
         // event so dashboards stay coherent.
+        // 中文：用户跳过/取消——记录 question_dismissed 遥测
         this.emitTelemetry('question_dismissed');
       } else {
+        // 中文：用户已回答——记录 question_answered 遥测
         this.emitTelemetry('question_answered');
       }
       return answer;
     } catch (err) {
+      // 中文：RPC 失败时降级为返回 null（用户未作答），比捏造答案更安全
       log.warn('acp: requestPermission (question) failed; dismissing', {
         sessionId: this.id,
         toolCallId: req.toolCallId,
@@ -1326,6 +1419,7 @@ export class AcpSession {
    * `server.ts:trackSessionStarted` — telemetry must never crash a
    * reverse-RPC handler.
    */
+  // 中文：安全的遥测发射器——缺失或抛异常的 sink 不会崩溃反向 RPC 处理器
   private emitTelemetry(event: string, properties?: Record<string, unknown>): void {
     if (typeof this.track !== 'function') return;
     try {
@@ -1355,16 +1449,20 @@ export class AcpSession {
  * The kimi-cli Python reference performs the same mapping at
  * `kimi-cli/src/kimi_cli/acp/session.py:218-247`; this is the TS port.
  */
+// 中文：压缩完成事件的结果类型
 type CompactionCompletedResult = Extract<Event, { type: 'compaction.completed' }>['result'];
 
+// 中文：压缩操作的可能结果——完成（含结果）或取消
 type CompactionOutcome =
   | { readonly kind: 'completed'; readonly result: CompactionCompletedResult }
   | { readonly kind: 'cancelled' };
 
+// 中文：从错误对象中安全提取错误消息字符串
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// 中文：格式化帮助报告——列出所有可用的 ACP 斜杠命令
 function formatHelpReport(commands: readonly AvailableCommand[]): string {
   const visibleCommands: readonly AvailableCommand[] =
     commands.length > 0 ? commands : ACP_BUILTIN_SLASH_COMMANDS;
@@ -1377,6 +1475,7 @@ function formatHelpReport(commands: readonly AvailableCommand[]): string {
   ].join('\n');
 }
 
+// 中文：格式化会话状态报告——显示模型、思考级别、权限模式和上下文使用情况
 function formatStatusReport(status: SessionStatus): string {
   const maxTokens = status.maxContextTokens > 0 ? status.maxContextTokens.toLocaleString('en-US') : 'unknown';
   const usage = formatContextUsage(status.contextUsage);
@@ -1390,6 +1489,7 @@ function formatStatusReport(status: SessionStatus): string {
   ].join('\n');
 }
 
+// 中文：格式化 Token 使用量报告——按总量、当前轮次和各模型分别统计
 function formatUsageReport(usage: SessionUsage, status: SessionStatus): string {
   const lines = ['Session usage:'];
   if (usage.total !== undefined) {
@@ -1407,6 +1507,7 @@ function formatUsageReport(usage: SessionUsage, status: SessionStatus): string {
   return lines.join('\n');
 }
 
+// 中文：格式化 MCP 服务器状态报告
 function formatMcpReport(servers: readonly McpServerInfo[]): string {
   if (servers.length === 0) return 'No MCP servers are configured for this session.';
   return [
@@ -1418,6 +1519,7 @@ function formatMcpReport(servers: readonly McpServerInfo[]): string {
   ].join('\n');
 }
 
+// 中文：格式化后台任务状态报告
 function formatTasksReport(tasks: readonly BackgroundTaskInfo[]): string {
   if (tasks.length === 0) return 'No background tasks for this session.';
   return [
@@ -1432,6 +1534,7 @@ function formatTasksReport(tasks: readonly BackgroundTaskInfo[]): string {
   ].join('\n');
 }
 
+// 中文：格式化压缩完成结果——显示压缩的消息数和 Token 数变化
 function formatCompactionCompleted(result: CompactionCompletedResult): string {
   return [
     'Compaction completed.',
@@ -1441,6 +1544,7 @@ function formatCompactionCompleted(result: CompactionCompletedResult): string {
   ].join('\n');
 }
 
+// 中文：格式化单次 Token 使用量详情（输入/输出/缓存读取/缓存创建）
 function formatTokenUsage(usage: NonNullable<SessionUsage['total']>): string {
   return [
     `input ${usage.inputOther.toLocaleString('en-US')}`,
@@ -1454,6 +1558,7 @@ function formatTokenUsage(usage: NonNullable<SessionUsage['total']>): string {
 // maxContextTokens` — see agent-core/src/agent/index.ts:419-422). It can
 // briefly exceed 1.0 when a turn overflows the budget; we still surface
 // that as ">100%" rather than collapsing back into 0..1.
+// 中文：将上下文使用率（0~1 小数）格式化为百分比字符串，允许超过 100%
 function formatContextUsage(contextUsage: number): string {
   if (!Number.isFinite(contextUsage) || contextUsage < 0) return '';
   return ` (${(contextUsage * 100).toFixed(1)}%)`;
@@ -1473,6 +1578,7 @@ function formatContextUsage(contextUsage: number): string {
  * avoid an app→package import inversion. See `./slash`'s top-of-file
  * comment for the sync target.
  */
+// 中文：检测 ACP 提示词中的前导斜杠命令意图（仅检查第一个文本块）
 function detectLeadingSlashIntent(
   blocks: readonly ContentBlock[],
   skillCommandMap: ReadonlyMap<string, string>,
@@ -1482,6 +1588,7 @@ function detectLeadingSlashIntent(
   return detectSlashIntent(first.text, skillCommandMap);
 }
 
+// 中文：将 prompt 调用中的错误映射为 ACP RequestError（认证错误特殊处理，其他降级为内部错误）
 function mapPromptError(err: unknown, sessionId: string): RequestError {
   const authErr = authRequiredFromUnknown(err);
   if (authErr) {
@@ -1507,6 +1614,7 @@ function mapPromptError(err: unknown, sessionId: string): RequestError {
  * `turn.ended` event hands us a serialized payload (no class identity
  * to branch on) — we only need the `code` discriminator here.
  */
+// 中文：检查 turn.ended 失败载荷是否包含认证错误码，返回 authRequired 或 undefined
 function authRequiredFromPayload(payload: KimiErrorPayload | undefined): RequestError | undefined {
   if (!payload) return undefined;
   if (isAuthErrorCode(payload.code)) {
@@ -1523,6 +1631,7 @@ function authRequiredFromPayload(payload: KimiErrorPayload | undefined): Request
  *    request with a 401 (the node SDK lifts these into `KimiError`
  *    at `kimi-code-model-provider.ts:99-103`).
  */
+// 中文：判断错误码是否为"需要重新认证"类型（auth.login_required 或 provider.auth_error）
 function isAuthErrorCode(code: unknown): boolean {
   return code === ErrorCodes.AUTH_LOGIN_REQUIRED || code === ErrorCodes.PROVIDER_AUTH_ERROR;
 }
@@ -1535,6 +1644,7 @@ function isAuthErrorCode(code: unknown): boolean {
  *    deserialized payloads that lost class identity).
  *  - Anything else — returns `undefined`.
  */
+// 中文：尽力检测 prompt 拒绝路径中的"需要认证"错误（支持 KimiError 和普通对象）
 function authRequiredFromUnknown(err: unknown): RequestError | undefined {
   if (err && typeof err === 'object' && 'code' in err) {
     const code = (err as { code?: unknown }).code;
@@ -1555,7 +1665,9 @@ function authRequiredFromUnknown(err: unknown): RequestError | undefined {
  * granularity of `'low' | 'medium' | 'xhigh' | 'max'` is intentionally
  * not exposed — the ACP `thinking` axis is binary.
  */
+// 中文：思考模式开启时的 effort-level（kimi-code 的典型默认值）
 const THINKING_ON_LEVEL = 'high';
+// 中文：思考模式关闭时的 effort-level
 const THINKING_OFF_LEVEL = 'off';
 
 /**
@@ -1564,6 +1676,7 @@ const THINKING_OFF_LEVEL = 'off';
  * filtering on this constant keeps `turn.ended` / `error` events from a
  * child agent from settling the parent's `session/prompt` promise.
  */
+// 中文：主线程代理 ID——用于区分主代理事件和子代理事件，防止子代理事件结算父代理的 prompt Promise
 const MAIN_AGENT_ID = 'main';
 
 /**
@@ -1575,6 +1688,7 @@ const MAIN_AGENT_ID = 'main';
  * cannot serialize, so the worst case is a degraded preview rather
  * than a crash.
  */
+// 中文：解析工具调用参数的 JSON 字符串为结构化对象（无效 JSON 时降级为原始字符串）
 function parseToolCallArguments(rawArguments: string | null): unknown {
   if (rawArguments === null || rawArguments === '') return {};
   try {
@@ -1593,6 +1707,8 @@ function parseToolCallArguments(rawArguments: string | null): unknown {
  * `[type]` placeholder so the client still sees that something was
  * returned.
  */
+// 中文：将工具角色消息的 content 数组转换为 ACP tool_call_update.content 格式
+// 非文本部分（图片/音频等）降级为 [type] 占位符以保留存在证据
 function toolMessageContentToAcpToolCallContent(
   parts: ContextMessage['content'],
 ): Array<{ type: 'content'; content: { type: 'text'; text: string } }> {
@@ -1607,6 +1723,7 @@ function toolMessageContentToAcpToolCallContent(
     // image_url / audio_url / video_url / think — surface a marker so
     // the result card is not empty. Replay should not lose evidence
     // that a non-text part was present.
+    // 中文：非文本内容——降级为 [type] 占位符标记
     result.push({
       type: 'content',
       content: { type: 'text', text: `[${part.type}]` },
