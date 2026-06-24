@@ -3,7 +3,7 @@
  * 不对外导出，仅供 kaos 包内部使用。
  */
 
-import { Readable } from 'node:stream';
+import { Readable } from "node:stream";
 
 /** 判断一个字节是否为 UTF-8 多字节序列的后续字节（10xxxxxx） */
 function isUtf8Continuation(byte: number): boolean {
@@ -23,7 +23,7 @@ function isUtf8Continuation(byte: number): boolean {
  * - 0xF0-0xF4：四字节序列
  */
 function decodeUtf8Ignore(data: Buffer): string {
-  let output = '';
+  let output = "";
   let i = 0;
 
   while (i < data.length) {
@@ -61,7 +61,9 @@ function decodeUtf8Ignore(data: Buffer): string {
           (b0 >= 0xee && b0 <= 0xef && isUtf8Continuation(b1)));
 
       if (validSecond && b2 !== undefined && isUtf8Continuation(b2)) {
-        output += String.fromCodePoint(((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f));
+        output += String.fromCodePoint(
+          ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f),
+        );
         i += 3;
         continue;
       }
@@ -88,7 +90,10 @@ function decodeUtf8Ignore(data: Buffer): string {
         isUtf8Continuation(b3)
       ) {
         output += String.fromCodePoint(
-          ((b0 & 0x07) << 18) | ((b1 & 0x3f) << 12) | ((b2 & 0x3f) << 6) | (b3 & 0x3f),
+          ((b0 & 0x07) << 18) |
+            ((b1 & 0x3f) << 12) |
+            ((b2 & 0x3f) << 6) |
+            (b3 & 0x3f),
         );
         i += 4;
         continue;
@@ -111,7 +116,7 @@ function decodeUtf8Ignore(data: Buffer): string {
  * 处理高代理 (0xD800-0xDBFF) + 低代理 (0xDC00-0xDFFF) 的配对逻辑。
  */
 function decodeUtf16LeIgnore(data: Buffer): string {
-  let output = '';
+  let output = "";
   let i = 0;
 
   while (i + 1 < data.length) {
@@ -128,7 +133,8 @@ function decodeUtf16LeIgnore(data: Buffer): string {
       if (lowFirst !== undefined && lowSecond !== undefined) {
         const low = lowFirst | (lowSecond << 8);
         if (low >= 0xdc00 && low <= 0xdfff) {
-          const codePoint = 0x10000 + ((codeUnit - 0xd800) << 10) + (low - 0xdc00);
+          const codePoint =
+            0x10000 + ((codeUnit - 0xd800) << 10) + (low - 0xdc00);
           output += String.fromCodePoint(codePoint);
           i += 4;
           continue;
@@ -166,7 +172,8 @@ function decodeUtf16LeIgnore(data: Buffer): string {
 export function decodeTextWithErrors(
   data: Buffer,
   encoding: BufferEncoding,
-  errors: 'strict' | 'replace' | 'ignore' = 'strict',
+  errors: "strict" | "replace" | "ignore" = "strict",
+  ignoreBOM: boolean = false,
 ): string {
   // 将 Node 的 BufferEncoding 名称映射为 Web TextDecoder 标签。
   // 只有 UTF 系列编码参与 strict/replace/ignore 处理；
@@ -174,14 +181,14 @@ export function decodeTextWithErrors(
   let webLabel: string | undefined;
   // eslint-disable-next-line typescript-eslint/switch-exhaustiveness-check
   switch (encoding) {
-    case 'utf-8':
-    case 'utf8':
-      webLabel = 'utf-8';
+    case "utf-8":
+    case "utf8":
+      webLabel = "utf-8";
       break;
-    case 'utf16le':
-    case 'ucs2':
-    case 'ucs-2':
-      webLabel = 'utf-16le';
+    case "utf16le":
+    case "ucs2":
+    case "ucs-2":
+      webLabel = "utf-16le";
       break;
     default:
       webLabel = undefined;
@@ -193,19 +200,21 @@ export function decodeTextWithErrors(
     return data.toString(encoding);
   }
 
-  if (errors === 'strict') {
-    return new TextDecoder(webLabel, { fatal: true }).decode(data);
+  if (errors === "strict") {
+    return new TextDecoder(webLabel, { fatal: true, ignoreBOM }).decode(data);
   }
 
   // 'ignore' 必须跳过无效的输入字节/码元，而不是删除解码输出中的每个
   // 替换字符。文件中可能包含原本有效的 U+FFFD，Python 在 errors="ignore"
   // 下会保留它。
-  if (errors === 'ignore') {
-    return webLabel === 'utf-8' ? decodeUtf8Ignore(data) : decodeUtf16LeIgnore(data);
+  if (errors === "ignore") {
+    return webLabel === "utf-8"
+      ? decodeUtf8Ignore(data)
+      : decodeUtf16LeIgnore(data);
   }
 
-  // 'replace' → 将每个无效序列替换为 U+FFFD（默认行为）
-  return new TextDecoder(webLabel, { fatal: false }).decode(data);
+  // 'replace' → substitute each invalid sequence with U+FFFD (default).
+  return new TextDecoder(webLabel, { fatal: false, ignoreBOM }).decode(data);
 }
 
 /**
@@ -218,59 +227,62 @@ export function decodeTextWithErrors(
  * - 默认大小写敏感
  * @internal
  */
-export function globPatternToRegex(pattern: string, caseSensitive: boolean): RegExp {
-  let regex = '^';
+export function globPatternToRegex(
+  pattern: string,
+  caseSensitive: boolean,
+): RegExp {
+  let regex = "^";
   for (let i = 0; i < pattern.length; i++) {
     const ch = pattern[i];
     if (ch === undefined) break;
     switch (ch) {
-      case '*':
+      case "*":
         // 匹配任意数量的非斜杠字符
-        regex += '[^/]*';
+        regex += "[^/]*";
         break;
-      case '?':
+      case "?":
         // 匹配单个非斜杠字符
-        regex += '[^/]';
+        regex += "[^/]";
         break;
-      case '[': {
-        const end = pattern.indexOf(']', i + 1);
+      case "[": {
+        const end = pattern.indexOf("]", i + 1);
         if (end === -1) {
           // 没有闭合的 `[`，按字面量处理
-          regex += '\\[';
+          regex += "\\[";
         } else {
           // Glob 字符类只用 `!` 取反。字面前导 `^` 必须保持字面量，
           // 即使 JS 正则字符类在首位将其视为取反。
           let charClass = pattern.slice(i + 1, end);
           // 转义类内的反斜杠，避免尾部反斜杠意外转义闭合的 `]`
-          charClass = charClass.replace(/\\/g, '\\\\');
-          if (charClass.startsWith('!')) {
-            charClass = '^' + charClass.slice(1);
-          } else if (charClass.startsWith('^')) {
-            charClass = '\\' + charClass;
+          charClass = charClass.replace(/\\/g, "\\\\");
+          if (charClass.startsWith("!")) {
+            charClass = "^" + charClass.slice(1);
+          } else if (charClass.startsWith("^")) {
+            charClass = "\\" + charClass;
           }
-          regex += '[' + charClass + ']';
+          regex += "[" + charClass + "]";
           i = end;
         }
         break;
       }
-      case '\\': {
+      case "\\": {
         if (i + 1 < pattern.length) {
           const next = pattern.charAt(i + 1);
-          regex += next.replaceAll(/[{}()+.\\[\]^$|]/g, '\\$&');
+          regex += next.replaceAll(/[{}()+.\\[\]^$|]/g, "\\$&");
           // 跳过已转义的字符，避免被当作正则元字符再次处理
           i++;
         } else {
-          regex += '\\\\';
+          regex += "\\\\";
         }
         break;
       }
       default:
         // 普通字符：转义正则元字符
-        regex += ch.replaceAll(/[{}()+.\\[\]^$|]/g, '\\$&');
+        regex += ch.replaceAll(/[{}()+.\\[\]^$|]/g, "\\$&");
     }
   }
-  regex += '$';
-  return new RegExp(regex, caseSensitive ? '' : 'i');
+  regex += "$";
+  return new RegExp(regex, caseSensitive ? "" : "i");
 }
 
 /**
@@ -290,10 +302,10 @@ export class BufferedReadable extends Readable {
     // 同时不会无限消耗内存。
     super({ highWaterMark: 128 * 1024 });
     this._source = source;
-    this._source.on('data', this._onData);
-    this._source.on('end', this._onEnd);
-    this._source.on('close', this._onClose);
-    this._source.on('error', this._onError);
+    this._source.on("data", this._onData);
+    this._source.on("end", this._onEnd);
+    this._source.on("close", this._onClose);
+    this._source.on("error", this._onError);
   }
 
   override _read(): void {
@@ -303,12 +315,15 @@ export class BufferedReadable extends Readable {
     }
   }
 
-  override _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
+  override _destroy(
+    error: Error | null,
+    callback: (error?: Error | null) => void,
+  ): void {
     // 清理所有事件监听器并销毁源流
-    this._source.off('data', this._onData);
-    this._source.off('end', this._onEnd);
-    this._source.off('close', this._onClose);
-    this._source.off('error', this._onError);
+    this._source.off("data", this._onData);
+    this._source.off("end", this._onEnd);
+    this._source.off("close", this._onClose);
+    this._source.off("error", this._onError);
     this._source.destroy();
     callback(error);
   }

@@ -1,5 +1,5 @@
-import type { ChildProcess, SpawnOptions } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   appendFile,
   lstat,
@@ -9,19 +9,39 @@ import {
   readFile,
   stat,
   writeFile,
-} from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { isAbsolute, join, normalize } from 'pathe';
-import type { Readable, Writable } from 'node:stream';
+} from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join, normalize } from "pathe";
+import type { Readable, Writable } from "node:stream";
 
-import { detectEnvironmentFromNode, type Environment } from './environment';
-import { KaosFileExistsError } from './errors';
-import { BufferedReadable, decodeTextWithErrors, globPatternToRegex } from './internal';
-import type { Kaos } from './kaos';
-import type { KaosProcess } from './process';
-import type { StatResult } from './types';
+import { detectEnvironmentFromNode, type Environment } from "./environment";
+import { KaosFileExistsError } from "./errors";
+import {
+  BufferedReadable,
+  decodeTextWithErrors,
+  globPatternToRegex,
+} from "./internal";
+import type { Kaos } from "./kaos";
+import type { KaosProcess } from "./process";
+import type { StatResult } from "./types";
 
-const isWindows: boolean = process.platform === 'win32';
+const isWindows: boolean = process.platform === "win32";
+const READ_CHUNK_SIZE = 64 * 1024;
+
+type TextDecodeErrors = "strict" | "replace" | "ignore";
+
+interface LineEndingFlags {
+  hasCrLf: boolean;
+  hasLf: boolean;
+  hasLoneCr: boolean;
+}
+
+interface TextFileScan {
+  totalLines: number;
+  endsWithNewline: boolean;
+  hasNul: boolean;
+  lineEndingFlags: LineEndingFlags;
+}
 
 /**
  * 构建 `_globWalk` 访问集合所使用的 `(dev, ino)` 环检测键。
@@ -44,7 +64,7 @@ export function buildLocalSpawnOptions(
   return {
     cwd,
     env,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ["pipe", "pipe", "pipe"],
     detached: !isWindows,
     windowsHide: true,
   };
@@ -62,8 +82,14 @@ class LocalProcess implements KaosProcess {
   private _disposed = false;
 
   constructor(child: ChildProcess) {
-    if (child.stdin === null || child.stdout === null || child.stderr === null) {
-      throw new Error('Process must be created with stdin/stdout/stderr pipes.');
+    if (
+      child.stdin === null ||
+      child.stdout === null ||
+      child.stderr === null
+    ) {
+      throw new Error(
+        "Process must be created with stdin/stdout/stderr pipes.",
+      );
     }
 
     this._child = child;
@@ -73,11 +99,11 @@ class LocalProcess implements KaosProcess {
     this.pid = child.pid ?? -1;
 
     this._exitPromise = new Promise<number>((resolve, reject) => {
-      child.on('exit', (code: number | null) => {
+      child.on("exit", (code: number | null) => {
         this._exitCode = code ?? -1;
         resolve(this._exitCode);
       });
-      child.on('error', (error: Error) => {
+      child.on("error", (error: Error) => {
         reject(error);
       });
     });
@@ -104,20 +130,20 @@ class LocalProcess implements KaosProcess {
     // 子进程的子进程仍然存活。使用 `taskkill /T` 可以让调用方的优雅终止
     // 和强制终止阶段作用于整个进程树。
     if (isWindows) {
-      const useForce = signal === 'SIGKILL';
+      const useForce = signal === "SIGKILL";
       const taskkillArgs = useForce
-        ? ['/T', '/F', '/PID', String(this.pid)]
-        : ['/T', '/PID', String(this.pid)];
+        ? ["/T", "/F", "/PID", String(this.pid)]
+        : ["/T", "/PID", String(this.pid)];
       return new Promise<void>((resolve) => {
-        const killer = spawn('taskkill', taskkillArgs, {
-          stdio: 'ignore',
+        const killer = spawn("taskkill", taskkillArgs, {
+          stdio: "ignore",
           windowsHide: true,
         });
         const done = (): void => {
           resolve();
         };
-        killer.once('error', done);
-        killer.once('close', done);
+        killer.once("error", done);
+        killer.once("close", done);
       });
     }
 
@@ -127,17 +153,17 @@ class LocalProcess implements KaosProcess {
     // 孤立的孙进程。`process.kill(-pid, signal)` 向整个进程组发信号
     // （负 pid = POSIX kill(2) 下的进程组 id）。
     try {
-      process.kill(-this.pid, signal ?? 'SIGTERM');
+      process.kill(-this.pid, signal ?? "SIGTERM");
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       // ESRCH = 进程组已经退出（子进程在 `wait()` 与此次调用之间
       // 竞争 spawn 并已退出并被回收）。视为成功终止。
-      if (err.code === 'ESRCH') return Promise.resolve();
+      if (err.code === "ESRCH") return Promise.resolve();
       // EPERM 通常是配置错误（例如文件前面使用了非 detached 方式的 spawn）；
       // 回退到直接调用 `.kill()`，这样至少能向直接子进程发信号，而不是抛出异常。
-      if (err.code === 'EPERM') {
+      if (err.code === "EPERM") {
         try {
-          this._child.kill(signal ?? 'SIGTERM');
+          this._child.kill(signal ?? "SIGTERM");
         } catch {
           /* 尽力而为 */
         }
@@ -166,7 +192,7 @@ class LocalProcess implements KaosProcess {
  * 而不会相互污染相对路径解析。
  */
 export class LocalKaos implements Kaos {
-  readonly name: string = 'local';
+  readonly name: string = "local";
   readonly osEnv: Environment;
   private _cwd: string;
   private readonly _envLayers: readonly Record<string, string>[];
@@ -209,8 +235,8 @@ export class LocalKaos implements Kaos {
     return join(this._cwd, path);
   }
 
-  pathClass(): 'posix' | 'win32' {
-    return isWindows ? 'win32' : 'posix';
+  pathClass(): "posix" | "win32" {
+    return isWindows ? "win32" : "posix";
   }
 
   normpath(path: string): string {
@@ -242,7 +268,10 @@ export class LocalKaos implements Kaos {
     this._cwd = resolved;
   }
 
-  async stat(path: string, options?: { followSymlinks?: boolean }): Promise<StatResult> {
+  async stat(
+    path: string,
+    options?: { followSymlinks?: boolean },
+  ): Promise<StatResult> {
     const resolved = this._resolvePath(path);
     const followSymlinks = options?.followSymlinks ?? true;
     const s = followSymlinks ? await stat(resolved) : await lstat(resolved);
@@ -277,7 +306,7 @@ export class LocalKaos implements Kaos {
   ): AsyncGenerator<string> {
     const resolved = this._resolvePath(path);
     const caseSensitive = options?.caseSensitive ?? true;
-    const patternParts = pattern.split('/');
+    const patternParts = pattern.split("/");
     // 将 basePath 自身的 inode 预先加入 `visited`，这样 basePath 内部的
     // 符号链接如果指回 basePath，就能在首次遇到时就被捕获（而不是在第二层
     // 才被捕获 —— 如果调用方直接从循环根目录进行 glob，这个 "+1 深度" 的
@@ -321,7 +350,7 @@ export class LocalKaos implements Kaos {
 
     const [currentPattern, ...remainingParts] = patternParts;
 
-    if (currentPattern === '**') {
+    if (currentPattern === "**") {
       // `**` 匹配零个或多个目录层级。
       //
       // 正好有两种情况需要处理：
@@ -373,7 +402,7 @@ export class LocalKaos implements Kaos {
         }
       }
     } else {
-      const regex = globPatternToRegex(currentPattern ?? '', caseSensitive);
+      const regex = globPatternToRegex(currentPattern ?? "", caseSensitive);
 
       let entries: string[];
       try {
@@ -419,7 +448,7 @@ export class LocalKaos implements Kaos {
     if (n === undefined) {
       return Buffer.from(await readFile(resolved));
     }
-    const fh = await open(resolved, 'r');
+    const fh = await open(resolved, "r");
     try {
       const buf = Buffer.alloc(n);
       const { bytesRead } = await fh.read(buf, 0, n, 0);
@@ -431,33 +460,207 @@ export class LocalKaos implements Kaos {
 
   async readText(
     path: string,
-    options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
+    options?: {
+      encoding?: BufferEncoding;
+      errors?: "strict" | "replace" | "ignore";
+    },
   ): Promise<string> {
     const resolved = this._resolvePath(path);
-    const encoding = options?.encoding ?? 'utf-8';
-    const errors = options?.errors ?? 'strict';
+    const encoding = options?.encoding ?? "utf-8";
+    const errors = options?.errors ?? "strict";
     const data = await readFile(resolved);
     return decodeTextWithErrors(data, encoding, errors);
   }
 
   async *readLines(
     path: string,
-    options?: { encoding?: BufferEncoding; errors?: 'strict' | 'replace' | 'ignore' },
+    options?: { encoding?: BufferEncoding; errors?: TextDecodeErrors },
   ): AsyncGenerator<string> {
     const resolved = this._resolvePath(path);
-    const encoding = options?.encoding ?? 'utf-8';
-    const errors = options?.errors ?? 'strict';
-    const buf = await readFile(resolved);
-    const content = decodeTextWithErrors(buf, encoding, errors);
-    const lines = content.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line === undefined) continue;
-      if (i < lines.length - 1) {
-        yield line + '\n';
-      } else if (line !== '') {
-        yield line;
+    const encoding = options?.encoding ?? "utf-8";
+    const errors = options?.errors ?? "strict";
+
+    if (!isUtf8Encoding(encoding)) {
+      const content = decodeTextWithErrors(
+        await readFile(resolved),
+        encoding,
+        errors,
+      );
+      yield* splitLinesKeepingTerminator(content);
+      return;
+    }
+
+    yield* this._readUtf8Lines(resolved, errors);
+  }
+
+  async scanTextFile(path: string): Promise<TextFileScan> {
+    const resolved = this._resolvePath(path);
+    const fh = await open(resolved, "r");
+    try {
+      const buf = Buffer.alloc(READ_CHUNK_SIZE);
+      const flags: LineEndingFlags = {
+        hasCrLf: false,
+        hasLf: false,
+        hasLoneCr: false,
+      };
+      const validator = createUtf8Validator();
+      let totalLines = 0;
+      let totalBytes = 0;
+      let endsWithNewline = false;
+      let hasNul = false;
+      let prevWasCr = false;
+
+      while (true) {
+        const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+        if (bytesRead === 0) break;
+        const chunk = buf.subarray(0, bytesRead);
+        validator.write(chunk);
+        for (let i = 0; i < chunk.length; i += 1) {
+          const byte = chunk[i];
+          if (byte === undefined) continue;
+          if (byte === 0) hasNul = true;
+          if (byte === 0x0a) totalLines += 1;
+        }
+        prevWasCr = updateLineEndingFlagsFromBytes(flags, chunk, prevWasCr);
+        totalBytes += bytesRead;
+        endsWithNewline = chunk[bytesRead - 1] === 0x0a;
       }
+
+      if (prevWasCr) flags.hasLoneCr = true;
+      validator.end();
+      if (totalBytes > 0 && !endsWithNewline) totalLines += 1;
+      return { totalLines, endsWithNewline, hasNul, lineEndingFlags: flags };
+    } finally {
+      await fh.close();
+    }
+  }
+
+  async *readLineRange(
+    path: string,
+    options: { startLine: number; maxLines: number; errors?: TextDecodeErrors },
+  ): AsyncGenerator<string> {
+    const resolved = this._resolvePath(path);
+    const errors = options.errors ?? "strict";
+    yield* this._readUtf8Lines(resolved, errors, {
+      startLine: options.startLine,
+      maxLines: options.maxLines,
+    });
+  }
+
+  async *readTailLines(
+    path: string,
+    options: { tailCount: number; errors?: TextDecodeErrors },
+  ): AsyncGenerator<string> {
+    if (options.tailCount <= 0) return;
+    const resolved = this._resolvePath(path);
+    const errors = options.errors ?? "strict";
+    const fh = await open(resolved, "r");
+    try {
+      const s = await fh.stat();
+      if (s.size === 0) return;
+
+      let pos = s.size;
+      let foundLf = 0;
+      let startOffset = 0;
+      let needLf = options.tailCount;
+      let sawTailBlock = false;
+
+      while (pos > 0 && foundLf < needLf) {
+        const readSize = Math.min(READ_CHUNK_SIZE, pos);
+        pos -= readSize;
+        const buf = Buffer.alloc(readSize);
+        await fh.read(buf, 0, readSize, pos);
+        if (!sawTailBlock) {
+          sawTailBlock = true;
+          const endsWithNewline = buf[readSize - 1] === 0x0a;
+          needLf = endsWithNewline ? options.tailCount + 1 : options.tailCount;
+        }
+        for (let i = readSize - 1; i >= 0; i -= 1) {
+          const byte = buf[i];
+          if (byte !== 0x0a) continue;
+          foundLf += 1;
+          if (foundLf === needLf) {
+            startOffset = pos + i + 1;
+            break;
+          }
+        }
+      }
+
+      if (foundLf < needLf) startOffset = 0;
+      const data = await readRange(fh, startOffset, s.size - startOffset);
+      const text = decodeTextWithErrors(
+        data,
+        "utf-8",
+        errors,
+        startOffset !== 0,
+      );
+      yield* splitLinesKeepingTerminator(text);
+    } finally {
+      await fh.close();
+    }
+  }
+
+  private async *_readUtf8Lines(
+    resolved: string,
+    errors: TextDecodeErrors,
+    range?: { startLine?: number; maxLines?: number },
+  ): AsyncGenerator<string> {
+    const startLine = range?.startLine ?? 1;
+    const maxLines = range?.maxLines ?? Number.POSITIVE_INFINITY;
+    const fh = await open(resolved, "r");
+    try {
+      const buf = Buffer.alloc(READ_CHUNK_SIZE);
+      let pending: Buffer[] = [];
+      let pendingOffset = 0;
+      let fileOffset = 0;
+      let lineNo = 1;
+      let yielded = 0;
+
+      while (true) {
+        const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+        if (bytesRead === 0) break;
+        const chunk = buf.subarray(0, bytesRead);
+        let lineStart = 0;
+
+        for (let i = 0; i < chunk.length; i += 1) {
+          const byte = chunk[i];
+          if (byte !== 0x0a) continue;
+          const piece = chunk.subarray(lineStart, i + 1);
+          const lineOffset =
+            pending.length === 0 ? fileOffset + lineStart : pendingOffset;
+          const line =
+            pending.length === 0 ? piece : Buffer.concat([...pending, piece]);
+          if (lineNo >= startLine) {
+            yield decodeTextWithErrors(line, "utf-8", errors, lineOffset !== 0);
+            yielded += 1;
+            if (yielded >= maxLines) return;
+          }
+          pending = [];
+          lineStart = i + 1;
+          lineNo += 1;
+        }
+
+        if (lineStart < chunk.length) {
+          const tail = Buffer.from(chunk.subarray(lineStart));
+          if (pending.length === 0) pendingOffset = fileOffset + lineStart;
+          pending.push(tail);
+        }
+        fileOffset += bytesRead;
+      }
+
+      if (pending.length > 0) {
+        const line = Buffer.concat(pending);
+        if (lineNo >= startLine) {
+          yield decodeTextWithErrors(
+            line,
+            "utf-8",
+            errors,
+            pendingOffset !== 0,
+          );
+        }
+      }
+    } finally {
+      await fh.close();
     }
   }
 
@@ -470,12 +673,12 @@ export class LocalKaos implements Kaos {
   async writeText(
     path: string,
     data: string,
-    options?: { mode?: 'w' | 'a'; encoding?: BufferEncoding },
+    options?: { mode?: "w" | "a"; encoding?: BufferEncoding },
   ): Promise<number> {
     const resolved = this._resolvePath(path);
-    const encoding = options?.encoding ?? 'utf-8';
-    const mode = options?.mode ?? 'w';
-    if (mode === 'a') {
+    const encoding = options?.encoding ?? "utf-8";
+    const mode = options?.mode ?? "w";
+    if (mode === "a") {
       await appendFile(resolved, data, encoding);
     } else {
       await writeFile(resolved, data, encoding);
@@ -483,7 +686,10 @@ export class LocalKaos implements Kaos {
     return data.length;
   }
 
-  async mkdir(path: string, options?: { parents?: boolean; existOk?: boolean }): Promise<void> {
+  async mkdir(
+    path: string,
+    options?: { parents?: boolean; existOk?: boolean },
+  ): Promise<void> {
     const resolved = this._resolvePath(path);
     const parents = options?.parents ?? false;
     const existOk = options?.existOk ?? false;
@@ -503,7 +709,7 @@ export class LocalKaos implements Kaos {
         } catch (error: unknown) {
           if (error instanceof KaosFileExistsError) throw error;
           const err = error as NodeJS.ErrnoException;
-          if (err.code !== 'ENOENT') throw error;
+          if (err.code !== "ENOENT") throw error;
           // ENOENT：目标尚不存在 —— 继续执行 mkdir。
         }
       }
@@ -518,8 +724,8 @@ export class LocalKaos implements Kaos {
       if (
         existOk &&
         error instanceof Error &&
-        'code' in error &&
-        (error as NodeJS.ErrnoException).code === 'EEXIST'
+        "code" in error &&
+        (error as NodeJS.ErrnoException).code === "EEXIST"
       ) {
         // `existOk` 仅在冲突路径本身是目录时适用。如果一个普通文件
         // （或其他非目录）已经占据了该路径，静默返回就是一个谎言
@@ -527,7 +733,9 @@ export class LocalKaos implements Kaos {
         // 将"文件冲突"误认为"目录已存在"。
         const s = await stat(resolved);
         if (!s.isDirectory()) {
-          throw new KaosFileExistsError(`${resolved} already exists but is not a directory`);
+          throw new KaosFileExistsError(
+            `${resolved} already exists but is not a directory`,
+          );
         }
         return;
       }
@@ -538,7 +746,9 @@ export class LocalKaos implements Kaos {
   async exec(...args: string[]): Promise<KaosProcess> {
     const command = args[0];
     if (command === undefined) {
-      throw new Error('LocalKaos.exec(): at least one argument (the command to run) is required.');
+      throw new Error(
+        "LocalKaos.exec(): at least one argument (the command to run) is required.",
+      );
     }
     const restArgs = args.slice(1);
     const child = spawn(
@@ -550,11 +760,14 @@ export class LocalKaos implements Kaos {
     return new LocalProcess(child);
   }
 
-  async execWithEnv(args: string[], env?: Record<string, string>): Promise<KaosProcess> {
+  async execWithEnv(
+    args: string[],
+    env?: Record<string, string>,
+  ): Promise<KaosProcess> {
     const command = args[0];
     if (command === undefined) {
       throw new Error(
-        'LocalKaos.execWithEnv(): at least one argument (the command to run) is required.',
+        "LocalKaos.execWithEnv(): at least one argument (the command to run) is required.",
       );
     }
     const restArgs = args.slice(1);
@@ -567,7 +780,9 @@ export class LocalKaos implements Kaos {
     return new LocalProcess(child);
   }
 
-  private _buildExecEnv(invocationEnv?: Record<string, string>): Record<string, string> | undefined {
+  private _buildExecEnv(
+    invocationEnv?: Record<string, string>,
+  ): Record<string, string> | undefined {
     if (this._envLayers.length === 0) return invocationEnv;
     const merged: Record<string, string> = {
       ...(process.env as Record<string, string>),
@@ -580,20 +795,138 @@ export class LocalKaos implements Kaos {
   }
 }
 
-// 等待新创建的 ChildProcess 发出 'spawn'（成功）或 'error'
-// （ENOENT / EACCES 等）。在此 Promise 解析之前，调用方不应
-// 假定子进程已在运行 —— 否则可能向一个从未存在的进程的 stdin 写入。
+function isUtf8Encoding(encoding: BufferEncoding): boolean {
+  return encoding === "utf-8" || encoding === "utf8";
+}
+
+function* splitLinesKeepingTerminator(text: string): Generator<string> {
+  if (text.length === 0) return;
+  let start = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.codePointAt(i) === 0x0a) {
+      yield text.slice(start, i + 1);
+      start = i + 1;
+    }
+  }
+  if (start < text.length) {
+    yield text.slice(start);
+  }
+}
+
+function updateLineEndingFlagsFromBytes(
+  flags: LineEndingFlags,
+  chunk: Buffer,
+  prevWasCr: boolean,
+): boolean {
+  for (let i = 0; i < chunk.length; i += 1) {
+    const byte = chunk[i];
+    if (byte === undefined) continue;
+    if (byte === 0x0d) {
+      if (prevWasCr) flags.hasLoneCr = true;
+      prevWasCr = true;
+    } else if (byte === 0x0a) {
+      if (prevWasCr) {
+        flags.hasCrLf = true;
+      } else {
+        flags.hasLf = true;
+      }
+      prevWasCr = false;
+    } else {
+      if (prevWasCr) flags.hasLoneCr = true;
+      prevWasCr = false;
+    }
+  }
+  return prevWasCr;
+}
+
+function createUtf8Validator(): { write(chunk: Buffer): void; end(): void } {
+  let needed = 0;
+  let lower = 0x80;
+  let upper = 0xbf;
+
+  const fail = (): never => {
+    throw new TypeError("Invalid UTF-8 data");
+  };
+
+  return {
+    write(chunk: Buffer): void {
+      for (let i = 0; i < chunk.length; i += 1) {
+        const byte = chunk[i];
+        if (byte === undefined) continue;
+        if (needed === 0) {
+          if (byte <= 0x7f) continue;
+          if (byte >= 0xc2 && byte <= 0xdf) {
+            needed = 1;
+          } else if (byte === 0xe0) {
+            needed = 2;
+            lower = 0xa0;
+          } else if (byte >= 0xe1 && byte <= 0xec) {
+            needed = 2;
+          } else if (byte === 0xed) {
+            needed = 2;
+            upper = 0x9f;
+          } else if (byte >= 0xee && byte <= 0xef) {
+            needed = 2;
+          } else if (byte === 0xf0) {
+            needed = 3;
+            lower = 0x90;
+          } else if (byte >= 0xf1 && byte <= 0xf3) {
+            needed = 3;
+          } else if (byte === 0xf4) {
+            needed = 3;
+            upper = 0x8f;
+          } else {
+            fail();
+          }
+        } else {
+          if (byte < lower || byte > upper) fail();
+          lower = 0x80;
+          upper = 0xbf;
+          needed -= 1;
+        }
+      }
+    },
+    end(): void {
+      if (needed !== 0) fail();
+    },
+  };
+}
+
+async function readRange(
+  fh: Awaited<ReturnType<typeof open>>,
+  start: number,
+  length: number,
+): Promise<Buffer> {
+  const data = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const { bytesRead } = await fh.read(
+      data,
+      offset,
+      length - offset,
+      start + offset,
+    );
+    if (bytesRead === 0) break;
+    offset += bytesRead;
+  }
+  return offset === length ? data : data.subarray(0, offset);
+}
+
+// Wait for a freshly spawned ChildProcess to either emit 'spawn' (success) or
+// 'error' (ENOENT / EACCES / etc.). Until this resolves, callers should not
+// assume the child is running — they may otherwise write to the stdin of a
+// process that never existed.
 function waitForSpawn(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     const onSpawn = (): void => {
-      child.off('error', onError);
+      child.off("error", onError);
       resolve();
     };
     const onError = (err: Error): void => {
-      child.off('spawn', onSpawn);
+      child.off("spawn", onSpawn);
       reject(err);
     };
-    child.once('spawn', onSpawn);
-    child.once('error', onError);
+    child.once("spawn", onSpawn);
+    child.once("error", onError);
   });
 }

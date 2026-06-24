@@ -43,6 +43,9 @@ export interface TabbedModelSelectorOptions {
   /** 设置后，该提供商 ID 对应的标签页初始激活，而非从 `currentValue` 派生的标签页。 */
   readonly initialTabId?: string;
   readonly onSelect: (selection: ModelSelection) => void;
+  /** Forwarded to each inner selector; when set, Alt+S applies the choice to
+   * the current session only without persisting it as the default. */
+  readonly onSessionOnlySelect?: (selection: ModelSelection) => void;
   readonly onCancel: () => void;
 }
 
@@ -251,6 +254,7 @@ function makeSelector(
     searchable: true,
     providerSwitchHint: true,
     onSelect: opts.onSelect,
+    onSessionOnlySelect: opts.onSessionOnlySelect,
     onCancel: opts.onCancel,
   };
   return new ModelSelectorComponent(inner);

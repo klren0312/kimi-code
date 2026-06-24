@@ -41,15 +41,22 @@
  * **防腐层**：这是问题交互中协议↔SDK 形状转换的唯一位置。
  */
 
-import { createDecorator } from '../../di';
-import type { QuestionAnswers as InProcessQuestionAnswers, QuestionItem as InProcessQuestionItem, QuestionRequest as InProcessQuestionRequest, QuestionRequest, QuestionResponse as InProcessQuestionResponse, QuestionResult } from '../../rpc';
+import { createDecorator } from "../../di";
+import type {
+  QuestionAnswers as InProcessQuestionAnswers,
+  QuestionItem as InProcessQuestionItem,
+  QuestionRequest as InProcessQuestionRequest,
+  QuestionRequest,
+  QuestionResponse as InProcessQuestionResponse,
+  QuestionResult,
+} from "../../rpc";
 import type {
   QuestionItem as ProtocolQuestionItem,
   QuestionOption as ProtocolQuestionOption,
   QuestionRequest as ProtocolQuestionRequest,
   QuestionResponse as ProtocolQuestionResponse,
-} from '@moonshot-ai/protocol';
-import type {} from '@moonshot-ai/protocol'; // type-only marker — keep protocol dep referenced
+} from "@moonshot-ai/protocol";
+import type {} from "@moonshot-ai/protocol"; // type-only marker — keep protocol dep referenced
 
 // 为服务端消费者重新导出。
 export type { QuestionRequest, QuestionResult };
@@ -62,7 +69,9 @@ export interface IQuestionService {
    * resolve 为进程内 `QuestionResult`（null = 无处理器/完全取消）。
    * 具体实现负责超时策略。
    */
-  request(req: InProcessQuestionRequest & { sessionId: string; agentId: string }): Promise<QuestionResult>;
+  request(
+    req: InProcessQuestionRequest & { sessionId: string; agentId: string },
+  ): Promise<QuestionResult>;
 
   /**
    * 由应答端（REST 处理器/TUI/mock）调用，以用户回答结果结算待处理的 `request()`。
@@ -86,7 +95,8 @@ export interface IQuestionService {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const IQuestionService = createDecorator<IQuestionService>('questionService');
+export const IQuestionService =
+  createDecorator<IQuestionService>("questionService");
 
 // ---------------------------------------------------------------------------
 // 适配器辅助函数（从 adapter/question-adapter.ts 迁移）
@@ -117,7 +127,9 @@ function buildOption(
     id: `opt_${parentIdx}_${optIdx}`,
     label: opt.label,
   };
-  return opt.description === undefined ? base : { ...base, description: opt.description };
+  return opt.description === undefined
+    ? base
+    : { ...base, description: opt.description };
 }
 
 /**
@@ -137,15 +149,11 @@ function buildItem(
   if (item.header !== undefined) out.header = item.header;
   if (item.body !== undefined) out.body = item.body;
   if (item.multiSelect !== undefined) out.multi_select = item.multiSelect;
-  // SDK 没有 `allowOther` 字段——存在 `otherLabel` / `otherDescription`，
-  // 当任一标签存在时，我们在线协议上暴露它们并推断 `allow_other: true`。
-  //（SDK 语义：`otherLabel` 存在即启用"其他"功能；我们在线协议上显式呈现，
-  // 以避免客户端渲染器自行推断。）
-  const hasOtherAffordance =
-    item.otherLabel !== undefined || item.otherDescription !== undefined;
-  if (hasOtherAffordance) out.allow_other = true;
+  // SDK has no allowOther field; always advertise the free-text Other option on the wire.
+  out.allow_other = true;
   if (item.otherLabel !== undefined) out.other_label = item.otherLabel;
-  if (item.otherDescription !== undefined) out.other_description = item.otherDescription;
+  if (item.otherDescription !== undefined)
+    out.other_description = item.otherDescription;
   return out;
 }
 
@@ -185,19 +193,19 @@ export function toAgentCoreResponse(
   const flattened: InProcessQuestionAnswers = {};
   for (const [qid, ans] of Object.entries(resp.answers)) {
     switch (ans.kind) {
-      case 'single':
+      case "single":
         flattened[qid] = ans.option_id;
         break;
-      case 'multi':
-        flattened[qid] = ans.option_ids.join(',');
+      case "multi":
+        flattened[qid] = ans.option_ids.join(",");
         break;
-      case 'other':
+      case "other":
         flattened[qid] = ans.text;
         break;
-      case 'multi_with_other':
-        flattened[qid] = [...ans.option_ids, ans.other_text].join(',');
+      case "multi_with_other":
+        flattened[qid] = [...ans.option_ids, ans.other_text].join(",");
         break;
-      case 'skipped':
+      case "skipped":
         // 从记录中省略——符合 SCHEMAS §6.4（"if skipped continue"）。
         break;
       default: {
@@ -212,7 +220,7 @@ export function toAgentCoreResponse(
     // SCHEMAS §6.2 协议允许 'click' 作为 method；agent-core 的进程内
     // `QuestionAnswerMethod` 为 `'enter' | 'space' | 'number_key'`（不含 'click'）。
     // 在进程内侧丢弃 'click' 以保持类型安全；线协议保留它供客户端呈现用户使用的交互方式。
-    if (resp.method !== 'click') {
+    if (resp.method !== "click") {
       (out as { method?: typeof resp.method }).method = resp.method;
     }
   }

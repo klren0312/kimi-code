@@ -54,6 +54,7 @@ import { DeviceCodeBoxComponent } from './components/chrome/device-code-box';
 import { GutterContainer } from './components/chrome/gutter-container';
 import { MoonLoader, type SpinnerStyle } from './components/chrome/moon-loader';
 import { WelcomeComponent } from './components/chrome/welcome';
+import { pickRandomWorkingTip } from './components/chrome/working-tips';
 import {
   ApprovalPanelComponent,
   type ApprovalPanelResponse,
@@ -99,6 +100,7 @@ import { CHROME_GUTTER } from './constant/rendering';
 import { MAX_TERMINAL_TITLE_LENGTH } from './constant/terminal';
 import { AuthFlowController } from './controllers/auth-flow';
 import { BtwPanelController } from './controllers/btw-panel';
+import { ClipboardImageHintController } from './controllers/clipboard-image-hint';
 import { EditorKeyboardController } from './controllers/editor-keyboard';
 import { SessionEventHandler } from './controllers/session-event-handler';
 import { SessionReplayRenderer } from './controllers/session-replay';
@@ -164,6 +166,13 @@ export interface KimiTUIStartupInput {
 }
 
 type EffectiveActivityPaneMode = ActivityPaneMode | 'idle' | 'session';
+type LoadingTipKind = 'moon' | 'composing';
+
+function loadingTipKind(mode: EffectiveActivityPaneMode): LoadingTipKind | undefined {
+  if (mode === 'waiting' || mode === 'tool') return 'moon';
+  if (mode === 'composing') return 'composing';
+  return undefined;
+}
 
 function sameStringArrays(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
@@ -237,6 +246,7 @@ export class KimiTUI {
   aborted = false;
   private terminalFocusTrackingDispose: (() => void) | undefined;
   private terminalThemeTrackingDispose: (() => void) | undefined;
+  private clipboardImageHintController: ClipboardImageHintController | undefined;
   private uninstallRainbowDance: () => void;
   private signalCleanupHandlers: Array<() => void> = [];
   private isShuttingDown = false;
@@ -244,6 +254,8 @@ export class KimiTUI {
   private readonly migrateOnly: boolean;
   private startupNotice: string | undefined;
   private lastActivityMode: string | undefined;
+  private currentLoadingTip: { kind: LoadingTipKind; tip: string | undefined } | undefined =
+    undefined;
   private lastHistoryContent: string | undefined;
   readonly streamingUI: StreamingUIController;
   readonly authFlow: AuthFlowController;
@@ -532,8 +544,21 @@ export class KimiTUI {
 
   private startEventLoop(): void {
     this.state.ui.start();
+    this.startClipboardImageHintController();
     this.terminalFocusTrackingDispose = installTerminalFocusTracking(this.state);
     this.refreshTerminalThemeTracking();
+  }
+
+  private startClipboardImageHintController(): void {
+    this.clipboardImageHintController = new ClipboardImageHintController({
+      ui: this.state.ui,
+      footer: this.state.footer,
+      getModelSupportsImage: () => this.supportsCurrentModelCapability('image_in'),
+      requestRender: () => {
+        this.state.ui.requestRender();
+      },
+    });
+    this.clipboardImageHintController.start();
   }
 
   private startBackgroundFdAutocomplete(): void {
@@ -782,6 +807,8 @@ export class KimiTUI {
 
   private disposeTerminalTracking(): void {
     this.stopTerminalThemeTracking();
+    this.clipboardImageHintController?.stop();
+    this.clipboardImageHintController = undefined;
     this.terminalFocusTrackingDispose?.();
     this.terminalFocusTrackingDispose = undefined;
   }
@@ -1674,6 +1701,23 @@ export class KimiTUI {
 
   updateActivityPane(): void {
     const effectiveMode = this.resolveActivityPaneMode();
+    const tipKind = loadingTipKind(effectiveMode);
+    // Pick a fresh loading tip when the loading kind changes. The same kind
+    // covers waiting/tool (both moon spinners) and any intermediate thinking
+    // phase, so a continuous burst of tool calls does not flip tips. Clear the
+    // cache only when there is no loading UI at all.
+    if (effectiveMode === 'idle' || effectiveMode === 'session' || effectiveMode === 'hidden') {
+      this.currentLoadingTip = undefined;
+    } else if (
+      tipKind !== undefined &&
+      (this.currentLoadingTip === undefined || this.currentLoadingTip.kind !== tipKind)
+    ) {
+      const previousTip = this.currentLoadingTip?.tip;
+      this.currentLoadingTip = {
+        kind: tipKind,
+        tip: pickRandomWorkingTip(previousTip)?.text,
+      };
+    }
     this.syncTerminalProgress(this.shouldShowTerminalProgress(effectiveMode));
     const placeSpinnerInAgentSwarm = this.shouldPlaceActivitySpinnerInAgentSwarm(effectiveMode);
     const activityModeKey = `${effectiveMode}:${placeSpinnerInAgentSwarm ? 'swarm' : 'pane'}`;
@@ -1705,6 +1749,7 @@ export class KimiTUI {
           new ActivityPaneComponent({
             mode: 'waiting',
             spinner,
+            tip: this.currentLoadingTip?.tip,
           }),
         );
         break;
@@ -1723,6 +1768,7 @@ export class KimiTUI {
           new ActivityPaneComponent({
             mode: 'composing',
             spinner,
+            tip: this.currentLoadingTip?.tip,
           }),
         );
         break;
@@ -1735,6 +1781,7 @@ export class KimiTUI {
           new ActivityPaneComponent({
             mode: 'tool',
             spinner,
+            tip: this.currentLoadingTip?.tip,
           }),
         );
         break;
@@ -1787,6 +1834,11 @@ export class KimiTUI {
         child.setExpanded(this.state.toolOutputExpanded);
       }
     }
+    this.state.ui.requestRender();
+  }
+
+  toggleTodoPanelExpansion(): void {
+    this.state.todoPanel.toggleExpanded();
     this.state.ui.requestRender();
   }
 

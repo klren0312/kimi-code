@@ -25,6 +25,7 @@ export class CompactionComponent extends Container {
   private readonly ui: TUI | undefined;
   private readonly headerText: Text;
   private readonly instruction: string | undefined;
+  private readonly tip: string | undefined;
   private blinkOn = true;
   private blinkTimer: ReturnType<typeof setInterval> | null = null;
   private done = false;
@@ -32,10 +33,11 @@ export class CompactionComponent extends Container {
   private tokensBefore: number | undefined;
   private tokensAfter: number | undefined;
 
-  constructor(ui?: TUI, instruction?: string | undefined) {
+  constructor(ui?: TUI, instruction?: string | undefined, tip?: string) {
     super();
     this.ui = ui;
     this.instruction = instruction;
+    this.tip = tip;
 
     // 顶部间距，防止此块紧贴前一条对话记录
     //（状态行、工具结果等）。
@@ -106,7 +108,8 @@ export class CompactionComponent extends Container {
     }
     const bullet = this.blinkOn ? currentTheme.fg('text', STATUS_BULLET) : '  ';
     const label = currentTheme.boldFg('primary', 'Compacting context...');
-    return `${bullet}${label}`;
+    const tip = this.tip ? currentTheme.fg('textDim', ` · Tip: ${this.tip}`) : '';
+    return `${bullet}${label}${tip}`;
   }
 
   private startBlink(): void {
