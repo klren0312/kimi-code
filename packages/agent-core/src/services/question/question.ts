@@ -71,6 +71,7 @@ export interface IQuestionService {
    */
   request(
     req: InProcessQuestionRequest & { sessionId: string; agentId: string },
+    options?: { signal?: AbortSignal },
   ): Promise<QuestionResult>;
 
   /**
@@ -109,8 +110,6 @@ export interface QuestionToBrokerRequestParams {
   readonly sessionId: string;
   /** `createdAt` ISO 字符串；代理传递 `new Date().toISOString()`。 */
   readonly createdAt: string;
-  /** `expiresAt` ISO 字符串；代理计算 `createdAt + 60s`。 */
-  readonly expiresAt: string;
 }
 
 /**
@@ -169,7 +168,6 @@ export function toBrokerRequest(
     session_id: params.sessionId,
     questions: req.questions.map((q, i) => buildItem(q, i)),
     created_at: params.createdAt,
-    expires_at: params.expiresAt,
   };
   if (req.turnId !== undefined) out.turn_id = req.turnId;
   if (req.toolCallId !== undefined) out.tool_call_id = req.toolCallId;

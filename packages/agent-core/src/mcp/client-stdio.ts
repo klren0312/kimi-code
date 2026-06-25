@@ -3,6 +3,7 @@ import type { McpServerStdioConfig } from '#/config/schema';
 import { proxyEnvForChild, reconcileChildNoProxy } from '#/utils/proxy';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { isAbsolute, resolve } from 'pathe';
 
 import {
   buildRequestOptions,
@@ -19,6 +20,7 @@ export interface StdioMcpClientOptions {
   readonly clientName?: string;
   readonly clientVersion?: string;
   readonly toolCallTimeoutMs?: number;
+  readonly defaultCwd?: string;
 }
 
 const STDERR_BUFFER_CAPACITY = 4 * 1024;
@@ -59,7 +61,7 @@ export class StdioMcpClient implements MCPClient {
       command: config.command,
       args: config.args,
       env: mergeStdioEnv(config.env),
-      cwd: config.cwd,
+      cwd: resolveStdioCwd(config.cwd, options.defaultCwd),
       stderr: 'pipe',
     });
     // `stderr: 'pipe'` 意味着我们必须排空该流——否则子进程可能在管道满时阻塞。
@@ -208,14 +210,21 @@ class BoundedTail {
   }
 }
 
-// 继承父进程的环境变量，使 PATH/HOME 等得以保留——否则 `npx`/`uvx` 风格的
-// stdio 服务器即使配置有效也会启动失败。`config.env` 在冲突时覆盖。
-// Node 子进程不会继承我们的进程内 undici 调度器，所以 `proxyEnvForChild`
-// 添加 `NODE_USE_ENV_PROXY`（和回环保护的 `NO_PROXY`）使其原生遵守代理
-// （在支持该标志的 Node 版本上——≥22.21 或 ≥24.5）。它从合并后的环境变量
-// 计算，因此仅在 `config.env` 中声明的代理也会被遵守。
-// `reconcileChildNoProxy` 随后将单一大写的 `NO_PROXY` 覆盖镜像到两种大小写，
-// 以免被注入的值遮蔽。
+function resolveStdioCwd(configCwd: string | undefined, defaultCwd: string | undefined): string | undefined {
+  if (configCwd === undefined) return defaultCwd;
+  if (defaultCwd !== undefined && !isAbsolute(configCwd)) return resolve(defaultCwd, configCwd);
+  return configCwd;
+}
+
+// Inherit the parent's env so PATH/HOME/etc. survive — otherwise `npx`/`uvx`
+// style stdio servers fail to launch even with a valid config. `config.env`
+// overrides on conflict. A node child does not inherit our in-process undici
+// dispatcher, so `proxyEnvForChild` adds `NODE_USE_ENV_PROXY` (and a
+// loopback-protected `NO_PROXY`) to make it honor the proxy natively (on a Node
+// version that supports the flag — ≥22.21 or ≥24.5). It is computed from the
+// MERGED env so a proxy declared only in `config.env` is honored too.
+// `reconcileChildNoProxy` then mirrors a single-casing `NO_PROXY` override onto
+// both casings so it isn't shadowed by the injected value.
 export function mergeStdioEnv(
   configEnv?: Record<string, string>,
   parentEnv: Readonly<Record<string, string | undefined>> = process.env,

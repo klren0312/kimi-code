@@ -1,8 +1,9 @@
 /**
  * WriteTool — 覆盖或追加写入文件。
  *
- * 文件不存在时创建；父目录必须已存在。
- * 路径访问策略在任何 Kaos I/O 之前解析。
+ * Creates the file if it does not exist. Missing parent directories are
+ * created automatically, mirroring `mkdir(parents=True, exist_ok=True)`.
+ * Path access policy is resolved before any Kaos I/O.
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
@@ -27,7 +28,7 @@ export const WriteInputSchema = z.object({
   path: z
     .string()
     .describe(
-      'Path to the file to create, append to, or completely overwrite. Relative paths resolve against the working directory; a path outside the working directory must be absolute. The parent directory must already exist.',
+      'Path to the file to create, append to, or completely overwrite. Relative paths resolve against the working directory; a path outside the working directory must be absolute. Missing parent directories are created automatically.',
     ),
   content: z
     .string()
@@ -82,7 +83,7 @@ export class WriteTool implements BuiltinTool<WriteInput> {
   }
 
   private async execution(args: WriteInput, safePath: string): Promise<ExecutableToolResult> {
-    const parentError = await this.checkParentDirectory(safePath);
+    const parentError = await this.ensureParentDirectory(safePath);
     if (parentError !== undefined) {
       return { isError: true, output: parentError };
     }
@@ -116,21 +117,34 @@ export class WriteTool implements BuiltinTool<WriteInput> {
   }
 
   /**
-   * 尽力检查父目录是否存在且为目录。
+   * Best-effort check that the parent directory is usable, creating it when
+   * it is missing.
    *
-   * 路径 schema 文档记录了此前提条件；预先探测将底层写入的裸 `ENOENT`
-   * 转化为可操作的消息。当前提条件确定被违反时返回错误字符串，
-   * 否则返回 `undefined`。任何其他 `stat` 失败（权限、无 `stat` 的环境）
-   * 被视为不确定：跳过检查并继续写入，如有真实 I/O 错误则暴露。
+   * If the parent (or any ancestor) does not exist, it is created
+   * recursively — mirroring Python's `Path.mkdir(parents=True,
+   * exist_ok=True)` — so the agent does not need a separate `mkdir` round
+   * trip before writing into a fresh subfolder. An existing parent that is
+   * not a directory is still a hard error. Any other `stat` failure
+   * (permissions, an environment without `stat`) is treated as
+   * inconclusive: the check is skipped and the write proceeds, surfacing
+   * the real I/O error if any.
+   *
+   * Returns an error string when the precondition is definitively violated,
+   * or `undefined` otherwise.
    */
-  private async checkParentDirectory(safePath: string): Promise<string | undefined> {
+  private async ensureParentDirectory(safePath: string): Promise<string | undefined> {
     const parent = dirname(safePath);
     let stat;
     try {
       stat = await this.kaos.stat(parent);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return `Parent directory does not exist: ${parent}. Create it before writing this file.`;
+        try {
+          await this.kaos.mkdir(parent, { parents: true, existOk: true });
+          return undefined;
+        } catch (mkdirError) {
+          return mkdirError instanceof Error ? mkdirError.message : String(mkdirError);
+        }
       }
       return undefined;
     }

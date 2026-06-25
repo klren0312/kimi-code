@@ -20,7 +20,8 @@ import { currentTheme } from './theme';
 // eslint-disable-next-line no-control-regex -- 故意匹配开启 ANSI SGR 序列的 ESC 字节。
 const HEADING_HASH_PREFIX = /^((?:\u001B\[[0-9;]*m)*)#{1,6}[ \t]+/;
 
-export function createMarkdownTheme(): MarkdownTheme {
+export function createMarkdownTheme(options?: { transient?: boolean }): MarkdownTheme {
+  const transient = options?.transient === true;
   const stripHash = (text: string): string => text.replace(HEADING_HASH_PREFIX, '$1');
 
   return {
@@ -41,6 +42,8 @@ export function createMarkdownTheme(): MarkdownTheme {
     strikethrough: (text) => chalk.strikethrough(text),
     underline: (text) => chalk.underline(text),
     highlightCode: (code: string, lang?: string) => {
+      if (transient) return code.split('\n');
+
       const normalizedLang = lang?.trim().toLowerCase();
       const language =
         normalizedLang !== undefined && supportsLanguage(normalizedLang) ? normalizedLang : 'text';

@@ -42,6 +42,7 @@ type RuntimeMcpClient = StdioMcpClient | HttpMcpClient | SseMcpClient;
 
 export interface McpConnectionManagerOptions {
   readonly envLookup?: (name: string) => string | undefined;
+  readonly stdioCwd?: string;
   /**
    * 可选的 OAuth 编排器。提供后，没有静态 bearer token 的远程服务器
    * 参与通过合成工具的 OAuth 流程：
@@ -326,7 +327,7 @@ export class McpConnectionManager {
   private createClient(config: McpServerConfig, name: string): RuntimeMcpClient {
     const toolCallTimeoutMs = config.toolTimeoutMs;
     if (config.transport === 'stdio') {
-      return new StdioMcpClient(config, { toolCallTimeoutMs });
+      return new StdioMcpClient(config, { toolCallTimeoutMs, defaultCwd: this.options.stdioCwd });
     }
     if (config.transport === 'sse') {
       return new SseMcpClient(config, {

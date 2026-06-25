@@ -1,15 +1,23 @@
 /**
  * explore 子代理的 Git 仓库上下文。
  *
- * `collectGitContext` 生成一个 `<git-context>` 块，该块会被添加到新创建的
- * explore 子代理的提示词前面，使其在搜索前能够了解仓库概况。每条 git 命令
- * 都有独立的保护——单条命令失败不会中止整个收集过程——同时远程 URL 会被
- * 清理，以避免向模型暴露内部基础设施信息。
+ * `collectGitContext` produces a `<git-context>` block that is prepended to a
+ * fresh explore subagent's prompt so it can orient itself in the repository
+ * before searching. Every git probe is best-effort: probes fail in perfectly
+ * normal states (no `origin` remote, no commits yet, detached HEAD, older
+ * Git), so a failed probe is logged and its section omitted rather than
+ * dropping the whole block. The block is omitted entirely only when nothing
+ * useful was collected. The one explicit state surfaced to the subagent is
+ * `reason="not-a-repo"`, so it doesn't waste turns probing git history in a
+ * non-repo directory. Remote URLs are sanitized so internal infrastructure
+ * is not surfaced to the model.
  */
 
 import type { Readable } from 'node:stream';
 
 import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
+
+import { log } from '../logging/logger';
 
 const GIT_TIMEOUT_MS = 5_000;
 const MAX_DIRTY_FILES = 20;
@@ -40,17 +48,50 @@ async function disposeProcess(proc: KaosProcess): Promise<void> {
  * 返回格式化的 `<git-context>` 块，如果不是 git 仓库或未收集到有用信息则返回空字符串。
  */
 export async function collectGitContext(kaos: Kaos, cwd: string): Promise<string> {
-  // 快速检查：是否为 git 仓库？
-  if ((await runGit(kaos, cwd, ['rev-parse', '--is-inside-work-tree'])) === null) {
+  // Step 1: is this a git repo? `rev-parse` is the authoritative probe — it
+  // handles `.git` files (worktrees/submodules), subdirectories, bare repos,
+  // and `$GIT_DIR` redirection, none of which a plain FS check covers.
+  const revParseArgs = ['rev-parse', '--is-inside-work-tree'] as const;
+  const revParse = await runGit(kaos, cwd, revParseArgs);
+  if (!revParse.ok) {
+    if (revParse.kind === 'command-failed' && isNotARepo(revParse.stderr)) {
+      // Definitive "not a repo" — tell the subagent so it doesn't waste turns
+      // probing git history. All other failures are logged but surface as an
+      // empty block (the subagent works without git context, same as before):
+      // a transient `git status` hang shouldn't read as "git is broken".
+      return `<git-context status="unavailable" reason="not-a-repo"/>`;
+    }
+    logGitFailure(cwd, revParseArgs, revParse);
     return '';
   }
 
-  const [remoteUrl, branch, dirtyRaw, logRaw] = await Promise.all([
-    runGit(kaos, cwd, ['remote', 'get-url', 'origin']),
-    runGit(kaos, cwd, ['branch', '--show-current']),
-    runGit(kaos, cwd, ['status', '--porcelain']),
-    runGit(kaos, cwd, ['log', '-3', '--format=%h %s']),
-  ]);
+  // Step 2: collect context in parallel. Every probe is optional — git
+  // probes fail in perfectly normal states (no `origin` remote, no commits
+  // yet, detached HEAD, older Git), so a failed probe never aborts the
+  // collection. Each failure is logged and its section is simply omitted; if
+  // nothing useful is collected, the block is dropped entirely below.
+  //
+  // Branch is read via `symbolic-ref --short HEAD`, which works in unborn
+  // repositories and on older Git; it fails in detached-HEAD state, in which
+  // case the Branch section is just omitted.
+  const commandArgs = [
+    ['remote', 'get-url', 'origin'],
+    ['symbolic-ref', '--short', 'HEAD'],
+    ['status', '--porcelain'],
+    ['log', '-3', '--format=%h %s'],
+  ] as const;
+  const [remote, branch, status, gitLog] = (await Promise.all(
+    commandArgs.map(async (args) => ({ args, result: await runGit(kaos, cwd, args) })),
+  )) as unknown as [TaggedGitResult, TaggedGitResult, TaggedGitResult, TaggedGitResult];
+
+  for (const { args, result } of [remote, branch, status, gitLog]) {
+    if (!result.ok) logGitFailure(cwd, args, result);
+  }
+
+  const remoteUrl = stdoutOf(remote.result);
+  const branchName = stdoutOf(branch.result);
+  const dirtyRaw = stdoutOf(status.result);
+  const logRaw = stdoutOf(gitLog.result);
 
   const sections: string[] = [`Working directory: ${cwd}`];
 
@@ -65,19 +106,17 @@ export async function collectGitContext(kaos: Kaos, cwd: string): Promise<string
     }
   }
 
-  if (branch) sections.push(`Branch: ${branch}`);
+  if (branchName) sections.push(`Branch: ${branchName}`);
 
-  if (dirtyRaw !== null) {
-    const dirtyLines = dirtyRaw.split('\n').filter((line) => line.trim().length > 0);
-    if (dirtyLines.length > 0) {
-      const total = dirtyLines.length;
-      const shown = dirtyLines.slice(0, MAX_DIRTY_FILES);
-      let body = shown.map((line) => `  ${line}`).join('\n');
-      if (total > MAX_DIRTY_FILES) {
-        body += `\n  ... and ${String(total - MAX_DIRTY_FILES)} more`;
-      }
-      sections.push(`Dirty files (${String(total)}):\n${body}`);
+  const dirtyLines = dirtyRaw.split('\n').filter((line) => line.trim().length > 0);
+  if (dirtyLines.length > 0) {
+    const total = dirtyLines.length;
+    const shown = dirtyLines.slice(0, MAX_DIRTY_FILES);
+    let body = shown.map((line) => `  ${line}`).join('\n');
+    if (total > MAX_DIRTY_FILES) {
+      body += `\n  ... and ${String(total - MAX_DIRTY_FILES)} more`;
     }
+    sections.push(`Dirty files (${String(total)}):\n${body}`);
   }
 
   if (logRaw) {
@@ -132,7 +171,10 @@ export function parseProjectName(remoteUrl: string): string | null {
   const scp = /^[^/]+@[^/:]+:(.+)$/.exec(remoteUrl);
   const rawPath = scp?.[1] ?? tryUrlPath(remoteUrl);
   if (rawPath === null) return null;
-  const project = rawPath.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.git$/, '');
+  const project = rawPath
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '');
   return project.length > 0 ? project : null;
 }
 
@@ -145,16 +187,61 @@ function tryUrlPath(remoteUrl: string): string | null {
 }
 
 /**
- * 执行单个 `git -C <cwd> <args>` 命令并返回其去除空白的 stdout，
- * 任何失败（启动错误、非零退出码或超时）返回 `null`。`git -C` 形式
- * 无论 Kaos 后端如何都会在目标目录中运行。
+ * Outcome of a single `git` invocation.
+ *
+ * - `ok: true` — exited 0; `stdout` is trimmed.
+ * - `timeout` — exceeded `GIT_TIMEOUT_MS`; process was SIGKILLed.
+ * - `spawn-error` — `kaos.exec` itself rejected (git missing / backend error).
+ * - `command-failed` — git ran but exited non-zero, or its streams errored.
+ *   `exitCode`/`stderr` are populated for the non-zero-exit case.
  */
-async function runGit(kaos: Kaos, cwd: string, args: readonly string[]): Promise<string | null> {
+type GitFailure =
+  | { readonly kind: 'timeout' }
+  | { readonly kind: 'spawn-error' }
+  | { readonly kind: 'command-failed'; readonly exitCode?: number; readonly stderr?: string };
+
+type GitResult =
+  | { readonly ok: true; readonly stdout: string }
+  | ({ readonly ok: false } & GitFailure);
+
+type TaggedGitResult = { readonly args: readonly string[]; readonly result: GitResult };
+
+function stdoutOf(result: GitResult): string {
+  return result.ok ? result.stdout : '';
+}
+
+function isNotARepo(stderr: string | undefined): boolean {
+  return stderr !== undefined && stderr.includes('not a git repository');
+}
+
+function logGitFailure(cwd: string, args: readonly string[], failure: GitFailure): void {
+  const command = `git ${args.join(' ')}`;
+  if (failure.kind === 'timeout') {
+    log.debug('git context command timed out', { cwd, command });
+  } else if (failure.kind === 'spawn-error') {
+    log.warn('git context command failed to spawn', { cwd, command });
+  } else {
+    log.debug('git context command failed', {
+      cwd,
+      command,
+      exitCode: failure.exitCode,
+      stderr: failure.stderr,
+    });
+  }
+}
+
+/**
+ * Run a single `git -C <cwd> <args>` command and return a structured result.
+ * The `git -C` form runs in the target directory regardless of the Kaos
+ * backend. Both stdout and stderr are captured so callers can tell "not a
+ * git repository" (exit 128 + telltale stderr) apart from other failures.
+ */
+async function runGit(kaos: Kaos, cwd: string, args: readonly string[]): Promise<GitResult> {
   let proc: KaosProcess | undefined;
   try {
     proc = await kaos.exec('git', '-C', cwd, ...args);
   } catch {
-    return null;
+    return { ok: false, kind: 'spawn-error' };
   }
 
   try {
@@ -163,29 +250,36 @@ async function runGit(kaos: Kaos, cwd: string, args: readonly string[]): Promise
     /* stdin 已关闭 */
   }
 
-  const work = Promise.all([collectStream(proc.stdout), proc.wait()]);
-  // 提前附加拒绝处理器：如果 `work` 在超时处理窗口期间（catch 块重新 await 之前）
-  // 被拒绝，Node 不应将其标记为未处理的拒绝。
+  const work = Promise.all([collectStream(proc.stdout), collectStream(proc.stderr), proc.wait()]);
+  // Attach a rejection handler up front: if `work` rejects during the
+  // timeout-handling window (before the catch block re-awaits it), Node must
+  // not flag it as an unhandled rejection.
   work.catch(() => {});
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   try {
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
+        timedOut = true;
         reject(new Error(`git ${args.join(' ')} timed out`));
       }, GIT_TIMEOUT_MS);
     });
-    const [stdout, exitCode] = await Promise.race([work, timeout]);
-    if (exitCode !== 0) return null;
-    return stdout.trim();
+    const [stdout, stderr, exitCode] = await Promise.race([work, timeout]);
+    if (exitCode !== 0) {
+      return { ok: false, kind: 'command-failed', exitCode, stderr: stderr.trim() };
+    }
+    return { ok: true, stdout: stdout.trim() };
   } catch {
     try {
       await proc.kill('SIGKILL');
     } catch {
       /* 进程已不存在 */
     }
-    // 让 stdout 排尽以释放进程资源，即使超时输出已被丢弃。
+    // Let the streams drain so process resources are released, even though
+    // the timed-out/errored output is discarded.
     await work.catch(() => {});
-    return null;
+    if (timedOut) return { ok: false, kind: 'timeout' };
+    return { ok: false, kind: 'command-failed' };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     if (proc !== undefined) await disposeProcess(proc);

@@ -19,11 +19,11 @@ import {
   Key,
   matchesKey,
   truncateToWidth,
-  visibleWidth,
   type Focusable,
 } from '@earendil-works/pi-tui';
 
 import { currentTheme } from '#/tui/theme';
+import { renderTabStrip } from '#/tui/utils/tab-strip';
 
 import {
   ModelSelectorComponent,
@@ -98,10 +98,15 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
     if (this.tabs.length <= 1) {
       return inner.map((line) => truncateToWidth(line, width));
     }
-    // 布局：分隔线、标题、提示、空行、标签栏、空行，然后是模型列表。
-    // 内部选择器的空行（inner[3]）分隔提示与标签栏；
-    // 额外的空行分隔标签栏与列表。
-    const stripLine = this.renderTabStrip(width);
+    // Layout: divider, title, hint, blank, tab strip, blank, then the model
+    // list. The inner selector's blank line (inner[3]) separates the hint from
+    // the tab strip; an extra blank separates the tabs from their list.
+    const stripLine = renderTabStrip({
+      labels: this.tabs.map((tab) => tab.label),
+      activeIndex: this.activeIndex,
+      width,
+      colors: currentTheme.palette,
+    });
     const out: string[] = [
       inner[0] ?? '',
       inner[1] ?? '',
@@ -127,81 +132,6 @@ export class TabbedModelSelectorComponent extends Container implements Focusable
       const tab = this.tabs[i]!;
       tab.selector.focused = this.focused && i === this.activeIndex;
     }
-  }
-
-  /** 设置标签片段的样式。活动标签使用品牌背景填充（与 AskUserQuestion 对话框一致）；
-   * 非活动标签使用静音色。两者可见宽度相同，切换时不会导致布局偏移。 */
-  private styleTab(label: string, isActive: boolean): string {
-    const cell = ` ${label} `;
-    return isActive
-      ? currentTheme.bg('primary', currentTheme.boldFg('text', cell))
-      : currentTheme.fg('textMuted', cell);
-  }
-
-  /** 渲染标签栏，支持在空间不足时滚动显示。 */
-  private renderTabStrip(width: number): string {
-    const segments: string[] = [];
-    for (let i = 0; i < this.tabs.length; i++) {
-      const tab = this.tabs[i]!;
-      segments.push(this.styleTab(tab.label, i === this.activeIndex));
-    }
-
-    // 如果所有标签加上前导空格能放得下，则显示完整标签栏。
-    // 提供商切换提示在内部选择器的提示行中，不在此处。
-    const totalSegmentWidth = segments.reduce((sum, s) => sum + visibleWidth(s), 0);
-    if (1 + totalSegmentWidth <= width) {
-      return ' ' + segments.join(' ');
-    }
-
-    // 需要滚动。找到包含 activeIndex 的最宽窗口。
-    const segmentWidths = segments.map((s) => visibleWidth(s));
-    let start = this.activeIndex;
-    let end = this.activeIndex + 1;
-    let contentWidth = segmentWidths[this.activeIndex]!;
-
-    const fits = (s: number, e: number, cw: number): boolean => {
-      const needLeft = s > 0;
-      const needRight = e < segments.length;
-      const frameWidth = (needLeft ? 2 : 1) + (needRight ? 2 : 0);
-      return cw + frameWidth <= width;
-    };
-
-    while (true) {
-      const leftW = start > 0 ? segmentWidths[start - 1]! : Infinity;
-      const rightW = end < segments.length ? segmentWidths[end]! : Infinity;
-      if (leftW === Infinity && rightW === Infinity) break;
-
-      if (leftW <= rightW) {
-        if (fits(start - 1, end, contentWidth + leftW)) {
-          contentWidth += leftW;
-          start--;
-        } else if (fits(start, end + 1, contentWidth + rightW)) {
-          contentWidth += rightW;
-          end++;
-        } else {
-          break;
-        }
-      } else {
-        if (fits(start, end + 1, contentWidth + rightW)) {
-          contentWidth += rightW;
-          end++;
-        } else if (fits(start - 1, end, contentWidth + leftW)) {
-          contentWidth += leftW;
-          start--;
-        } else {
-          break;
-        }
-      }
-    }
-
-    const hasLeft = start > 0;
-    const hasRight = end < segments.length;
-    let strip = hasLeft ? currentTheme.fg('textMuted', '< ') : ' ';
-    strip += segments.slice(start, end).join(' ');
-    if (hasRight) {
-      strip += currentTheme.fg('textMuted', ' >');
-    }
-    return strip;
   }
 }
 

@@ -7,14 +7,11 @@
  *   Title: ...
  *   Severity: ...
  *   <body>
- *   <task-notification>   （仅当 source_kind === 'background_task' 且 tail_output 非空时）
- *   <truncated tail>
- *   </task-notification>
+ *   <children...>
  *   </notification>
  *
- * 开标签名称（`<notification ` / `<task-notification>`）对投影器的
- * `mergeAdjacentUserMessages` 检测器有关键作用 — 重命名时需同步
- * 更新检测器。
+ * The opening tag name (`<notification `) is load-bearing for notification
+ * consumers that detect chat-history injections.
  *
  * `agent_id` 仅对来源任务为 Agent 子代理的后台任务通知输出 —
  * 将其以结构化方式呈现，使 LLM 无需解析正文或原始 spawn-success
@@ -51,6 +48,7 @@ export function renderNotificationXml(data: Record<string, unknown>): string {
   const title = typeof data['title'] === 'string' ? data['title'] : '';
   const severity = typeof data['severity'] === 'string' ? data['severity'] : '';
   const body = typeof data['body'] === 'string' ? data['body'] : '';
+  const children = childBlocks(data['children'] ?? data['extraBlocks']);
 
   const agentIdAttr = agentId === undefined ? '' : ` agent_id="${agentId}"`;
   const lines: string[] = [
@@ -59,42 +57,12 @@ export function renderNotificationXml(data: Record<string, unknown>): string {
   if (title.length > 0) lines.push(`Title: ${title}`);
   if (severity.length > 0) lines.push(`Severity: ${severity}`);
   if (body.length > 0) lines.push(body);
-
-  if (data['source_kind'] === 'background_task') {
-    const tailRaw = typeof data['tail_output'] === 'string' ? data['tail_output'] : '';
-    if (tailRaw.length > 0) {
-      const truncated = truncateTailOutput(tailRaw, 20, 3000);
-      lines.push('<task-notification>');
-      lines.push(truncated);
-      lines.push('</task-notification>');
-    }
-  }
+  lines.push(...children);
 
   lines.push('</notification>');
   return lines.join('\n');
 }
 
-/**
- * 将尾部输出截断为最多 `maxLines` 行和 `maxChars` 个字符。
- * 取最后 N 行，然后在超出字符预算时从前端裁剪。
- */
-function truncateTailOutput(raw: string, maxLines: number, maxChars: number): string {
-  const allLines = raw.split('\n');
-  const tailLines = allLines.length > maxLines ? allLines.slice(-maxLines) : allLines;
-  let result = tailLines.join('\n');
-  if (result.length > maxChars) {
-    result = result.slice(-maxChars);
-  }
-  return result;
-}
-
-/**
- * 从通知数据中提取字符串属性，并进行 XML 转义以安全嵌入 XML 属性值。
- *
- * @param value - 要提取的原始值。
- * @param fallback - 输入不是非空字符串时的默认值。
- * @returns 转义后的字符串，或 fallback。
- */
 function stringAttr(value: unknown, fallback: string): string {
   if (typeof value !== 'string' || value.length === 0) return fallback;
   return escapeXmlAttr(value);
@@ -105,4 +73,10 @@ function stringAttr(value: unknown, fallback: string): string {
 function optionalStringAttr(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length === 0) return undefined;
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+}
+
+function childBlocks(value: unknown): string[] {
+  if (typeof value === 'string' && value.length > 0) return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
 }

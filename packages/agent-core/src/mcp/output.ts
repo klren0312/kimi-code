@@ -127,7 +127,7 @@ export function convertMCPContentBlock(block: MCPContentBlock): ContentPart | nu
 export function mcpResultToExecutableOutput(
   result: MCPToolResult,
   qualifiedToolName: string,
-): { output: string | ContentPart[]; isError: boolean } {
+): { output: string | ContentPart[]; isError: boolean; truncated?: true } {
   const converted: ContentPart[] = [];
   for (const block of result.content) {
     const part = convertMCPContentBlock(block);
@@ -138,8 +138,10 @@ export function mcpResultToExecutableOutput(
 
   const wrapped = wrapMediaOnly(converted, qualifiedToolName);
   const limited = applyOutputLimits(wrapped);
-  const output = collapseSingleText(limited);
-  return { output, isError: result.isError };
+  const output = collapseSingleText(limited.parts);
+  return limited.truncated
+    ? { output, isError: result.isError, truncated: true }
+    : { output, isError: result.isError };
 }
 
 /**
@@ -165,20 +167,26 @@ function wrapMediaOnly(parts: readonly ContentPart[], qualifiedToolName: string)
  * 当文本/思考部分被截断时，截断通知追加到最后存活的文本部分——
  * 这使得整个（超大）输入为单个文本块时，单文本部分折叠仍然有效。
  */
-function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
+function applyOutputLimits(parts: readonly ContentPart[]): {
+  readonly parts: ContentPart[];
+  readonly truncated: boolean;
+} {
   let remaining = MCP_MAX_OUTPUT_CHARS;
+  let truncated = false;
   let textTruncated = false;
   const out: ContentPart[] = [];
 
   for (const part of parts) {
     if (part.type === 'text') {
       if (remaining <= 0) {
+        truncated = true;
         textTruncated = true;
         continue;
       }
       if (part.text.length > remaining) {
         out.push({ type: 'text', text: part.text.slice(0, remaining) });
         remaining = 0;
+        truncated = true;
         textTruncated = true;
       } else {
         out.push(part);
@@ -190,12 +198,14 @@ function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
     if (part.type === 'think') {
       const size = part.think.length + (part.encrypted?.length ?? 0);
       if (remaining <= 0) {
+        truncated = true;
         textTruncated = true;
         continue;
       }
       if (size > remaining) {
         out.push({ type: 'think', think: part.think.slice(0, remaining) });
         remaining = 0;
+        truncated = true;
         textTruncated = true;
       } else {
         out.push(part);
@@ -216,6 +226,7 @@ function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
       const kind =
         part.type === 'image_url' ? 'image' : part.type === 'audio_url' ? 'audio' : 'video';
       out.push({ type: 'text', text: binaryPartTooLargeNotice(kind, url.length) });
+      truncated = true;
       continue;
     }
     out.push(part);
@@ -224,7 +235,7 @@ function applyOutputLimits(parts: readonly ContentPart[]): ContentPart[] {
   if (textTruncated) {
     appendTruncationNotice(out);
   }
-  return out;
+  return { parts: out, truncated };
 }
 
 function appendTruncationNotice(out: ContentPart[]): void {

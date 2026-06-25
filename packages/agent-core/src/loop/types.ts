@@ -71,6 +71,12 @@ export interface ExecutableToolSuccessResult {
    * 与 `output` 不同：渲染工具结果的调用方决定是否向用户展示此内容。
    */
   readonly message?: string | undefined;
+  /**
+   * True when the tool has already returned a partial result because it
+   * truncated, paged, or otherwise dropped original output. Later generic
+   * budgeting must not treat the visible output as complete source text.
+   */
+  readonly truncated?: boolean | undefined;
 }
 
 export interface ExecutableToolErrorResult {
@@ -80,6 +86,8 @@ export interface ExecutableToolErrorResult {
   readonly message?: string | undefined;
   /** 参见 {@link ExecutableToolSuccessResult.stopTurn}。 */
   readonly stopTurn?: boolean | undefined;
+  /** See {@link ExecutableToolSuccessResult.truncated}. */
+  readonly truncated?: boolean | undefined;
 }
 
 export type ExecutableToolResult = ExecutableToolSuccessResult | ExecutableToolErrorResult;
