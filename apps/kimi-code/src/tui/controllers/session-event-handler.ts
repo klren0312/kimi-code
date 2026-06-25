@@ -114,7 +114,12 @@ export interface SessionEventHost {
   readonly tasksBrowserController: TasksBrowserController;
 }
 
+/**
+ * 会话事件处理器 —— 订阅 SDK 会话事件，将其路由到对应的处理方法，
+ * 驱动流式 UI、转录区、live pane、MCP 状态等渲染。
+ */
 export class SessionEventHandler {
+  /** 子 Agent 事件委派处理器 */
   readonly subAgentEventHandler: SubAgentEventHandler;
 
   constructor(private readonly host: SessionEventHost) {
@@ -127,22 +132,40 @@ export class SessionEventHandler {
     });
   }
 
-  // 运行时状态——由本 handler 拥有，会话切换时重置。
+  // ---- 运行时状态（由本 handler 拥有，会话切换时通过 resetRuntimeState 重置） ----
+
+  /** 当前会话的后台任务信息缓存 */
   backgroundTasks: Map<string, BackgroundTaskInfo> = new Map();
+  /** 已经转录到对话记录的后台任务 ID 集合 */
   backgroundTaskTranscriptedTerminal: Set<string> = new Set();
 
+  /** 已渲染过的技能激活事件 ID，防止重复渲染 */
   renderedSkillActivationIds: Set<string> = new Set();
+  /** 已渲染的 MCP 服务器状态 key（name -> key），用于检测变化 */
   renderedMcpServerStatusKeys: Map<string, string> = new Map();
+  /** 正在旋转的 MCP 服务器状态加载器 */
   mcpServerStatusSpinners: Map<string, MoonLoader> = new Map();
+  /** 当前所有 MCP 服务器的快照缓存 */
   mcpServers: Map<string, McpServerStatusSnapshot> = new Map();
+
+  // ---- 目标队列提升相关状态 ----
+
+  /** 等待 snapshot 被清除的目标完成标记 */
   private goalCompletionAwaitingClear = false;
+  /** 当前 turn 已结束，允许触发排队目标提升 */
   private goalCompletionTurnEnded = false;
+  /** 当前 turn 是否包含助手文本输出 */
   private currentTurnHasAssistantText = false;
+  /** 当 turn 结束时模型仍未生成回复时的阻塞 fallback 信息 */
   private pendingModelBlockedFallback: GoalChange | undefined;
+  /** 是否有待处理的目标提升请求 */
   private queuedGoalPromotionPending = false;
+  /** 目标提升操作是否正在进行中 */
   private queuedGoalPromotionInFlight = false;
+  /** 目标提升定时器句柄 */
   private queuedGoalPromotionTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** 重置所有运行时状态 —— 在会话切换时调用 */
   resetRuntimeState(): void {
     this.backgroundTasks.clear();
     this.backgroundTaskTranscriptedTerminal.clear();
@@ -172,6 +195,7 @@ export class SessionEventHandler {
     this.subAgentEventHandler.syncAgentSwarmActivitySpinner(spinner);
   }
 
+  /** 订阅会话事件流 —— 建立 SDK 事件监听并同步初始 MCP 服务器状态 */
   startSubscription(): void {
     const { host } = this;
     const session = host.requireSession();
@@ -192,6 +216,7 @@ export class SessionEventHandler {
     void this.syncMcpServerStatusSnapshot(session);
   }
 
+  /** 同步当前会话的 MCP 服务器状态快照 —— 首次订阅时调用 */
   async syncMcpServerStatusSnapshot(session: Session): Promise<void> {
     const { host } = this;
     let servers: readonly McpServerStatusSnapshot[];
@@ -216,6 +241,7 @@ export class SessionEventHandler {
     for (const server of servers) {
       this.mcpServers.set(server.name, server);
     }
+    // 将不可见的 MCP 服务器记录到 renderedMcpServerStatusKeys，避免后续状态变更时重复渲染
     const hidden: McpServerStatusSnapshot[] = [];
     for (const server of servers) {
       if (visibleNames.has(server.name)) continue;
@@ -227,9 +253,16 @@ export class SessionEventHandler {
     host.setAppState({ mcpServersSummary: summary || null });
   }
 
+  /**
+   * 统一事件路由 —— 根据 event.type 分发到具体处理方法。
+   * 子 Agent 事件优先委派给 SubAgentEventHandler 处理；
+   * 其余事件按类型匹配到 handleXXX 方法。
+   */
   handleEvent(event: Event, sendQueued: (item: QueuedMessage) => void): void {
+    // 子 Agent 事件优先路由
     if (this.subAgentEventHandler.routeChildAgentEvent(event)) return;
 
+    // 同步 turnId 到流式 UI（用于追踪当前正在处理的 turn）
     if ('turnId' in event && event.turnId !== undefined) {
       this.host.streamingUI.setTurnId(String(event.turnId));
     }
@@ -285,6 +318,9 @@ export class SessionEventHandler {
   // 私有处理方法
   // ---------------------------------------------------------------------------
 
+  // ---- Turn / Step 生命周期 ----
+
+  /** 新 turn 开始时：重置流式 UI、清空 AgentSwarm 进度、进入等待状态 */
   private handleTurnBegin(_event: TurnStartedEvent): void {
     void _event;
     this.currentTurnHasAssistantText = false;
@@ -302,6 +338,7 @@ export class SessionEventHandler {
     });
   }
 
+  /** 定时任务触发时：将 cron 信息追加到转录区 */
   private handleCronFired(event: CronFiredEvent): void {
     this.host.streamingUI.flushNow();
     this.host.appendTranscriptEntry({
@@ -320,6 +357,7 @@ export class SessionEventHandler {
     });
   }
 
+  /** turn 结束时：刷新流式 UI、处理取消/过滤原因、完成待处理目标 fallback、触发排队目标提升 */
   private handleTurnEnd(event: TurnEndedEvent, sendQueued: (item: QueuedMessage) => void): void {
     this.host.streamingUI.flushNow();
     if (event.reason === 'cancelled') {
@@ -328,6 +366,7 @@ export class SessionEventHandler {
     if (event.reason === 'filtered') {
       this.host.showStatus('Turn stopped: provider safety policy blocked the response.', 'error');
     }
+    // 全部 todo 完成后清空待办列表
     const todos = this.host.state.todoPanel.getTodos();
     if (todos.length > 0 && todos.every((t) => t.status === 'done')) {
       this.host.streamingUI.setTodoList([]);
@@ -340,6 +379,7 @@ export class SessionEventHandler {
     this.scheduleQueuedGoalPromotion();
   }
 
+  /** step 开始时：刷新 UI、设置步数、重置工具面板、进入等待状态 */
   private handleStepBegin(event: TurnStepStartedEvent): void {
     this.host.streamingUI.flushNow();
     this.host.streamingUI.setStep(event.step);
@@ -356,10 +396,12 @@ export class SessionEventHandler {
     });
   }
 
+  /** step 完成时：检查安全策略过滤、max_tokens 截断等终止原因 */
   private handleStepCompleted(event: TurnStepCompletedEvent): void {
     this.host.streamingUI.flushNow();
     this.maybeShowDebugTiming(event);
 
+    // 提供商安全策略拦截
     if (event.providerFinishReason === 'filtered') {
       this.host.showNotice(
         'Provider safety policy blocked the response.',
@@ -368,6 +410,7 @@ export class SessionEventHandler {
       return;
     }
 
+    // max_tokens 超出限制 —— 区分是否有工具调用被截断
     if (event.finishReason !== 'max_tokens') return;
 
     const truncatedCount = this.host.streamingUI.markStepTruncated(
@@ -385,16 +428,19 @@ export class SessionEventHandler {
     this.host.showNotice(title, detail);
   }
 
+  /** 调试模式：在状态栏输出 step 耗时信息 */
   private maybeShowDebugTiming(event: TurnStepCompletedEvent): void {
     if (process.env['KIMI_CODE_DEBUG'] !== '1') return;
     const text = formatStepDebugTiming(event);
     if (text !== undefined) this.host.showStatus(text);
   }
 
+  /** 标记所有活跃的 AgentSwarm 为已取消 */
   private markActiveAgentSwarmsCancelled(): void {
     this.subAgentEventHandler.markActiveAgentSwarmsCancelled();
   }
 
+  /** 判断当前会话是否使用 Anthropic provider */
   private isAnthropicSessionActive(): boolean {
     const { state } = this.host;
     const providerKey = state.appState.availableModels[state.appState.model]?.provider;
@@ -402,6 +448,7 @@ export class SessionEventHandler {
     return state.appState.availableProviders[providerKey]?.type === 'anthropic';
   }
 
+  /** step 被中断时：区分用户中断、错误、达到最大步数等场景 */
   private handleStepInterrupted(event: TurnStepInterruptedEvent): void {
     this.host.streamingUI.flushNow();
     this.host.streamingUI.resetToolUi();
@@ -420,6 +467,7 @@ export class SessionEventHandler {
     );
   }
 
+  /** 思考内容增量 —— 追加到 thinking 缓冲区并切换到 thinking 阶段 */
   private handleThinkingDelta(event: ThinkingDeltaEvent): void {
     const { state, streamingUI } = this.host;
     streamingUI.appendThinkingDelta(event.delta);
@@ -430,12 +478,15 @@ export class SessionEventHandler {
     streamingUI.scheduleFlush();
   }
 
+  /** 助手回复内容增量 —— 追加到流式缓冲区并调度刷新 */
   private handleAssistantDelta(event: AssistantDeltaEvent): void {
     const { state, streamingUI } = this.host;
+    // 如果有未刷新的 thinking 草稿，先刷入转录区
     if (streamingUI.hasThinkingDraft()) {
       streamingUI.flushThinkingToTranscript('idle');
     }
 
+    // 记录当前 turn 存在助手文本输出（用于判断是否需要 model blocked fallback）
     if (event.delta.trim().length > 0) {
       this.currentTurnHasAssistantText = true;
       this.pendingModelBlockedFallback = undefined;
@@ -453,6 +504,7 @@ export class SessionEventHandler {
     streamingUI.scheduleFlush();
   }
 
+  /** hook 结果回调 —— 将格式化后的 hook 内容追加到转录区 */
   private handleHookResult(event: HookResultEvent): void {
     this.host.streamingUI.flushNow();
     if (this.host.streamingUI.hasThinkingDraft()) {
@@ -477,6 +529,7 @@ export class SessionEventHandler {
     });
   }
 
+  /** 工具调用开始 —— 注册到流式 UI 并处理 AgentSwarm 特殊逻辑 */
   private handleToolCall(event: ToolCallStartedEvent): void {
     const { streamingUI } = this.host;
     streamingUI.flushNow();
@@ -501,6 +554,7 @@ export class SessionEventHandler {
     });
   }
 
+  /** 工具调用参数增量 —— 累积到流式 UI 并处理 AgentSwarm 进度更新 */
   private handleToolCallDelta(event: ToolCallDeltaEvent): void {
     if (event.toolCallId.length === 0) return;
     const { state, streamingUI } = this.host;
@@ -526,6 +580,7 @@ export class SessionEventHandler {
     streamingUI.scheduleFlush();
   }
 
+  /** 工具调用进度更新 —— 追加状态文本或标准输出/错误 */
   private handleToolProgress(event: ToolProgressEvent): void {
     const text = event.update.text;
     if (text === undefined || text.length === 0) return;
@@ -540,6 +595,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 工具调用结果 —— 完成工具调用卡片、处理 TodoList 同步、派发 AgentSwarm 结果 */
   private handleToolResult(event: ToolResultEvent): void {
     const { streamingUI } = this.host;
     streamingUI.flushNow();
@@ -555,6 +611,7 @@ export class SessionEventHandler {
       resultData,
       event.isError === true,
     );
+    // TodoList 工具成功完成时，更新待办列表
     if (matchedCall !== undefined && matchedCall.name === 'TodoList' && !event.isError) {
       const rawTodos = (matchedCall.args as { todos?: unknown }).todos;
       if (Array.isArray(rawTodos)) {
@@ -569,6 +626,9 @@ export class SessionEventHandler {
     this.host.patchLivePane({ mode: 'waiting' });
   }
 
+  // ---- 状态更新 / 目标 / 会话元数据 ----
+
+  /** 代理状态更新 —— 同步 context usage、plan mode、swarm mode、permission、model 等 */
   private handleStatusUpdate(event: AgentStatusUpdatedEvent): void {
     const shouldRenderSwarmEnded =
       event.swarmMode === false &&
@@ -593,6 +653,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 渲染 Swarm 模式标记组件到转录区 */
   private renderSwarmModeMarker(state: SwarmModeMarkerState): void {
     this.host.state.transcriptContainer.addChild(
       new SwarmModeMarkerComponent(state),
@@ -600,6 +661,7 @@ export class SessionEventHandler {
     this.host.state.ui.requestRender();
   }
 
+  /** 目标更新事件 —— 处理完成消息、生命周期标记、阻塞 fallback、排队目标提升 */
   private handleGoalUpdated(event: GoalUpdatedEvent): void {
     this.host.setAppState({ goal: event.snapshot });
     if (event.snapshot === null && this.goalCompletionAwaitingClear) {
@@ -650,6 +712,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 渲染 pending model blocked fallback —— turn 结束时调用 */
   private renderPendingModelBlockedFallback(): void {
     const change = this.pendingModelBlockedFallback;
     if (change === undefined) return;
@@ -662,6 +725,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 调度排队目标提升 —— 如果条件满足则异步执行下一个排队目标的创建 */
   private scheduleQueuedGoalPromotion(): void {
     if (!this.queuedGoalPromotionPending || !this.goalCompletionTurnEnded) return;
     if (this.queuedGoalPromotionInFlight) return;
@@ -690,22 +754,26 @@ export class SessionEventHandler {
     }, 0);
   }
 
+  /** 清除目标提升定时器 */
   private clearQueuedGoalPromotionTimer(): void {
     if (this.queuedGoalPromotionTimer === undefined) return;
     clearTimeout(this.queuedGoalPromotionTimer);
     this.queuedGoalPromotionTimer = undefined;
   }
 
+  /** 外部触发排队目标提升 —— 由 UI 层调用 */
   requestQueuedGoalPromotion(): void {
     this.queuedGoalPromotionPending = true;
     this.goalCompletionTurnEnded = true;
     this.scheduleQueuedGoalPromotion();
   }
 
+  /** 重试排队目标提升 —— 当之前因条件不满足而跳过时调用 */
   retryQueuedGoalPromotion(): void {
     this.scheduleQueuedGoalPromotion();
   }
 
+  /** 检查是否可以执行排队目标提升 */
   private isReadyForQueuedGoalPromotion(session?: Session): boolean {
     return (
       (session === undefined || this.host.session === session) &&
@@ -715,6 +783,7 @@ export class SessionEventHandler {
     );
   }
 
+  /** 提升下一个排队目标 —— 从持久化队列读取并启动 */
   private async promoteNextQueuedGoal(): Promise<boolean> {
     const { host } = this;
     const session = host.session;
@@ -767,6 +836,7 @@ export class SessionEventHandler {
     return started || host.session !== session || host.aborted;
   }
 
+  /** 恢复被取消的排队目标并清理 */
   private async restoreAndCancelStartedQueuedGoal(
     session: Session,
     goal: UpcomingGoal,
@@ -779,6 +849,7 @@ export class SessionEventHandler {
     await this.cancelStartedQueuedGoal(session);
   }
 
+  /** 取消正在进行的排队目标 */
   private async cancelStartedQueuedGoal(session: Session): Promise<void> {
     try {
       await session.cancelGoal();
@@ -787,6 +858,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 通知用户：有排队目标在等待当前目标完成 */
   private async notifyQueuedGoalWaitingOnBlocked(): Promise<void> {
     const { host } = this;
     const session = host.session;
@@ -807,6 +879,9 @@ export class SessionEventHandler {
     );
   }
 
+  // ---- 会话元数据 / 错误 / 警告 ----
+
+  /** 会话元数据更新 —— 主要处理标题变更 */
   private handleSessionMetaChanged(event: SessionMetaUpdatedEvent): void {
     const title = event.title ?? stringValue(event.patch?.['title']);
     if (title !== undefined) {
@@ -815,6 +890,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 会话错误 —— 区分 OAuth 登录需求和其他错误 */
   private handleSessionError(event: ErrorEvent): void {
     this.host.streamingUI.flushNow();
     this.host.streamingUI.resetToolUi();
@@ -830,10 +906,14 @@ export class SessionEventHandler {
     }
   }
 
+  /** 会话警告 —— 在状态栏显示警告信息 */
   private handleSessionWarning(event: WarningEvent): void {
     this.host.showStatus(`Warning: ${event.message}`, 'warning');
   }
 
+  // ---- MCP 服务器状态 ----
+
+  /** 渲染单个 MCP 服务器状态 —— 根据状态显示连接/失败/认证/禁用/等待 */
   private renderMcpServerStatus(server: McpServerStatusSnapshot): void {
     const key = mcpServerStatusKey(server);
     if (this.renderedMcpServerStatusKeys.get(server.name) === key) return;
@@ -872,6 +952,7 @@ export class SessionEventHandler {
     }
   }
 
+  /** 显示 MCP 服务器连接中的 spinner 动画 */
   private showMcpServerStatusSpinner(name: string): void {
     const { state } = this.host;
     const label = `MCP server "${name}" connecting…`;
@@ -887,6 +968,7 @@ export class SessionEventHandler {
     state.ui.requestRender();
   }
 
+  /** 完成 MCP 服务器状态行渲染 —— 停止 spinner 或用状态消息替换 */
   private finalizeMcpServerStatusRow(name: string, message: string, color: ColorToken): void {
     const { state } = this.host;
     const spinner = this.mcpServerStatusSpinners.get(name);
@@ -908,6 +990,9 @@ export class SessionEventHandler {
     state.ui.requestRender();
   }
 
+  // ---- 技能激活 / 压缩 ----
+
+  /** 技能激活事件 —— 追加到转录区（去重） */
   private handleSkillActivated(event: SkillActivatedEvent): void {
     if (this.renderedSkillActivationIds.has(event.activationId)) return;
     this.renderedSkillActivationIds.add(event.activationId);
@@ -924,6 +1009,9 @@ export class SessionEventHandler {
     });
   }
 
+  // ---- 上下文压缩 ----
+
+  /** 压缩开始 —— 标记压缩中状态并显示压缩指令 */
   private handleCompactionBegin(event: CompactionStartedEvent): void {
     this.host.streamingUI.finalizeLiveTextBuffers('waiting');
     this.host.setAppState({
@@ -934,6 +1022,7 @@ export class SessionEventHandler {
     this.host.streamingUI.beginCompaction(event.instruction);
   }
 
+  /** 压缩完成 —— 结束压缩 UI 并处理排队消息 */
   private handleCompactionEnd(
     event: CompactionCompletedEvent,
     sendQueued: (item: QueuedMessage) => void,
@@ -942,6 +1031,7 @@ export class SessionEventHandler {
     this.finishCompaction(sendQueued);
   }
 
+  /** 压缩取消 —— 重置压缩 UI 并处理排队消息 */
   private handleCompactionCancel(
     _event: CompactionCancelledEvent,
     sendQueued: (item: QueuedMessage) => void,
@@ -950,6 +1040,7 @@ export class SessionEventHandler {
     this.finishCompaction(sendQueued);
   }
 
+  /** 压缩收尾 —— 根据是否还有活跃 turn 决定是否恢复 idle 并发送排队消息 */
   private finishCompaction(sendQueued: (item: QueuedMessage) => void): void {
     const hasActiveTurn = this.host.streamingUI.hasActiveTurn();
     if (!hasActiveTurn) {
@@ -973,6 +1064,7 @@ export class SessionEventHandler {
   // 后台任务生命周期
   // ---------------------------------------------------------------------------
 
+  /** 后台任务事件处理 —— 区分启动/终止、agent/process/question 类型 */
   private handleBackgroundTaskEvent(
     event: BackgroundTaskStartedEvent | BackgroundTaskTerminatedEvent,
   ): void {
@@ -995,13 +1087,14 @@ export class SessionEventHandler {
 
     if (event.type === 'background.task.started') {
       if (info.kind === 'agent') {
-        // A foreground subagent detached via Ctrl+B: flip its card to
-        // `◐ backgrounded` so it doesn't look like it completed.
+        // 前台子 Agent 通过 Ctrl+B 分离到后台：将其卡片标记为
+        // `◐ backgrounded`，使其看起来不像已完成。
         this.host.streamingUI.markSubagentBackgrounded(info.agentId);
         this.syncBackgroundTaskBadge();
         this.host.tasksBrowserController.repaint();
         return;
       }
+      // 非 agent 类型的后台任务（如 bash/process）追加到转录区
       this.appendBackgroundTaskEntry(info);
       this.syncBackgroundTaskBadge();
       this.host.tasksBrowserController.repaint();
@@ -1019,6 +1112,7 @@ export class SessionEventHandler {
           status: info.status,
         });
       }
+      // 进程/问答类型的后台任务终态时追加到转录区
       if (!this.backgroundTaskTranscriptedTerminal.has(info.taskId)) {
         if (info.kind === 'process' || info.kind === 'question') {
           this.appendBackgroundTaskEntry(info);
@@ -1030,12 +1124,14 @@ export class SessionEventHandler {
       return;
     }
 
+    // 状态变更时同步底部角标
     if (previous?.status !== info.status) {
       this.syncBackgroundTaskBadge();
     }
     this.host.tasksBrowserController.repaint();
   }
 
+  /** 将后台任务信息格式化为转录条目并追加 */
   private appendBackgroundTaskEntry(info: BackgroundTaskInfo): void {
     const status = formatBackgroundTaskTranscript(info);
     const entry: TranscriptEntry = {
@@ -1050,6 +1146,7 @@ export class SessionEventHandler {
     this.host.appendTranscriptEntry(entry);
   }
 
+  /** 同步底部栏的后台任务角标计数 —— 统计非终态的 bash 任务和 agent 任务 */
   private syncBackgroundTaskBadge(): void {
     const { state } = this.host;
     let bashTasks = 0;
