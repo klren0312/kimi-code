@@ -58,12 +58,14 @@ export interface InjectionOrigin {
   readonly variant: string;
 }
 
-/**
- * 压缩过程生成的摘要消息的来源描述符。
- *
- * 压缩将一组较早的消息替换为单条摘要以保持在上下文窗口内。
- * 此来源使撤销逻辑能在压缩边界处停止，而非静默丢弃摘要。
- */
+export interface ShellCommandOrigin {
+  readonly kind: 'shell_command';
+  readonly phase: 'input' | 'output';
+  /** Only present on `phase: 'output'` — whether the command failed, so replay
+   *  can colour stderr red only for actual failures (not warnings). */
+  readonly isError?: boolean;
+}
+
 export interface CompactionSummaryOrigin {
   readonly kind: 'compaction_summary';
 }
@@ -167,6 +169,7 @@ export type PromptOrigin =
   | UserPromptOrigin
   | SkillActivationOrigin
   | InjectionOrigin
+  | ShellCommandOrigin
   | CompactionSummaryOrigin
   | SystemTriggerOrigin
   | BackgroundTaskOrigin

@@ -35,6 +35,8 @@ export interface ChoicePickerOptions {
   readonly hint?: string;
   readonly formatHint?: (text: string) => string;
   readonly notice?: string;
+  /** Color tone for the notice line. Defaults to 'success'. */
+  readonly noticeTone?: 'success' | 'warning';
   readonly options: readonly ChoiceOption[];
   readonly currentValue?: string;
   /** 为 true 时，输入的字符会过滤列表（模糊匹配），并显示搜索行。 */
@@ -141,8 +143,12 @@ export class ChoicePickerComponent extends Container implements Focusable {
       );
     }
     if (this.opts.notice !== undefined) {
+      const tone = this.opts.noticeTone ?? 'success';
+      const noticeWidth = Math.max(1, width - 1);
       for (const noticeLine of this.opts.notice.split(/\r?\n/)) {
-        lines.push(currentTheme.fg('success', ` ${noticeLine}`));
+        for (const wrapped of wrapDescription(noticeLine, noticeWidth)) {
+          lines.push(currentTheme.fg(tone, ` ${wrapped}`));
+        }
       }
     }
     lines.push('');
